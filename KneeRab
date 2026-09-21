@@ -1555,6 +1555,100 @@ function ToolSSs()
     end)
 end
 
+-- ============ Tool 24: Orbit ============
+local oldOrbit = LocalPlayer2.Backpack:FindFirstChild("Orbit")
+if oldOrbit then oldOrbit:Destroy() end
+task.wait(0.1)
+local Tool23 = Instance.new("Tool", LocalPlayer2.Backpack)
+Tool23.RequiresHandle = false
+Tool23.Name = "Orbit"
+
+local orbitConn = nil
+
+Tool23.Activated:Connect(function()
+    if not LocalPlayer2.Character.BodyEffects.Grabbed.Value then return end
+    GrabbedValue = LocalPlayer2.Character.BodyEffects.Grabbed.Value
+
+    -- Kill any previous orbit loop
+    if orbitConn then
+        orbitConn:Disconnect()
+        orbitConn = nil
+    end
+
+    -- Stop holding animations
+    AnimStopv2(3135389157)
+    AnimStopv2(11075367458)
+
+    -- Remove hold BodyMovers so CFrame control works
+    for _, d in pairs(GrabbedValue:GetDescendants()) do
+        if d:IsA("BodyPosition") or d:IsA("BodyGyro") then
+            d:Destroy()
+        end
+    end
+
+    local currentTime = 0
+    local hrp = LocalPlayer2.Character:FindFirstChild("HumanoidRootPart")
+
+    local function safeSet(name, cf)
+        local p = GrabbedValue and GrabbedValue:FindFirstChild(name)
+        if p then
+            p.Velocity = Vector3.zero
+            p.AssemblyLinearVelocity = Vector3.zero
+            p.AssemblyAngularVelocity = Vector3.zero
+            p.CFrame = cf
+        end
+    end
+
+    orbitConn = RunService.Heartbeat:Connect(function(delta)
+        -- Stop when grab released
+        local be = LocalPlayer2.Character:FindFirstChild("BodyEffects")
+        if not be or not be:FindFirstChild("Grabbed") or be.Grabbed.Value == nil then
+            if orbitConn then orbitConn:Disconnect() orbitConn = nil end
+            return
+        end
+        if not GrabbedValue or not GrabbedValue.Parent then
+            if orbitConn then orbitConn:Disconnect() orbitConn = nil end
+            return
+        end
+        if not hrp or not hrp.Parent then return end
+
+        local pos = hrp.Position
+
+        safeSet("UpperTorso",
+            CFrame.Angles(math.pi * 0.1, 1.5 * math.pi * currentTime, 0)
+            * CFrame.new(1, 2, 5) + pos)
+        safeSet("LowerTorso",
+            CFrame.Angles(math.pi * -0.1, 1.5 * math.pi * -currentTime, 0)
+            * CFrame.new(1, 2, 5) + pos)
+        safeSet("LeftUpperArm",
+            CFrame.Angles(math.pi * 0.25, 3 * math.pi * currentTime, 0)
+            * CFrame.new(1, 2, 5) + pos)
+        safeSet("RightUpperArm",
+            CFrame.Angles(math.pi * -0.25, 3 * math.pi * -currentTime, 0)
+            * CFrame.new(1, 2, 5) + pos)
+        safeSet("LeftUpperLeg",
+            CFrame.Angles(math.pi * 0.3, 2.5 * math.pi * currentTime, 0)
+            * CFrame.new(1, 2, 5) + pos)
+        safeSet("RightUpperLeg",
+            CFrame.Angles(math.pi * -0.3, 2.5 * math.pi * -currentTime, 0)
+            * CFrame.new(1, 0, 5) + pos)
+        safeSet("LeftLowerLeg",
+            CFrame.Angles(math.pi * 0.7, 2 * math.pi * currentTime, 0)
+            * CFrame.new(1, 2, 7) + pos)
+        safeSet("RightLowerLeg",
+            CFrame.Angles(math.pi * 0.8, 2 * math.pi * -currentTime, 0)
+            * CFrame.new(1, 2, 7) + pos)
+        safeSet("LeftLowerArm",
+            CFrame.Angles(math.pi * 0.9, 2 * math.pi * currentTime, 0)
+            * CFrame.new(1, 2, 7) + pos)
+        safeSet("RightLowerArm",
+            CFrame.Angles(math.pi * 1, 2 * math.pi * -currentTime, 0)
+            * CFrame.new(1, 2, 7) + pos)
+
+        currentTime = currentTime + delta
+    end)
+end)
+
 -- ============================================================
 -- Run
 -- ============================================================
