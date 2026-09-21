@@ -1869,24 +1869,26 @@ end)()
 -- ============================================================
 local TriggerBot = (function()
     local M = { enabled = false, initialized = false }
- 
+
     local SETTINGS = {
-        UseFOV        = true,
-        FOVRadius     = 200,
-        FireDelay     = 0.15,
-        Prediction    = 0.134,
+        -- crosshair near player (not whole-screen FOV spam)
+        AimRadius     = 20,   -- tight: must be near crosshair center
+        FireDelay     = 0.08,
+        Prediction    = 0.155,
         SilentAim     = true,
-        VisibleCheck  = false,
+        VisibleCheck  = false, -- wall checks permanently off
         IgnoreKnocked = true,
+        HitPart       = "Head",
     }
- 
+
     local last_shot = 0
     local main_remote = ReplicatedStorage:FindFirstChild("MAINEVENT")
- 
+        or ReplicatedStorage:FindFirstChild("MainEvent")
+
     local function has_char(p)
         return p and p.Character and p.Character:FindFirstChild("HumanoidRootPart")
     end
- 
+
     local function is_knocked(p)
         if not has_char(p) then return false end
         local be = p.Character:FindFirstChild("BodyEffects")
@@ -1894,81 +1896,209 @@ local TriggerBot = (function()
         local ko = be:FindFirstChild("K.O")
         return ko and ko.Value or false
     end
- 
-    local function is_behind_wall(p)
-        if not has_char(p) or not has_char(player) then return false end
-        local parts = camera:GetPartsObscuringTarget(
-            { player.Character.HumanoidRootPart.Position, p.Character.HumanoidRootPart.Position },
-            { player.Character, p.Character }
-        )
-        return #parts > 0
-    end
- 
+
     local function get_equipped_gun()
         if not player.Character then return nil end
-        return player.Character:FindFirstChildWhichIsA("Tool")
+        local tool = player.Character:FindFirstChildWhichIsA("Tool")
+        if not tool then return nil end
+        -- must look like a gun (has a Handle) â€” avoid fists / tools that aren't guns
+        if not tool:FindFirstChild("Handle") then return nil end
+        return tool
     end
- 
-    local function get_closest_player(radius)
-        local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-        local closest, dist = nil, radius
+
+    -- True only if the crosshair ray hits that player's character
+    local function is_crosshair_on_player(p)
+        if not has_char(p) then return false end
+        local origin = camera.CFrame.Position
+        local dir = camera.CFrame.LookVector * 500
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        local filter = {}
+        if player.Character then table.insert(filter, player.Character) end
+        params.FilterDescendantsInstances = filter
+        params.IgnoreWater = true
+        local hit = workspace:Raycast(origin, dir, params)
+        if not hit or not hit.Instance then return false end
+        return hit.Instance:IsDescendantOf(p.Character)
+    end
+
+    local function is_blocker_part(inst)
+        if not inst or not inst:IsA("BasePart") then return false end
+        if inst.CanCollide == false then return false end
+        if inst.Transparency >= 0.95 then return false end
+        if inst:FindFirstAncestorOfClass("Accessory") then return false end
+        if inst:FindFirstAncestorOfClass("Tool") then return false end
+        return true
+    end
+
+    local function is_behind_wall(p)
+        if not has_char(p) then return true end
+        local char = p.Character
+        local origin = camera.CFrame.Position
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        local filter = {}
+        if player.Character then table.insert(filter, player.Character) end
+        params.FilterDescendantsInstances = filter
+        params.IgnoreWater = true
+
+        local function blocked_to(part)
+            if not part then return true end
+            local delta = part.Position - origin
+            local dist = delta.Magnitude
+            if dist < 0.5 then return false end
+            local hit = workspace:Raycast(origin, delta.Unit * (dist + 0.5), params)
+            if not hit then return false end
+            if hit.Instance:IsDescendantOf(char) then return false end
+            if not is_blocker_part(hit.Instance) then return false end
+            return true
+        end
+
+        local head = char:FindFirstChild("Head")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        return blocked_to(head) and blocked_to(hrp)
+    end
+
+    local GuiService = game:GetService("GuiService")
+
+    -- Shiftlock / mouse-lock â†’ screen center. Free mouse â†’ real cursor position.
+    local function get_aim_ray()
+        local shiftOn = UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
+        if shiftOn then
+            return camera.CFrame.Position, camera.CFrame.LookVector
+        end
+        -- free aim (PC mouse or mobile touch cursor)
+        local mousePos = UserInputService:GetMouseLocation()
+        local inset = GuiService:GetGuiInset()
+        local x = mousePos.X - inset.X
+        local y = mousePos.Y - inset.Y
+        local ray = camera:ViewportPointToRay(x, y)
+        return ray.Origin, ray.Direction
+    end
+
+    local function get_aim_screen_point()
+        local shiftOn = UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
+        if shiftOn then
+            return Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+        end
+        local mousePos = UserInputService:GetMouseLocation()
+        local inset = GuiService:GetGuiInset()
+        return Vector2.new(mousePos.X - inset.X, mousePos.Y - inset.Y)
+    end
+
+    local function crosshair_hits_player(p)
+        if not has_char(p) then return false end
+        local origin, dir = get_aim_ray()
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        local filter = {}
+        if player.Character then table.insert(filter, player.Character) end
+        params.FilterDescendantsInstances = filter
+        params.IgnoreWater = true
+        local hit = workspace:Raycast(origin, dir.Unit * 1000, params)
+        if not hit or not hit.Instance then return false end
+        return hit.Instance:IsDescendantOf(p.Character)
+    end
+
+    -- Only when cursor/crosshair is actually ON them (works shiftlock + free aim)
+    local function get_aimed_player()
+        local origin, dir = get_aim_ray()
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        local filter = {}
+        if player.Character then table.insert(filter, player.Character) end
+        params.FilterDescendantsInstances = filter
+        params.IgnoreWater = true
+
+        local hit = workspace:Raycast(origin, dir.Unit * 1000, params)
+        if hit and hit.Instance then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= player and has_char(p) and hit.Instance:IsDescendantOf(p.Character) then
+                    if SETTINGS.IgnoreKnocked and is_knocked(p) then return nil end
+                    if SETTINGS.VisibleCheck and is_behind_wall(p) then return nil end
+                    return p
+                end
+            end
+        end
+
+        -- tight fallback around real aim point (center if shiftlock, cursor if not)
+        local aimScreen = get_aim_screen_point()
+        local tight = math.min(SETTINGS.AimRadius, 22)
+        local best, bestDist = nil, tight
         for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= player and has_char(p) then
-                local pos, on = camera:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
-                if on then
-                    local d = (Vector2.new(pos.X, pos.Y) - center).Magnitude
-                    if d < dist then
-                        dist = d
-                        closest = p
+            if p == player then continue end
+            if not has_char(p) then continue end
+            if SETTINGS.IgnoreKnocked and is_knocked(p) then continue end
+            if SETTINGS.VisibleCheck and is_behind_wall(p) then continue end
+            local char = p.Character
+            for _, name in ipairs({"Head", "HumanoidRootPart"}) do
+                local part = char:FindFirstChild(name)
+                if part then
+                    local sp, on = camera:WorldToViewportPoint(part.Position)
+                    if on and sp.Z > 0 then
+                        local d = (Vector2.new(sp.X, sp.Y) - aimScreen).Magnitude
+                        if d < bestDist then
+                            bestDist = d
+                            best = p
+                        end
                     end
                 end
             end
         end
-        return closest, dist
+        if best and crosshair_hits_player(best) then
+            return best
+        end
+        return nil
     end
- 
+
     local function init()
         if M.initialized then return end
         M.initialized = true
- 
-        RunService.RenderStepped:Connect(function()
+
+        RunService.Heartbeat:Connect(function()
             if not M.enabled then return end
             if tick() - last_shot < SETTINGS.FireDelay then return end
- 
+
             local gun = get_equipped_gun()
             if not gun then return end
- 
-            local radius = SETTINGS.UseFOV and SETTINGS.FOVRadius or 9999
-            local target = get_closest_player(radius)
-            if not target then return end
- 
-            if SETTINGS.VisibleCheck and is_behind_wall(target) then return end
-            if SETTINGS.IgnoreKnocked and is_knocked(target) then return end
- 
-            local hrp = target.Character.HumanoidRootPart
-            local screen_pos, on_screen = camera:WorldToViewportPoint(hrp.Position)
-            if not on_screen then return end
- 
-            local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-            if (Vector2.new(screen_pos.X, screen_pos.Y) - center).Magnitude > radius then return end
- 
+
+            local target = get_aimed_player()
+            if not target then return end -- NOT aiming at anyone â†’ do not shoot
+
+            local char = target.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local head = char and char:FindFirstChild("Head")
+            if not hrp then return end
+            local aimPos = (head and head.Position) or hrp.Position
+            local vel = hrp.AssemblyLinearVelocity
+            local predicted = aimPos + Vector3.new(vel.X, vel.Y * 0.35, vel.Z) * SETTINGS.Prediction
+
             last_shot = tick()
- 
+
             if SETTINGS.SilentAim and main_remote then
-                local predicted = hrp.Position + hrp.Velocity * SETTINGS.Prediction
-                pcall(function()
-                    main_remote:FireServer("MOUSE", predicted)
-                end)
+                pcall(function() main_remote:FireServer("MOUSE", predicted) end)
+                pcall(function() main_remote:FireServer("MousePos", predicted) end)
+                pcall(function() main_remote:FireServer("UpdateMousePosI", predicted) end)
+                pcall(function() main_remote:FireServer("UpdateMousePos", predicted) end)
             end
- 
+
+            -- also feed silent-aim prediction engine if running
+            pcall(function()
+                if SilentAimPrediction and SilentAimPrediction.state then
+                    SilentAimPrediction.state.predicted_position = predicted
+                    SilentAimPrediction.state.target = target
+                    SilentAimPrediction.state.isTargetting = true
+                end
+            end)
+
             pcall(function()
                 gun:Activate()
             end)
         end)
- 
-        print("[TriggerBot] Initialized")
+
+        print("[TriggerBot] Initialized (aim-only)")
     end
- 
+
     function M.setEnabled(state)
         M.enabled = state and true or false
         if M.enabled then
@@ -1977,9 +2107,42 @@ local TriggerBot = (function()
         end
         print("[TriggerBot] " .. (M.enabled and "ON" or "OFF"))
     end
- 
+
+    function M.setWallCheck(v)
+        SETTINGS.VisibleCheck = v and true or false
+        print("[TriggerBot] Wall Check " .. (SETTINGS.VisibleCheck and "ON" or "OFF"))
+    end
+
     return M
 end)()
+ 
+
+-- Universal stubs if a combat module failed to load (non-Da Hood / restricted executor)
+if not SilentAimPrediction then
+    SilentAimPrediction = {
+        enabled = false,
+        setEnabled = function() end,
+        setWallCheck = function() end,
+        setFov = function() end,
+        state = { target = nil, isTargetting = false, predicted_position = Vector3.zero },
+    }
+end
+if not Aimlock then
+    Aimlock = {
+        enabled = false,
+        setEnabled = function() end,
+        setWallCheck = function() end,
+        Settings = { Checks = { Wall = false } },
+        onStateChange = nil,
+    }
+end
+if not TriggerBot then
+    TriggerBot = {
+        enabled = false,
+        setEnabled = function() end,
+        setWallCheck = function() end,
+    }
+end
  
 -- ============================================================
 -- COMBAT TAB BUILDER
