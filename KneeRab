@@ -1553,6 +1553,78 @@ function ToolSSs()
             u33()
         end
     end)
+
+-- ==================== Tool 24: Orbit ====================
+if LocalPlayer2.Backpack:FindFirstChild("Orbit") then
+    LocalPlayer2.Backpack:FindFirstChild("Orbit"):Destroy()
+end
+task.wait(0.1)
+local OrbitTool = Instance.new("Tool")
+OrbitTool.RequiresHandle = false
+OrbitTool.Name = "Orbit"
+OrbitTool.Parent = LocalPlayer2.Backpack
+OrbitTool.Activated:Connect(function()
+    if LocalPlayer2.Character.BodyEffects.Grabbed.Value then
+        for _, v in pairs(LocalPlayer2.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
+            if v.Animation.AnimationId == "rbxassetid://3135389157" then v:Stop() end
+        end
+
+        -- Remove BodyPosition/BodyGyro added by Align() so they don't fight our CFrames
+        for _, descendant in pairs(GrabbedValue:GetDescendants()) do
+            if descendant:IsA("BodyPosition") or descendant:IsA("BodyGyro") then
+                descendant:Destroy()
+            end
+        end
+
+        local stopOrbit = false
+        local currentTime = 0
+        local orbitConn
+        orbitConn = RunService.Heartbeat:Connect(function()
+            if stopOrbit then
+                if orbitConn then orbitConn:Disconnect() end
+                return
+            end
+            if not GrabbedValue or not GrabbedValue.Parent then
+                stopOrbit = true
+                return
+            end
+            if not LocalPlayer2.Character or not LocalPlayer2.Character:FindFirstChild("HumanoidRootPart") then
+                return
+            end
+            if LocalPlayer2.Character.BodyEffects
+                and LocalPlayer2.Character.BodyEffects.Grabbed.Value == nil then
+                stopOrbit = true
+                return
+            end
+
+            currentTime = currentTime + 0.03
+            local hrp = LocalPlayer2.Character.HumanoidRootPart
+
+            local function setPart(partName, ang, offset)
+                local part = GrabbedValue:FindFirstChild(partName)
+                if part then
+                    part.AssemblyLinearVelocity   = Vector3.zero
+                    part.AssemblyAngularVelocity  = Vector3.zero
+                    part.Velocity                 = Vector3.zero
+                    part.CFrame  = ang * offset + hrp.Position
+                    part.CanCollide = false
+                end
+            end
+
+            setPart("UpperTorso",    CFrame.Angles(math.pi *  0.1,  1.5 * math.pi *  currentTime, 0), CFrame.new(1, 2, 5))
+            setPart("LowerTorso",    CFrame.Angles(math.pi * -0.1,  1.5 * math.pi * -currentTime, 0), CFrame.new(1, 2, 5))
+            setPart("LeftUpperArm",  CFrame.Angles(math.pi *  0.25, 3   * math.pi *  currentTime, 0), CFrame.new(1, 2, 5))
+            setPart("RightUpperArm", CFrame.Angles(math.pi * -0.25, 3   * math.pi * -currentTime, 0), CFrame.new(1, 2, 5))
+            setPart("LeftUpperLeg",  CFrame.Angles(math.pi *  0.3,  2.5 * math.pi *  currentTime, 0), CFrame.new(1, 2, 5))
+            setPart("RightUpperLeg", CFrame.Angles(math.pi * -0.3,  2.5 * math.pi * -currentTime, 0), CFrame.new(1, 0, 5))
+            setPart("LeftLowerLeg",  CFrame.Angles(math.pi *  0.7,  2   * math.pi *  currentTime, 0), CFrame.new(1, 2, 7))
+            setPart("RightLowerLeg", CFrame.Angles(math.pi *  0.8,  2   * math.pi * -currentTime, 0), CFrame.new(1, 2, 7))
+            setPart("LeftLowerArm",  CFrame.Angles(math.pi *  0.9,  2   * math.pi *  currentTime, 0), CFrame.new(1, 2, 7))
+            setPart("RightLowerArm", CFrame.Angles(math.pi *  1.0,  2   * math.pi * -currentTime, 0), CFrame.new(1, 2, 7))
+        end)
+    end
+end)
+
 end
 
 -- ============================================================
