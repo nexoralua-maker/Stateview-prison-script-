@@ -1553,7 +1553,6 @@ function ToolSSs()
             u33()
         end
     end)
-end
 
 -- ============ Tool 24: Orbit ============
 local oldOrbit = LocalPlayer2.Backpack:FindFirstChild("Orbit")
@@ -1648,6 +1647,8 @@ Tool23.Activated:Connect(function()
         currentTime = currentTime + delta
     end)
 end)
+
+end
 
 -- ============================================================
 -- Run
