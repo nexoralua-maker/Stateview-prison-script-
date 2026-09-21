@@ -4511,7 +4511,261 @@ for i, item in ipairs(Items) do
         BuyState[item.key] = v
     end)
 end
- 
+
+-- ============================================================
+-- QUICK BUYS GUI (toggle with dropdown of draggable buy buttons)
+-- ============================================================
+
+-- Floating buttons live in their own ScreenGui so they survive on top of everything
+local qbScreenGui = Instance.new("ScreenGui")
+qbScreenGui.Name = "QuickBuyFloating"
+qbScreenGui.ResetOnSpawn = false
+qbScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+qbScreenGui.DisplayOrder = 500
+qbScreenGui.Parent = playerGui
+
+local qbOpenWindows = {}  -- [item.key] = frame
+local qbSpawnIndex = 0
+
+local function createQBFloatingButton(item)
+    if qbOpenWindows[item.key] then return end
+
+    qbSpawnIndex += 1
+
+    local frame = Instance.new("Frame")
+    frame.Name = "QB_" .. item.key
+    frame.Size = UDim2.new(0, 170, 0, 58)
+    frame.Position = UDim2.new(0, 20, 0, 100 + ((qbSpawnIndex - 1) * 68))
+    frame.BackgroundColor3 = Color3.fromRGB(255, 210, 60)
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = qbScreenGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = frame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 140, 0)
+    stroke.Thickness = 2
+    stroke.Parent = frame
+
+    -- Close button
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 18, 0, 18)
+    closeBtn.Position = UDim2.new(1, -22, 0, 3)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 11
+    closeBtn.AutoButtonColor = false
+    closeBtn.Parent = frame
+
+    local cbCorner = Instance.new("UICorner")
+    cbCorner.CornerRadius = UDim.new(1, 0)
+    cbCorner.Parent = closeBtn
+
+    -- Title label
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -26, 0, 18)
+    title.Position = UDim2.new(0, 6, 0, 2)
+    title.BackgroundTransparency = 1
+    title.Text = item.label:gsub("Auto Buy ", "")
+    title.TextColor3 = Color3.fromRGB(40, 25, 5)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 11
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.TextTruncate = Enum.TextTruncate.AtEnd
+    title.Parent = frame
+
+    -- Buy button
+    local buyBtn = Instance.new("TextButton")
+    buyBtn.Size = UDim2.new(1, -12, 0, 28)
+    buyBtn.Position = UDim2.new(0, 6, 1, -34)
+    buyBtn.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
+    buyBtn.BorderSizePixel = 0
+    buyBtn.Text = "Buy"
+    buyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    buyBtn.Font = Enum.Font.GothamBold
+    buyBtn.TextSize = 13
+    buyBtn.AutoButtonColor = false
+    buyBtn.Parent = frame
+
+    local bbCorner = Instance.new("UICorner")
+    bbCorner.CornerRadius = UDim.new(0, 6)
+    bbCorner.Parent = buyBtn
+
+    buyBtn.MouseButton1Click:Connect(function()
+        buyBtn.BackgroundColor3 = Color3.fromRGB(255, 220, 100)
+        task.wait(0.1)
+        TweenService:Create(buyBtn, TweenInfo.new(0.25), {
+            BackgroundColor3 = Color3.fromRGB(80, 220, 120)
+        }):Play()
+
+        pcall(function()
+            buyItem(item.pad)
+        end)
+    end)
+
+    closeBtn.MouseButton1Click:Connect(function()
+        if qbOpenWindows[item.key] then
+            qbOpenWindows[item.key]:Destroy()
+            qbOpenWindows[item.key] = nil
+        end
+    end)
+
+    qbOpenWindows[item.key] = frame
+end
+
+local function removeQBFloatingButton(item)
+    if qbOpenWindows[item.key] then
+        qbOpenWindows[item.key]:Destroy()
+        qbOpenWindows[item.key] = nil
+    end
+end
+
+-- ---- Main "Quicks buys GUI" row ----
+local qbGuiRow = Instance.new("Frame")
+qbGuiRow.Size = UDim2.new(1, 0, 0, 46)
+qbGuiRow.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
+qbGuiRow.BackgroundTransparency = 0.35
+qbGuiRow.BorderSizePixel = 0
+qbGuiRow.LayoutOrder = 20
+qbGuiRow.Parent = togglesList
+
+local qgrCorner = Instance.new("UICorner")
+qgrCorner.CornerRadius = UDim.new(0, 8)
+qgrCorner.Parent = qbGuiRow
+
+local qbGuiLabel = Instance.new("TextLabel")
+qbGuiLabel.Size = UDim2.new(1, -110, 1, 0)
+qbGuiLabel.Position = UDim2.new(0, 12, 0, 0)
+qbGuiLabel.BackgroundTransparency = 1
+qbGuiLabel.Text = "Quicks buys GUI"
+qbGuiLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
+qbGuiLabel.Font = Enum.Font.GothamSemibold
+qbGuiLabel.TextSize = 15
+qbGuiLabel.TextXAlignment = Enum.TextXAlignment.Left
+qbGuiLabel.Parent = qbGuiRow
+
+local qbGuiToggle = Instance.new("TextButton")
+qbGuiToggle.Size = UDim2.new(0, 70, 0, 30)
+qbGuiToggle.Position = UDim2.new(1, -82, 0.5, -15)
+qbGuiToggle.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+qbGuiToggle.BorderSizePixel = 0
+qbGuiToggle.Text = "â–¼"
+qbGuiToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+qbGuiToggle.Font = Enum.Font.GothamBold
+qbGuiToggle.TextSize = 14
+qbGuiToggle.AutoButtonColor = false
+qbGuiToggle.Parent = qbGuiRow
+
+local qgtCorner = Instance.new("UICorner")
+qgtCorner.CornerRadius = UDim.new(1, 0)
+qgtCorner.Parent = qbGuiToggle
+
+-- ---- Dropdown container ----
+local qbDropdown = Instance.new("Frame")
+qbDropdown.Name = "QBDropdown"
+qbDropdown.Size = UDim2.new(1, 0, 0, 0)
+qbDropdown.BackgroundColor3 = Color3.fromRGB(60, 45, 15)
+qbDropdown.BackgroundTransparency = 0.15
+qbDropdown.BorderSizePixel = 0
+qbDropdown.LayoutOrder = 21
+qbDropdown.ClipsDescendants = true
+qbDropdown.Parent = togglesList
+
+local qdCorner = Instance.new("UICorner")
+qdCorner.CornerRadius = UDim.new(0, 8)
+qdCorner.Parent = qbDropdown
+
+local qdLayout = Instance.new("UIListLayout")
+qdLayout.Padding = UDim.new(0, 4)
+qdLayout.SortOrder = Enum.SortOrder.LayoutOrder
+qdLayout.Parent = qbDropdown
+
+local qdPad = Instance.new("UIPadding")
+qdPad.PaddingTop = UDim.new(0, 6)
+qdPad.PaddingBottom = UDim.new(0, 6)
+qdPad.PaddingLeft = UDim.new(0, 6)
+qdPad.PaddingRight = UDim.new(0, 6)
+qdPad.Parent = qbDropdown
+
+-- ---- Rows inside the dropdown (one per item) ----
+for i, item in ipairs(Items) do
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 34)
+    row.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
+    row.BackgroundTransparency = 0.5
+    row.BorderSizePixel = 0
+    row.LayoutOrder = i
+    row.Parent = qbDropdown
+
+    local rowCorner = Instance.new("UICorner")
+    rowCorner.CornerRadius = UDim.new(0, 6)
+    rowCorner.Parent = row
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -80, 1, 0)
+    lbl.Position = UDim2.new(0, 8, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = item.label
+    lbl.TextColor3 = Color3.fromRGB(40, 25, 5)
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextTruncate = Enum.TextTruncate.AtEnd
+    lbl.Parent = row
+
+    local tgl = Instance.new("TextButton")
+    tgl.Size = UDim2.new(0, 56, 0, 24)
+    tgl.Position = UDim2.new(1, -62, 0.5, -12)
+    tgl.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+    tgl.BorderSizePixel = 0
+    tgl.Text = "OFF"
+    tgl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    tgl.Font = Enum.Font.GothamBold
+    tgl.TextSize = 11
+    tgl.AutoButtonColor = false
+    tgl.Parent = row
+
+    local tglCorner = Instance.new("UICorner")
+    tglCorner.CornerRadius = UDim.new(1, 0)
+    tglCorner.Parent = tgl
+
+    local state = false
+    tgl.MouseButton1Click:Connect(function()
+        state = not state
+        tgl.BackgroundColor3 = state and Color3.fromRGB(80, 220, 120) or Color3.fromRGB(80, 60, 20)
+        tgl.Text = state and "ON" or "OFF"
+
+        if state then
+            createQBFloatingButton(item)
+        else
+            removeQBFloatingButton(item)
+        end
+    end)
+end
+
+-- ---- Dropdown open/close ----
+local qbContentHeight = (#Items * 34) + ((#Items + 1) * 4) + 12
+local qbOpen = false
+
+qbGuiToggle.MouseButton1Click:Connect(function()
+    qbOpen = not qbOpen
+    qbGuiToggle.Text = qbOpen and "â–²" or "â–¼"
+    qbGuiToggle.BackgroundColor3 = qbOpen and Color3.fromRGB(80, 220, 120) or Color3.fromRGB(80, 60, 20)
+
+    if qbOpen then
+        qbDropdown.Size = UDim2.new(1, 0, 0, qbContentHeight)
+    else
+        qbDropdown.Size = UDim2.new(1, 0, 0, 0)
+    end
+end)
+        
 -- ============================================================
 -- CHARACTER EFFECTS
 -- ============================================================
