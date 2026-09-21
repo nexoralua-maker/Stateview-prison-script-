@@ -1661,6 +1661,45 @@ task.spawn(function()
             buildOrbitTool()
         end
     end
+
+-- ==================== Tool 25: Chezburger ====================
+if LocalPlayer2.Backpack:FindFirstChild("Mmm.. chezburger") then
+    LocalPlayer2.Backpack:FindFirstChild("Mmm.. chezburger"):Destroy()
+end
+task.wait(0.1)
+local ChezTool = Instance.new("Tool")
+ChezTool.RequiresHandle = false
+ChezTool.CanBeDropped   = false
+ChezTool.Name           = "Mmm.. chezburger"
+ChezTool.Parent         = LocalPlayer2.Backpack
+
+ChezTool.Activated:Connect(function()
+    if not LocalPlayer2.Character.BodyEffects.Grabbed.Value then return end
+
+    local ok, err = pcall(function()
+        task.wait(3)
+
+        AnimStopv2(3135389157)
+        AnimPlay(2953512033)
+
+        -- "Remove all" – drop every limb far below the map
+        if GrabbedValue then
+            for _, part in ipairs({"LeftUpperLeg","RightUpperLeg","LeftUpperArm","RightUpperArm"}) do
+                local p = GrabbedValue:FindFirstChild(part)
+                if p then
+                    p.Position = Vector3.new(0, -1200, 0)
+                end
+            end
+        end
+        task.wait(0.2)
+        ReplicatedStorage.MainEvent:FireServer("Grabbing", false)
+    end)
+
+    if not ok then
+        warn("Chezburger error: " .. tostring(err))
+    end
+end)
+
 end)
 
 end
