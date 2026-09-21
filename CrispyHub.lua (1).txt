@@ -700,25 +700,25 @@ local function buildTargetTab(targetFrame)
     local autoKillTask = nil
     local pauseTask = nil
     local pauseTp = false
- 
+
     -- Auto shoot state
     local lastShot = 0
-    local AUTO_SHOOT_DELAY = 0.06
- 
+    local AUTO_SHOOT_DELAY = 0.1
+
     -- Animation state
     local killAnimTrack = nil
     local killAnimId = "rbxassetid://124982597491660"
- 
+
     local targetHistory = {}
     local HISTORY_SIZE = 5
- 
+
     local function getThumb(p)
         local ok, t = pcall(function()
             return Players:GetUserThumbnailAsync(p.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
         end)
         return ok and t or ""
     end
- 
+
     local function getPlayersList()
         local list = {}
         for _, p in ipairs(Players:GetPlayers()) do
@@ -730,16 +730,6 @@ local function buildTargetTab(targetFrame)
             return (a.DisplayName or a.Name):lower() < (b.DisplayName or b.Name):lower()
         end)
         return list
-    end
- 
-    local function getHeadAimPosition(tgtChar, tgtRoot)
-        local head = tgtChar:FindFirstChild("Head")
-        local aimPart = head or tgtRoot
-        local vel = tgtRoot.AssemblyLinearVelocity
-        local lead = 0.16
-        local speed = Vector3.new(vel.X, 0, vel.Z).Magnitude
-        if speed > 18 then lead = 0.22 end
-        return aimPart.Position + Vector3.new(vel.X, vel.Y * 0.2, vel.Z) * lead
     end
 
     local function getRealTargetPosition(tgtRoot)
@@ -762,12 +752,195 @@ local function buildTargetTab(targetFrame)
 
         local velocity = tgtRoot.AssemblyLinearVelocity
         if velocity.Magnitude > 1 then
-            return currentPos + Vector3.new(velocity.X, velocity.Y * 0.2, velocity.Z) * 0.12
+            local predicted = currentPos + velocity * 0.05
+            return currentPos:Lerp(predicted, 0.5)
         end
 
         return currentPos
     end
- 
+
+    -- ============================================================
+    -- PIZZA / DONUT AUTO-CLICKER (Health-Triggered)
+    -- ============================================================
+    local PD_TOOL_NAMES = { "[Pizza]", "[Donut]" }
+    local PD_CLICK_DELAY = 0.1
+    local PD_MAX_HEALTH  = 100
+    local pd_running = false
+
+    local function pd_getHumanoid()
+        local char = player.Character
+        return char and char:FindFirstChildOfClass("Humanoid")
+    end
+
+    local function pd_findTool()
+        local char = player.Character
+        local backpack = player:FindFirstChild("Backpack")
+        for _, name in ipairs(PD_TOOL_NAMES) do
+            if char and char:FindFirstChild(name) then
+                return char:FindFirstChild(name)
+            end
+            if backpack and backpack:FindFirstChild(name) then
+                return backpack:FindFirstChild(name)
+            end
+        end
+        return nil
+    end
+
+    local function pd_getEquippedTool()
+        local char = player.Character
+        if not char then return nil end
+        for _, name in ipairs(PD_TOOL_NAMES) do
+            local t = char:FindFirstChild(name)
+            if t then return t end
+        end
+        return nil
+    end
+
+    local function pd_startClicking()
+        if pd_running then return end
+        pd_running = true
+
+        task.spawn(function()
+            while pd_running and autoKillEnabled do
+                local hum = pd_getHumanoid()
+                if hum and hum.Health >= PD_MAX_HEALTH then
+                    pd_running = false
+                    break
+                end
+
+                local tool = pd_getEquippedTool()
+                if not tool then
+                    local found = pd_findTool()
+                    if found and hum then
+                        hum:EquipTool(found)
+                    else
+                        pd_running = false
+                        break
+                    end
+                else
+                    pcall(function()
+                        tool:Activate()
+                    end)
+                end
+
+                task.wait(PD_CLICK_DELAY)
+            end
+            pd_running = false
+        end)
+    end
+
+    local function pd_stopClicking()
+        pd_running = false
+    end
+
+    local function pd_unequipTools()
+        local hum = pd_getHumanoid()
+        if not hum then return end
+        local char = player.Character
+        if not char then return end
+        for _, name in ipairs(PD_TOOL_NAMES) do
+            local tool = char:FindFirstChild(name)
+            if tool then
+                pcall(function()
+                    hum:UnequipTools()
+                end)
+                break
+            end
+        end
+    end
+
+    local function pd_equipAndClick()
+        local tool = pd_findTool()
+        if not tool then
+            pd_stopClicking()
+            return
+        end
+        local hum = pd_getHumanoid()
+        if hum and tool.Parent ~= player.Character then
+            hum:EquipTool(tool)
+        end
+        pd_startClicking()
+    end
+
+    local pd_healthConn = nil
+    local function pd_watchHealth()
+        if pd_healthConn then
+            pd_healthConn:Disconnect()
+            pd_healthConn = nil
+        end
+        local hum = pd_getHumanoid()
+        if not hum then return end
+        pd_healthConn = hum.HealthChanged:Connect(function(newHealth)
+            if not autoKillEnabled then return end
+            if newHealth >= PD_MAX_HEALTH then
+                pd_stopClicking()
+                pd_unequipTools()
+            elseif newHealth < PD_MAX_HEALTH then
+                pd_equipAndClick()
+            end
+        end)
+    end
+
+    -- Safety loop that keeps pizza/donut state correct while auto kill is on
+    local pd_safetyTask = nil
+    local function pd_start()
+        -- Attach health watcher
+        pd_watchHealth()
+
+        -- Immediate equip attempt if already damaged
+        local hum = pd_getHumanoid()
+        if hum and hum.Health < PD_MAX_HEALTH then
+            pd_equipAndClick()
+        end
+
+        -- Safety loop
+        if pd_safetyTask then
+            task.cancel(pd_safetyTask)
+            pd_safetyTask = nil
+        end
+        pd_safetyTask = task.spawn(function()
+            while autoKillEnabled do
+                local hum = pd_getHumanoid()
+                if hum then
+                    if hum.Health >= PD_MAX_HEALTH then
+                        pd_stopClicking()
+                        if pd_getEquippedTool() then
+                            pd_unequipTools()
+                        end
+                    else
+                        if pd_findTool() then
+                            pd_equipAndClick()
+                        else
+                            pd_stopClicking()
+                        end
+                    end
+                end
+                task.wait(0.25)
+            end
+        end)
+    end
+
+    local function pd_stop()
+        pd_stopClicking()
+        pd_unequipTools()
+        if pd_healthConn then
+            pd_healthConn:Disconnect()
+            pd_healthConn = nil
+        end
+        if pd_safetyTask then
+            task.cancel(pd_safetyTask)
+            pd_safetyTask = nil
+        end
+    end
+
+    -- Reattach health watcher on respawn while auto kill is on
+    player.CharacterAdded:Connect(function()
+        if autoKillEnabled then
+            task.wait(0.5)
+            pd_watchHealth()
+        end
+    end)
+
     -- ============================================================
     -- ANIMATION HELPERS (LOOPED)
     -- ============================================================
@@ -776,38 +949,38 @@ local function buildTargetTab(targetFrame)
         if not char then return end
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if not humanoid then return end
- 
+
         if killAnimTrack then
             pcall(function() killAnimTrack:Stop() end)
             killAnimTrack = nil
         end
- 
+
         local ok, anim = pcall(function()
             local a = Instance.new("Animation")
             a.AnimationId = killAnimId
             return humanoid:LoadAnimation(a)
         end)
         if not ok or not anim then return end
- 
+
         killAnimTrack = anim
-        killAnimTrack.Looped = true   -- â­ LOOPS FOREVER while Auto Kill is on
+        killAnimTrack.Looped = true
         pcall(function() killAnimTrack:Play() end)
     end
- 
+
     local function stopKillAnim()
         if killAnimTrack then
             pcall(function() killAnimTrack:Stop() end)
             killAnimTrack = nil
         end
     end
- 
+
     player.CharacterAdded:Connect(function()
         if autoKillEnabled then
             task.wait(0.5)
             playKillAnim()
         end
     end)
- 
+
     -- ============================================================
     -- UI: MAIN SCROLL
     -- ============================================================
@@ -822,24 +995,24 @@ local function buildTargetTab(targetFrame)
     mainScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     mainScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
     mainScroll.Parent = targetFrame
- 
+
     local holder = Instance.new("Frame")
     holder.Name = "Holder"
     holder.Size = UDim2.new(1, 0, 0, 340)
     holder.BackgroundTransparency = 1
     holder.Parent = mainScroll
- 
+
     local holderLayout = Instance.new("UIListLayout")
     holderLayout.Padding = UDim.new(0, 6)
     holderLayout.SortOrder = Enum.SortOrder.LayoutOrder
     holderLayout.Parent = holder
- 
+
     local topBox = Instance.new("Frame")
     topBox.Size = UDim2.new(1, 0, 0, 92)
     topBox.BackgroundTransparency = 1
     topBox.LayoutOrder = 1
     topBox.Parent = holder
- 
+
     local targetAvatar = Instance.new("ImageLabel")
     targetAvatar.Size = UDim2.new(0, 70, 0, 70)
     targetAvatar.Position = UDim2.new(0.5, -35, 0, 0)
@@ -848,11 +1021,11 @@ local function buildTargetTab(targetFrame)
     targetAvatar.BorderSizePixel = 0
     targetAvatar.Image = getThumb(player)
     targetAvatar.Parent = topBox
- 
+
     local avCorner = Instance.new("UICorner")
     avCorner.CornerRadius = UDim.new(1, 0)
     avCorner.Parent = targetAvatar
- 
+
     local targetName = Instance.new("TextLabel")
     targetName.Size = UDim2.new(1, 0, 0, 18)
     targetName.Position = UDim2.new(0, 0, 0, 74)
@@ -862,7 +1035,7 @@ local function buildTargetTab(targetFrame)
     targetName.Font = Enum.Font.GothamBold
     targetName.TextSize = 13
     targetName.Parent = topBox
- 
+
     local listFrame = Instance.new("Frame")
     listFrame.Size = UDim2.new(0.9, 0, 0, 110)
     listFrame.Position = UDim2.new(0.05, 0, 0, 0)
@@ -872,11 +1045,11 @@ local function buildTargetTab(targetFrame)
     listFrame.ClipsDescendants = true
     listFrame.LayoutOrder = 2
     listFrame.Parent = holder
- 
+
     local lfCorner = Instance.new("UICorner")
     lfCorner.CornerRadius = UDim.new(0, 6)
     lfCorner.Parent = listFrame
- 
+
     local scroll = Instance.new("ScrollingFrame")
     scroll.Size = UDim2.new(1, -6, 1, -6)
     scroll.Position = UDim2.new(0, 3, 0, 3)
@@ -887,12 +1060,12 @@ local function buildTargetTab(targetFrame)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
     scroll.Parent = listFrame
- 
+
     local layout = Instance.new("UIListLayout")
     layout.Padding = UDim.new(0, 3)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Parent = scroll
- 
+
     local function makeRow(p, order)
         local row = Instance.new("TextButton")
         row.Size = UDim2.new(1, 0, 0, 24)
@@ -903,22 +1076,22 @@ local function buildTargetTab(targetFrame)
         row.AutoButtonColor = false
         row.LayoutOrder = order
         row.Parent = scroll
- 
+
         local rCorner = Instance.new("UICorner")
         rCorner.CornerRadius = UDim.new(0, 5)
         rCorner.Parent = row
- 
+
         local icon = Instance.new("ImageLabel")
         icon.Size = UDim2.new(0, 18, 0, 18)
         icon.Position = UDim2.new(0, 4, 0.5, -9)
         icon.BackgroundTransparency = 1
         icon.Image = getThumb(p)
         icon.Parent = row
- 
+
         local icCorner = Instance.new("UICorner")
         icCorner.CornerRadius = UDim.new(1, 0)
         icCorner.Parent = icon
- 
+
         local lbl = Instance.new("TextLabel")
         lbl.Size = UDim2.new(1, -30, 1, 0)
         lbl.Position = UDim2.new(0, 26, 0, 0)
@@ -930,7 +1103,7 @@ local function buildTargetTab(targetFrame)
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.TextTruncate = Enum.TextTruncate.AtEnd
         lbl.Parent = row
- 
+
         row.MouseButton1Click:Connect(function()
             selectedTarget = p
             targetName.Text = (p.DisplayName or p.Name) .. " (@" .. p.Name .. ")"
@@ -938,7 +1111,7 @@ local function buildTargetTab(targetFrame)
             targetHistory = {}
         end)
     end
- 
+
     local function refreshList()
         for _, c in ipairs(scroll:GetChildren()) do
             if c:IsA("TextButton") then c:Destroy() end
@@ -947,9 +1120,9 @@ local function buildTargetTab(targetFrame)
             makeRow(p, i)
         end
     end
- 
+
     refreshList()
- 
+
     local healthBg = Instance.new("Frame")
     healthBg.Size = UDim2.new(0.9, 0, 0, 20)
     healthBg.Position = UDim2.new(0.05, 0, 0, 0)
@@ -957,21 +1130,21 @@ local function buildTargetTab(targetFrame)
     healthBg.BorderSizePixel = 0
     healthBg.LayoutOrder = 3
     healthBg.Parent = holder
- 
+
     local hbCorner = Instance.new("UICorner")
     hbCorner.CornerRadius = UDim.new(0, 5)
     hbCorner.Parent = healthBg
- 
+
     local healthFill = Instance.new("Frame")
     healthFill.Size = UDim2.new(1, 0, 1, 0)
     healthFill.BackgroundColor3 = Color3.fromRGB(60, 220, 100)
     healthFill.BorderSizePixel = 0
     healthFill.Parent = healthBg
- 
+
     local hfCorner = Instance.new("UICorner")
     hfCorner.CornerRadius = UDim.new(0, 5)
     hfCorner.Parent = healthFill
- 
+
     local healthText = Instance.new("TextLabel")
     healthText.Size = UDim2.new(1, 0, 1, 0)
     healthText.BackgroundTransparency = 1
@@ -981,7 +1154,7 @@ local function buildTargetTab(targetFrame)
     healthText.TextSize = 12
     healthText.ZIndex = 2
     healthText.Parent = healthBg
- 
+
     local armorBg = Instance.new("Frame")
     armorBg.Size = UDim2.new(0.9, 0, 0, 20)
     armorBg.Position = UDim2.new(0.05, 0, 0, 0)
@@ -989,21 +1162,21 @@ local function buildTargetTab(targetFrame)
     armorBg.BorderSizePixel = 0
     armorBg.LayoutOrder = 4
     armorBg.Parent = holder
- 
+
     local abCorner = Instance.new("UICorner")
     abCorner.CornerRadius = UDim.new(0, 5)
     abCorner.Parent = armorBg
- 
+
     local armorFill = Instance.new("Frame")
     armorFill.Size = UDim2.new(1, 0, 1, 0)
     armorFill.BackgroundColor3 = Color3.fromRGB(90, 170, 255)
     armorFill.BorderSizePixel = 0
     armorFill.Parent = armorBg
- 
+
     local afCorner = Instance.new("UICorner")
     afCorner.CornerRadius = UDim.new(0, 5)
     afCorner.Parent = armorFill
- 
+
     local armorText = Instance.new("TextLabel")
     armorText.Size = UDim2.new(1, 0, 1, 0)
     armorText.BackgroundTransparency = 1
@@ -1013,7 +1186,7 @@ local function buildTargetTab(targetFrame)
     armorText.TextSize = 12
     armorText.ZIndex = 2
     armorText.Parent = armorBg
- 
+
     local spectateBtn = Instance.new("TextButton")
     spectateBtn.Size = UDim2.new(0.9, 0, 0, 24)
     spectateBtn.Position = UDim2.new(0.05, 0, 0, 0)
@@ -1026,11 +1199,11 @@ local function buildTargetTab(targetFrame)
     spectateBtn.AutoButtonColor = false
     spectateBtn.LayoutOrder = 5
     spectateBtn.Parent = holder
- 
+
     local spCorner = Instance.new("UICorner")
     spCorner.CornerRadius = UDim.new(0, 6)
     spCorner.Parent = spectateBtn
- 
+
     local function stopSpectate()
         spectating = false
         spectateBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
@@ -1040,7 +1213,7 @@ local function buildTargetTab(targetFrame)
         camera.CameraSubject = char and char:FindFirstChildOfClass("Humanoid") or nil
         camera.CameraType = Enum.CameraType.Custom
     end
- 
+
     local function startSpectate()
         spectating = true
         spectateBtn.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
@@ -1055,11 +1228,11 @@ local function buildTargetTab(targetFrame)
             if hum then camera.CameraSubject = hum end
         end)
     end
- 
+
     spectateBtn.MouseButton1Click:Connect(function()
         if spectating then stopSpectate() else startSpectate() end
     end)
- 
+
     local tpBtn = Instance.new("TextButton")
     tpBtn.Size = UDim2.new(0.9, 0, 0, 24)
     tpBtn.Position = UDim2.new(0.05, 0, 0, 0)
@@ -1072,17 +1245,17 @@ local function buildTargetTab(targetFrame)
     tpBtn.AutoButtonColor = false
     tpBtn.LayoutOrder = 6
     tpBtn.Parent = holder
- 
+
     local tpCorner = Instance.new("UICorner")
     tpCorner.CornerRadius = UDim.new(0, 6)
     tpCorner.Parent = tpBtn
- 
+
     local function flashBtn(btn, fromColor, toColor)
         btn.BackgroundColor3 = toColor
         task.wait(0.15)
         TweenService:Create(btn, TweenInfo.new(0.3), {BackgroundColor3 = fromColor}):Play()
     end
- 
+
     tpBtn.MouseButton1Click:Connect(function()
         local t = selectedTarget
         flashBtn(tpBtn, Color3.fromRGB(255, 140, 40), Color3.fromRGB(255, 220, 100))
@@ -1095,7 +1268,7 @@ local function buildTargetTab(targetFrame)
         if not myRoot or not tgtRoot then return end
         myRoot.CFrame = tgtRoot.CFrame * CFrame.new(0, 0, 3)
     end)
- 
+
     local autoKillBtn = Instance.new("TextButton")
     autoKillBtn.Size = UDim2.new(0.9, 0, 0, 24)
     autoKillBtn.Position = UDim2.new(0.05, 0, 0, 0)
@@ -1108,11 +1281,11 @@ local function buildTargetTab(targetFrame)
     autoKillBtn.AutoButtonColor = false
     autoKillBtn.LayoutOrder = 7
     autoKillBtn.Parent = holder
- 
+
     local akCorner = Instance.new("UICorner")
     akCorner.CornerRadius = UDim.new(0, 6)
     akCorner.Parent = autoKillBtn
- 
+
     local function equipTool(toolName)
         local char = player.Character
         if not char then return false end
@@ -1130,38 +1303,20 @@ local function buildTargetTab(targetFrame)
         end
         return false
     end
- 
+
     -- ============================================================
     -- AUTO SHOOT HELPER
     -- ============================================================
-    local function pushTargetMouse(aimPos)
-        if not aimPos then return end
-        -- Feed silent aim engine so namecall hook + remotes lock onto target
-        pcall(function()
-            if SilentAimPrediction and SilentAimPrediction.state then
-                SilentAimPrediction.state.target = selectedTarget
-                SilentAimPrediction.state.isTargetting = true
-                SilentAimPrediction.state.predicted_position = aimPos
-            end
-        end)
-        for _, rname in ipairs({"MainEvent", "MAINEVENT"}) do
-            local r = ReplicatedStorage:FindFirstChild(rname)
-            if r then
-                for _, arg in ipairs({
-                    "UpdateMousePosI", "UpdateMousePos", "UpdateMousePos1",
-                    "MOUSE", "MousePos", "MousePosUpdate", "MoonUpdateMousePos"
-                }) do
-                    pcall(function() r:FireServer(arg, aimPos) end)
-                end
-            end
-        end
-    end
-
-    local function tryAutoShoot(aimPos)
+    local function tryAutoShoot()
         local char = player.Character
         if not char then return end
         local tool = char:FindFirstChildWhichIsA("Tool")
         if not tool then return end
+
+        -- Skip pizza / donut so auto-clicker handles them
+        if tool.Name == "[Pizza]" or tool.Name == "[Donut]" then
+            return
+        end
 
         local toolName = tool.Name:lower()
         if toolName:find("katana") or toolName:find("knife")
@@ -1173,11 +1328,9 @@ local function buildTargetTab(targetFrame)
         if tick() - lastShot < AUTO_SHOOT_DELAY then return end
         lastShot = tick()
 
-        if aimPos then
-            pushTargetMouse(aimPos)
-            task.defer(function() pushTargetMouse(aimPos) end)
-        end
-        pcall(function() tool:Activate() end)
+        pcall(function()
+            tool:Activate()
+        end)
     end
 
     local function runAutoKillTick()
@@ -1191,13 +1344,6 @@ local function buildTargetTab(targetFrame)
         local humanoid = myChar:FindFirstChildOfClass("Humanoid")
         if not myRoot or not tgtRoot or not humanoid then return end
 
-        -- skip if target knocked
-        local be = tgtChar:FindFirstChild("BodyEffects")
-        if be then
-            local ko = be:FindFirstChild("K.O")
-            if ko and ko.Value then return end
-        end
-
         if humanoid.Sit then humanoid.Sit = false end
         humanoid.PlatformStand = false
         humanoid.AutoRotate = false
@@ -1205,55 +1351,41 @@ local function buildTargetTab(targetFrame)
         humanoid.JumpPower = 0
         humanoid.JumpHeight = 0
 
-        local aimPos = getHeadAimPosition(tgtChar, tgtRoot)
         local realTargetPos = getRealTargetPosition(tgtRoot)
 
-        -- Stay close in FRONT of target (not random 15-stud sphere) so shots land
-        local look = tgtRoot.CFrame.LookVector
-        local side = tgtRoot.CFrame.RightVector
-        local orbit = (tick() * 2.2) % (math.pi * 2)
-        local dist = 7
-        local newPos = realTargetPos
-            - look * dist
-            + side * (math.sin(orbit) * 2.5)
-            + Vector3.new(0, 1.5, 0)
+        local radius = 15
+        local theta = math.random() * math.pi * 2
+        local phi = math.acos(2 * math.random() - 1)
+        local offX = radius * math.sin(phi) * math.cos(theta)
+        local offY = math.max(0, radius * math.cos(phi))
+        local offZ = radius * math.sin(phi) * math.sin(theta)
 
-        -- Face the head
-        myRoot.CFrame = CFrame.new(newPos, aimPos)
+        local newPos = Vector3.new(
+            realTargetPos.X + offX,
+            realTargetPos.Y + offY,
+            realTargetPos.Z + offZ
+        )
+
+        local diff = realTargetPos - newPos
+        local yRot = math.atan2(diff.X, diff.Z)
+
+        myRoot.CFrame = CFrame.new(newPos) * CFrame.Angles(0, yRot, 0)
+
         myRoot.AssemblyLinearVelocity = Vector3.zero
         myRoot.AssemblyAngularVelocity = Vector3.zero
 
-        -- Point camera at them too
-        pcall(function()
-            camera.CFrame = CFrame.new(camera.CFrame.Position, aimPos)
-        end)
+        -- Auto shoot if a gun is equipped
+        tryAutoShoot()
 
-        tryAutoShoot(aimPos)
-
+        -- Otherwise equip the katana (only if no pizza/donut equipped)
         local equipped = myChar:FindFirstChildWhichIsA("Tool")
         if not equipped then
-            -- prefer any gun in backpack, else katana
-            local bp = player:FindFirstChild("Backpack")
-            local gun = nil
-            if bp then
-                for _, tool in ipairs(bp:GetChildren()) do
-                    if tool:IsA("Tool") then
-                        local n = tool.Name:lower()
-                        if not (n:find("katana") or n:find("knife") or n:find("sword") or n:find("bat") or n:find("fist")) then
-                            gun = tool
-                            break
-                        end
-                    end
-                end
-            end
-            if gun then
-                pcall(function() humanoid:EquipTool(gun) end)
-            else
-                pcall(function() equipTool("Katana") end)
-            end
+            pcall(function()
+                equipTool("Katana")
+            end)
         end
     end
- 
+
     local function stopAutoKill()
         autoKillEnabled = false
         autoKillBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
@@ -1268,9 +1400,10 @@ local function buildTargetTab(targetFrame)
         end
         pauseTp = false
         targetHistory = {}
- 
+
         stopKillAnim()
- 
+        pd_stop()   -- â­ stop pizza/donut auto-clicker
+
         local char = player.Character
         if char then
             local hum = char:FindFirstChildOfClass("Humanoid")
@@ -1284,7 +1417,7 @@ local function buildTargetTab(targetFrame)
             end
         end
     end
- 
+
     local function startAutoKill()
         autoKillEnabled = true
         pauseTp = false
@@ -1292,27 +1425,42 @@ local function buildTargetTab(targetFrame)
         targetHistory = {}
         autoKillBtn.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
         autoKillBtn.Text = "Auto Kill: ON"
- 
+
         playKillAnim()
- 
+        pd_start()   -- â­ start pizza/donut auto-clicker
+
         autoKillTask = task.spawn(function()
             while autoKillEnabled do
                 if not pauseTp then
                     pcall(runAutoKillTick)
                 end
-                task.wait(0.05)
+                task.wait(0.1)
             end
         end)
- 
-        -- no periodic pause (was freezing auto-kill every second)
-        pauseTask = nil
-        pauseTp = false
+
+        pauseTask = task.spawn(function()
+            while autoKillEnabled do
+                task.wait(1)
+                if not autoKillEnabled then break end
+                pauseTp = true
+                local myChar = player.Character
+                if myChar then
+                    local root = myChar:FindFirstChild("HumanoidRootPart")
+                    if root then
+                        root.AssemblyLinearVelocity = Vector3.zero
+                        root.AssemblyAngularVelocity = Vector3.zero
+                    end
+                end
+                task.wait(0.1)
+                pauseTp = false
+            end
+        end)
     end
- 
+
     autoKillBtn.MouseButton1Click:Connect(function()
         if autoKillEnabled then stopAutoKill() else startAutoKill() end
     end)
- 
+
     task.spawn(function()
         while targetFrame.Parent do
             local t = selectedTarget or player
@@ -1337,7 +1485,7 @@ local function buildTargetTab(targetFrame)
             task.wait(0.15)
         end
     end)
- 
+
     Players.PlayerAdded:Connect(function() refreshList() end)
     Players.PlayerRemoving:Connect(function(p)
         if selectedTarget == p then
@@ -1348,13 +1496,12 @@ local function buildTargetTab(targetFrame)
         end
         refreshList()
     end)
- 
+
     return function()
         stopSpectate()
         stopAutoKill()
     end
 end
- 
  
 -- ============================================================
 -- GUI CREATION
