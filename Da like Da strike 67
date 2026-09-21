@@ -1815,34 +1815,34 @@ local Aimlock = (function()
         end)
 
         UserInputService.InputBegan:Connect(function(input, gpe)
-            if gpe then return end
-            if input.KeyCode == Enum.KeyCode.E and M.enabled then
-                M.toggleLock()
-            end
-        end)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.E and M.enabled then
+        M.toggleLock()
+    end
+end)
 
-        RunService.RenderStepped:Connect(function()
-            if not M.enabled then
-                if dot_frame then dot_frame.Visible = false end
-                return
-            end
+RunService.RenderStepped:Connect(function()
+    if not M.enabled then
+        if dot_frame then dot_frame.Visible = false end
+        return
+    end
 
-            if M.state.locked_target then
-                if not M.state.locked_target.Parent
-                    or not has_character(M.state.locked_target) then
-                    do_unlock()
-                elseif WallCheck.isBlocked(M.state.locked_target) then
-                    do_unlock()
-                end
-            end
+    if M.state.locked_target then
+        if not M.state.locked_target.Parent
+            or not has_character(M.state.locked_target) then
+            do_unlock()
+        end
+        -- WallCheck no longer auto-unlocks here. WallCheck only
+        -- blocks the INITIAL lock inside get_player_in_look_direction.
+    end
 
-            if not M.state.locked_target then
-                if dot_frame then dot_frame.Visible = false end
-                return
-            end
+    if not M.state.locked_target then
+        if dot_frame then dot_frame.Visible = false end
+        return
+    end
 
-            M.state.isTargetting = true
-            M.state.predicted_position = get_predicted_position()
+    M.state.isTargetting = true
+    M.state.predicted_position = get_predicted_position()
 
             if Settings.ShowTargetDot and dot_frame then
                 local head = M.state.locked_target.Character
@@ -2193,28 +2193,35 @@ local function buildCombatTab(frame)
     end
 
     local function getClosestPlayer()
-        local center = getScreenCenter()
-        local radius = saFOVRadius * SA_FOV_MULT
-        local closest
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= player and hasChar(plr) then
-                local head = plr.Character:FindFirstChild("Head")
-                if head then
-                    local sp = worldToScreen(head.Position)
-                    if sp.on_screen and not isKnocked(plr) and not isGrabbed(plr) then
-                        if not WallCheck.isBlocked(plr) then
-                            local d = (center - sp.position).Magnitude
-                            if d <= radius then
-                                radius = d
-                                closest = plr
-                            end
+    -- ⭐ If we already have a valid target, keep them — even if they
+    -- walk behind a wall. WallCheck only filters NEW targets.
+    if saState.target and hasChar(saState.target) then
+        return saState.target
+    end
+
+    -- Otherwise find a new target (WallCheck filters here)
+    local center = getScreenCenter()
+    local radius = saFOVRadius * SA_FOV_MULT
+    local closest
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= player and hasChar(plr) then
+            local head = plr.Character:FindFirstChild("Head")
+            if head then
+                local sp = worldToScreen(head.Position)
+                if sp.on_screen and not isKnocked(plr) and not isGrabbed(plr) then
+                    if not WallCheck.isBlocked(plr) then
+                        local d = (center - sp.position).Magnitude
+                        if d <= radius then
+                            radius = d
+                            closest = plr
                         end
                     end
                 end
             end
         end
-        return closest
     end
+    return closest
+end
 
     local function getPredictedPosition()
         local target = saState.target
