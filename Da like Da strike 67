@@ -1356,7 +1356,39 @@ contentFrames["Target"] = targetFrame
 local cleanupTarget = buildTargetTab(targetFrame)
  
 -- ============================================================
--- AIMLOCK MODULE (Da Lock â€” panel + dot + hooks kept intact)
+-- WALLCHECK MODULE (shared state for Silent Aim + Aimlock)
+-- ============================================================
+local WallCheck = {
+    enabled = false,
+}
+
+function WallCheck.setEnabled(state)
+    WallCheck.enabled = state and true or false
+    print("[WallCheck] " .. (WallCheck.enabled and "ON" or "OFF"))
+end
+
+function WallCheck.isBlocked(target)
+    if not WallCheck.enabled then return false end
+    if not target or not target.Character then return true end
+    local myChar = player.Character
+    if not myChar then return true end
+
+    local myHrp = myChar:FindFirstChild("HumanoidRootPart")
+    local tgtHrp = target.Character:FindFirstChild("HumanoidRootPart")
+    if not myHrp or not tgtHrp then return true end
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { myChar, target.Character }
+    params.IgnoreWater = true
+
+    local dir = (tgtHrp.Position - myHrp.Position)
+    local hit = workspace:Raycast(myHrp.Position, dir, params)
+    return hit ~= nil
+end
+
+-- ============================================================
+-- AIMLOCK MODULE
 -- ============================================================
 local Aimlock = (function()
     local M = {
@@ -1369,13 +1401,13 @@ local Aimlock = (function()
             predicted_position = Vector3.new(1, 1, 1),
         },
     }
- 
+
     local CRISPY_YELLOW = Color3.fromRGB(255, 210, 60)
     local BG_DARK       = Color3.fromRGB(18, 18, 22)
     local BG_BUTTON     = Color3.fromRGB(28, 28, 34)
     local GREEN_ON      = Color3.fromRGB(80, 220, 120)
     local hood_customs  = 9825515356
- 
+
     local Settings = {
         Prediction          = 0.134,
         AimPart             = "Head",
@@ -1393,7 +1425,7 @@ local Aimlock = (function()
         TargetDotTransparency = 0.0,
         LookConeDot         = 0.90,
     }
- 
+
     local game_support = {
         [2788229376]  = { Name = "Da Hood",              Remote = "MainEvent",  Argument = "UpdateMousePosI" },
         [12238627497] = { Name = "Locker Hood",          Remote = "MainEvent",  Argument = "UpdateMousePos" },
@@ -1412,7 +1444,7 @@ local Aimlock = (function()
         [16859411452] = { Name = "Hood Z",               Remote = "MainEvent",  Argument = "UpdateMousePos" },
         [14277620939] = { Name = "Custom FFA",           Remote = "MainEvent",  Argument = "UpdateMousePos" },
     }
- 
+
     local function auto_detect_remote()
         local candidates = {"MainEvent", "MAINEVENT", "Main", "Remote", "Remotes"}
         for _, name in ipairs(candidates) do
@@ -1425,7 +1457,7 @@ local Aimlock = (function()
             end
         end
     end
- 
+
     local game_config = game_support[game.PlaceId]
     local remote, mouse_argument
     if game_config then
@@ -1439,20 +1471,20 @@ local Aimlock = (function()
             game_config = { Name = "Auto-Detected", Remote = name, Argument = mouse_argument }
         end
     end
- 
+
     local function has_character(p)
         return (p and p.Character and p.Character:FindFirstChild("Humanoid")) and true or false
     end
- 
+
     local function is_in_air(p)
         if not has_character(p) then return false end
         return p.Character.HumanoidRootPart.Velocity.Y ~= 0
     end
- 
+
     local function is_friends_with(p)
         return p:IsFriendsWith(player.UserId)
     end
- 
+
     local function is_player_behind_a_wall(p)
         if not has_character(player) or not has_character(p) then return false end
         local amount = camera:GetPartsObscuringTarget(
@@ -1461,7 +1493,7 @@ local Aimlock = (function()
         )
         return #amount ~= 0
     end
- 
+
     local function is_knocked(p)
         if not has_character(p) then return false end
         local be = p.Character:FindFirstChild("BodyEffects")
@@ -1469,17 +1501,17 @@ local Aimlock = (function()
         local ko = be:FindFirstChild("K.O")
         return ko and ko.Value or false
     end
- 
+
     local function is_grabbed(p)
         if not has_character(p) then return false end
         return p.Character:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
     end
- 
+
     local function is_on_vehicle(p)
         if not has_character(p) then return false end
         return p.Character:FindFirstChild("[CarHitBox]") ~= nil
     end
- 
+
     local function recalculate_velocity(part, update_time)
         local p0 = part.Position
         local t0 = tick()
@@ -1490,24 +1522,24 @@ local Aimlock = (function()
         if dt == 0 then return Vector3.new(0, 0, 0) end
         return (p1 - p0) / dt
     end
- 
+
     local function get_player_in_look_direction()
         if not player.Character then return nil end
         local my_root = player.Character:FindFirstChild("HumanoidRootPart")
         if not my_root then return nil end
- 
+
         local cam_cf = camera.CFrame
         local look_dir = cam_cf.LookVector
         local best_player = nil
         local best_dot = Settings.LookConeDot
- 
+
         for _, p in ipairs(Players:GetPlayers()) do
             if p == player then continue end
             if not has_character(p) then continue end
             local head = p.Character:FindFirstChild("Head")
                 or p.Character:FindFirstChild("HumanoidRootPart")
             if not head then continue end
- 
+
             if Settings.UseChecks then
                 if Settings.Checks.Knocked and is_knocked(p) then continue end
                 if Settings.Checks.Grabbed and is_grabbed(p) then continue end
@@ -1515,7 +1547,9 @@ local Aimlock = (function()
                 if Settings.Checks.Wall and is_player_behind_a_wall(p) then continue end
                 if Settings.Checks.Vehicle and is_on_vehicle(p) then continue end
             end
- 
+
+            if WallCheck.isBlocked(p) then continue end
+
             local dir = (head.Position - cam_cf.Position)
             if dir.Magnitude == 0 then continue end
             dir = dir.Unit
@@ -1525,10 +1559,10 @@ local Aimlock = (function()
                 best_player = p
             end
         end
- 
+
         return best_player
     end
- 
+
     local function resolve_velocity(p)
         if not has_character(p) then return Vector3.new(0, 0, 0) end
         if Settings.ResolverMethod == "Recalculate" then
@@ -1538,36 +1572,36 @@ local Aimlock = (function()
         end
         return Vector3.new(0, 0, 0)
     end
- 
+
     local function get_predicted_position()
         local target = M.state.locked_target
         if not target or not has_character(target) then return Vector3.new(0, 0, 0) end
- 
+
         local aim_part = target.Character:FindFirstChild("Head")
             or target.Character:FindFirstChild("HumanoidRootPart")
         if not aim_part then return Vector3.new(0, 0, 0) end
- 
+
         local velocity = Settings.ResolverEnabled
             and resolve_velocity(target)
             or aim_part.Velocity
- 
+
         if Settings.AntiGroundShots and is_in_air(target) then
             local mult = Settings.AntiGroundToTakeOff / 10
             velocity = Vector3.new(velocity.X, math.abs(velocity.Y * mult), velocity.Z)
         end
- 
+
         local predicted = aim_part.Position + velocity * Settings.Prediction
         if game.PlaceId == hood_customs then
             predicted = predicted + Vector3.new(25, 100, 25)
         end
         return predicted
     end
- 
+
     local screen_gui, dot_frame, container, lock_button
- 
+
     local function build_ui()
         if screen_gui then return end
- 
+
         screen_gui = Instance.new("ScreenGui")
         screen_gui.Name = "DaLockGui"
         screen_gui.ResetOnSpawn = false
@@ -1575,7 +1609,7 @@ local Aimlock = (function()
         screen_gui.IgnoreGuiInset = true
         screen_gui.DisplayOrder = 999
         screen_gui.Parent = playerGui
- 
+
         dot_frame = Instance.new("Frame")
         dot_frame.Name = "TargetDot"
         dot_frame.Size = UDim2.new(0, Settings.TargetDotSize, 0, Settings.TargetDotSize)
@@ -1586,17 +1620,17 @@ local Aimlock = (function()
         dot_frame.Visible = false
         dot_frame.ZIndex = 50
         dot_frame.Parent = screen_gui
- 
+
         local dot_corner = Instance.new("UICorner")
         dot_corner.CornerRadius = UDim.new(1, 0)
         dot_corner.Parent = dot_frame
- 
+
         local dot_stroke = Instance.new("UIStroke")
         dot_stroke.Color = Color3.fromRGB(0, 0, 0)
         dot_stroke.Thickness = 1
         dot_stroke.Transparency = 0.3
         dot_stroke.Parent = dot_frame
- 
+
         container = Instance.new("Frame")
         container.Name = "LockPanel"
         container.Size = UDim2.new(0, 200, 0, 56)
@@ -1606,11 +1640,11 @@ local Aimlock = (function()
         container.Active = true
         container.ZIndex = 90
         container.Parent = screen_gui
- 
+
         local container_corner = Instance.new("UICorner")
         container_corner.CornerRadius = UDim.new(0, 10)
         container_corner.Parent = container
- 
+
         lock_button = Instance.new("TextButton")
         lock_button.Name = "Lock"
         lock_button.Size = UDim2.new(1, -16, 1, -16)
@@ -1625,11 +1659,11 @@ local Aimlock = (function()
         lock_button.Active = true
         lock_button.ZIndex = 95
         lock_button.Parent = container
- 
+
         local button_corner = Instance.new("UICorner")
         button_corner.CornerRadius = UDim.new(0, 6)
         button_corner.Parent = lock_button
- 
+
         lock_button.MouseEnter:Connect(function()
             if M.state.locked_target then
                 lock_button.BackgroundColor3 = Color3.fromRGB(45, 40, 20)
@@ -1640,7 +1674,7 @@ local Aimlock = (function()
         lock_button.MouseLeave:Connect(function()
             lock_button.BackgroundColor3 = BG_BUTTON
         end)
- 
+
         local dragging, drag_start_pos, drag_start_input
         container.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -1669,7 +1703,7 @@ local Aimlock = (function()
                 drag_start_input = nil
             end
         end)
- 
+
         local drag_threshold = 6
         local press_position
         lock_button.InputBegan:Connect(function(input)
@@ -1691,19 +1725,19 @@ local Aimlock = (function()
             end
         end)
     end
- 
+
     local function update_ui_locked()
         if not lock_button then return end
         lock_button.Text = "UNLOCK"
         lock_button.TextColor3 = GREEN_ON
     end
- 
+
     local function update_ui_unlocked()
         if not lock_button then return end
         lock_button.Text = "LOCK"
         lock_button.TextColor3 = CRISPY_YELLOW
     end
- 
+
     local function do_lock()
         if not M.enabled then return end
         local target = get_player_in_look_direction()
@@ -1718,7 +1752,7 @@ local Aimlock = (function()
             update_ui_unlocked()
         end
     end
- 
+
     local function do_unlock()
         M.state.locked_target = nil
         M.state.isTargetting = false
@@ -1726,7 +1760,7 @@ local Aimlock = (function()
         update_ui_unlocked()
         print("[Aimlock] UNLOCKED")
     end
- 
+
     function M.toggleLock()
         if not M.enabled then return end
         if M.state.locked_target then
@@ -1735,14 +1769,14 @@ local Aimlock = (function()
             do_lock()
         end
     end
- 
+
     local function init()
         if M.initialized then return end
         M.initialized = true
- 
+
         build_ui()
         update_ui_unlocked()
- 
+
         local __namecall
         __namecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             local method = getnamecallmethod()
@@ -1757,7 +1791,7 @@ local Aimlock = (function()
             end
             return __namecall(self, ...)
         end))
- 
+
         local function hook_gun(character)
             if not character then return end
             character.ChildAdded:Connect(function(tool)
@@ -1773,41 +1807,43 @@ local Aimlock = (function()
                 end
             end)
         end
- 
+
         if player.Character then hook_gun(player.Character) end
         player.CharacterAdded:Connect(function(c)
             hook_gun(c)
             do_unlock()
         end)
- 
+
         UserInputService.InputBegan:Connect(function(input, gpe)
             if gpe then return end
             if input.KeyCode == Enum.KeyCode.E and M.enabled then
                 M.toggleLock()
             end
         end)
- 
+
         RunService.RenderStepped:Connect(function()
             if not M.enabled then
                 if dot_frame then dot_frame.Visible = false end
                 return
             end
- 
+
             if M.state.locked_target then
                 if not M.state.locked_target.Parent
                     or not has_character(M.state.locked_target) then
                     do_unlock()
+                elseif WallCheck.isBlocked(M.state.locked_target) then
+                    do_unlock()
                 end
             end
- 
+
             if not M.state.locked_target then
                 if dot_frame then dot_frame.Visible = false end
                 return
             end
- 
+
             M.state.isTargetting = true
             M.state.predicted_position = get_predicted_position()
- 
+
             if Settings.ShowTargetDot and dot_frame then
                 local head = M.state.locked_target.Character
                     and M.state.locked_target.Character:FindFirstChild("Head")
@@ -1831,7 +1867,7 @@ local Aimlock = (function()
             end
         end)
     end
- 
+
     function M.setEnabled(state)
         M.enabled = state and true or false
         if M.enabled then
@@ -1847,8 +1883,7 @@ local Aimlock = (function()
         end
         print("[Aimlock] " .. (M.enabled and "ON" or "OFF"))
     end
- 
-    -- Global keybind: Z toggles Aimlock on/off (with debounce)
+
     local zDebounce = false
     UserInputService.InputBegan:Connect(function(input, gpe)
         if gpe then return end
@@ -1860,23 +1895,22 @@ local Aimlock = (function()
         task.wait(0.2)
         zDebounce = false
     end)
- 
+
     return M
 end)()
- 
+
 -- ============================================================
--- TRIGGERBOT MODULE (Da Strike â€” mobile-safe)
+-- TRIGGERBOT MODULE
 -- ============================================================
 local TriggerBot = (function()
     local M = { enabled = false, initialized = false }
 
     local SETTINGS = {
-        -- crosshair near player (not whole-screen FOV spam)
-        AimRadius     = 20,   -- tight: must be near crosshair center
+        AimRadius     = 20,
         FireDelay     = 0.08,
         Prediction    = 0.155,
         SilentAim     = true,
-        VisibleCheck  = false, -- wall checks permanently off
+        VisibleCheck  = false,
         IgnoreKnocked = true,
         HitPart       = "Head",
     }
@@ -1901,25 +1935,8 @@ local TriggerBot = (function()
         if not player.Character then return nil end
         local tool = player.Character:FindFirstChildWhichIsA("Tool")
         if not tool then return nil end
-        -- must look like a gun (has a Handle) â€” avoid fists / tools that aren't guns
         if not tool:FindFirstChild("Handle") then return nil end
         return tool
-    end
-
-    -- True only if the crosshair ray hits that player's character
-    local function is_crosshair_on_player(p)
-        if not has_char(p) then return false end
-        local origin = camera.CFrame.Position
-        local dir = camera.CFrame.LookVector * 500
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Exclude
-        local filter = {}
-        if player.Character then table.insert(filter, player.Character) end
-        params.FilterDescendantsInstances = filter
-        params.IgnoreWater = true
-        local hit = workspace:Raycast(origin, dir, params)
-        if not hit or not hit.Instance then return false end
-        return hit.Instance:IsDescendantOf(p.Character)
     end
 
     local function is_blocker_part(inst)
@@ -1931,43 +1948,13 @@ local TriggerBot = (function()
         return true
     end
 
-    local function is_behind_wall(p)
-        if not has_char(p) then return true end
-        local char = p.Character
-        local origin = camera.CFrame.Position
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Exclude
-        local filter = {}
-        if player.Character then table.insert(filter, player.Character) end
-        params.FilterDescendantsInstances = filter
-        params.IgnoreWater = true
-
-        local function blocked_to(part)
-            if not part then return true end
-            local delta = part.Position - origin
-            local dist = delta.Magnitude
-            if dist < 0.5 then return false end
-            local hit = workspace:Raycast(origin, delta.Unit * (dist + 0.5), params)
-            if not hit then return false end
-            if hit.Instance:IsDescendantOf(char) then return false end
-            if not is_blocker_part(hit.Instance) then return false end
-            return true
-        end
-
-        local head = char:FindFirstChild("Head")
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        return blocked_to(head) and blocked_to(hrp)
-    end
-
     local GuiService = game:GetService("GuiService")
 
-    -- Shiftlock / mouse-lock â†’ screen center. Free mouse â†’ real cursor position.
     local function get_aim_ray()
         local shiftOn = UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
         if shiftOn then
             return camera.CFrame.Position, camera.CFrame.LookVector
         end
-        -- free aim (PC mouse or mobile touch cursor)
         local mousePos = UserInputService:GetMouseLocation()
         local inset = GuiService:GetGuiInset()
         local x = mousePos.X - inset.X
@@ -2000,7 +1987,6 @@ local TriggerBot = (function()
         return hit.Instance:IsDescendantOf(p.Character)
     end
 
-    -- Only when cursor/crosshair is actually ON them (works shiftlock + free aim)
     local function get_aimed_player()
         local origin, dir = get_aim_ray()
         local params = RaycastParams.new()
@@ -2015,13 +2001,12 @@ local TriggerBot = (function()
             for _, p in ipairs(Players:GetPlayers()) do
                 if p ~= player and has_char(p) and hit.Instance:IsDescendantOf(p.Character) then
                     if SETTINGS.IgnoreKnocked and is_knocked(p) then return nil end
-                    if SETTINGS.VisibleCheck and is_behind_wall(p) then return nil end
+                    if WallCheck.isBlocked(p) then return nil end
                     return p
                 end
             end
         end
 
-        -- tight fallback around real aim point (center if shiftlock, cursor if not)
         local aimScreen = get_aim_screen_point()
         local tight = math.min(SETTINGS.AimRadius, 22)
         local best, bestDist = nil, tight
@@ -2029,7 +2014,7 @@ local TriggerBot = (function()
             if p == player then continue end
             if not has_char(p) then continue end
             if SETTINGS.IgnoreKnocked and is_knocked(p) then continue end
-            if SETTINGS.VisibleCheck and is_behind_wall(p) then continue end
+            if WallCheck.isBlocked(p) then continue end
             local char = p.Character
             for _, name in ipairs({"Head", "HumanoidRootPart"}) do
                 local part = char:FindFirstChild(name)
@@ -2063,7 +2048,7 @@ local TriggerBot = (function()
             if not gun then return end
 
             local target = get_aimed_player()
-            if not target then return end -- NOT aiming at anyone â†’ do not shoot
+            if not target then return end
 
             local char = target.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -2082,7 +2067,6 @@ local TriggerBot = (function()
                 pcall(function() main_remote:FireServer("UpdateMousePos", predicted) end)
             end
 
-            -- also feed silent-aim prediction engine if running
             pcall(function()
                 if SilentAimPrediction and SilentAimPrediction.state then
                     SilentAimPrediction.state.predicted_position = predicted
@@ -2108,16 +2092,9 @@ local TriggerBot = (function()
         print("[TriggerBot] " .. (M.enabled and "ON" or "OFF"))
     end
 
-    function M.setWallCheck(v)
-        SETTINGS.VisibleCheck = v and true or false
-        print("[TriggerBot] Wall Check " .. (SETTINGS.VisibleCheck and "ON" or "OFF"))
-    end
-
     return M
 end)()
- 
 
--- Universal stubs if a combat module failed to load (non-Da Hood / restricted executor)
 if not SilentAimPrediction then
     SilentAimPrediction = {
         enabled = false,
@@ -2143,7 +2120,7 @@ if not TriggerBot then
         setWallCheck = function() end,
     }
 end
- 
+
 -- ============================================================
 -- COMBAT TAB BUILDER
 -- ============================================================
@@ -2157,19 +2134,19 @@ local function buildCombatTab(frame)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
     scroll.Parent = frame
- 
+
     local holder = Instance.new("Frame")
     holder.Size = UDim2.new(1, 0, 0, 400)
     holder.BackgroundTransparency = 1
     holder.Parent = scroll
- 
+
     local layout = Instance.new("UIListLayout")
     layout.Padding = UDim.new(0, 8)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Parent = holder
- 
+
     -- ============================================================
-    -- SIMPLE SILENT AIM (kept)
+    -- SIMPLE SILENT AIM
     -- ============================================================
     local saEnabled = false
     local saFOVRadius = 80
@@ -2177,31 +2154,31 @@ local function buildCombatTab(frame)
     local saState = { target = nil, isTargetting = false, predicted_position = Vector3.new(1, 1, 1) }
     local saInit = false
     local saVisuals = {}
- 
+
     local SA_FOV_MULT = 1.5
     local SA_FOV_COLOR = Color3.fromRGB(255, 210, 60)
     local SA_PREDICTION = 0.134
- 
+
     local function getScreenCenter()
         local vp = camera.ViewportSize
         return Vector2.new(vp.X / 2, vp.Y / 2)
     end
- 
+
     local function worldToScreen(pos)
         local p, onScreen = camera:WorldToViewportPoint(pos)
         return { position = Vector2.new(p.X, p.Y), on_screen = onScreen }
     end
- 
+
     local function hasChar(p)
         return (p and p.Character and p.Character:FindFirstChild("Humanoid")) and true or false
     end
- 
+
     local function isInAir(p)
         if not hasChar(p) then return false end
         local root = p.Character:FindFirstChild("HumanoidRootPart")
         return root and root.Velocity.Y ~= 0 or false
     end
- 
+
     local function isKnocked(p)
         if not hasChar(p) then return false end
         local be = p.Character:FindFirstChild("BodyEffects")
@@ -2209,26 +2186,28 @@ local function buildCombatTab(frame)
         local ko = be:FindFirstChild("K.O")
         return ko and ko.Value or false
     end
- 
+
     local function isGrabbed(p)
         if not hasChar(p) then return false end
         return p.Character:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
     end
- 
+
     local function getClosestPlayer()
         local center = getScreenCenter()
         local radius = saFOVRadius * SA_FOV_MULT
         local closest
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= player and hasChar(plr) then
-                local root = plr.Character:FindFirstChild("HumanoidRootPart")
-                if root then
-                    local sp = worldToScreen(root.Position)
+                local head = plr.Character:FindFirstChild("Head")
+                if head then
+                    local sp = worldToScreen(head.Position)
                     if sp.on_screen and not isKnocked(plr) and not isGrabbed(plr) then
-                        local d = (center - sp.position).Magnitude
-                        if d <= radius then
-                            radius = d
-                            closest = plr
+                        if not WallCheck.isBlocked(plr) then
+                            local d = (center - sp.position).Magnitude
+                            if d <= radius then
+                                radius = d
+                                closest = plr
+                            end
                         end
                     end
                 end
@@ -2236,54 +2215,49 @@ local function buildCombatTab(frame)
         end
         return closest
     end
- 
+
     local function getPredictedPosition()
         local target = saState.target
         if not target then return Vector3.new(0, 0, 0) end
-        local root = target.Character:FindFirstChild("HumanoidRootPart")
-        if not root then return Vector3.new(0, 0, 0) end
-        local aimPart = root
-        if isInAir(target) then
-            local lt = target.Character:FindFirstChild("LowerTorso")
-            if lt then aimPart = lt end
-        end
-        return aimPart.Position + root.Velocity * SA_PREDICTION
+        local head = target.Character:FindFirstChild("Head")
+        if not head then return Vector3.new(0, 0, 0) end
+        return head.Position + head.Velocity * SA_PREDICTION
     end
- 
+
     local function initSilentAim()
         if saInit then return end
         saInit = true
- 
+
         local Drawing = loadstring(game:HttpGet(
             "https://raw.githubusercontent.com/linemaster2/storage/main/Drawing.lua"
         ))()
- 
+
         local fov_outside = Drawing.new("Circle")
         fov_outside.Visible = false
         fov_outside.Filled = false
         fov_outside.Thickness = 1
         fov_outside.NumSides = 64
- 
+
         local fov_inside = Drawing.new("Circle")
         fov_inside.Visible = false
         fov_inside.Filled = true
         fov_inside.NumSides = 64
- 
+
         local tracer = Drawing.new("Line")
         tracer.Visible = false
- 
+
         local center_dot = Drawing.new("Circle")
         center_dot.Visible = false
         center_dot.Filled = true
         center_dot.NumSides = 16
- 
+
         saVisuals = {
             fov_outside = fov_outside,
             fov_inside  = fov_inside,
             tracer      = tracer,
             center_dot  = center_dot,
         }
- 
+
         local oldNamecall
         oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             local method = getnamecallmethod()
@@ -2298,7 +2272,7 @@ local function buildCombatTab(frame)
             end
             return oldNamecall(self, ...)
         end))
- 
+
         RunService.RenderStepped:Connect(function()
             if not saEnabled then
                 saState.target = nil
@@ -2309,34 +2283,34 @@ local function buildCombatTab(frame)
                 center_dot.Visible = false
                 return
             end
- 
+
             saState.target = getClosestPlayer()
             saState.isTargetting = saState.target ~= nil
- 
+
             if saState.isTargetting then
                 saState.predicted_position = getPredictedPosition()
             end
- 
+
             local center = getScreenCenter()
             local radius = saFOVRadius * SA_FOV_MULT
- 
+
             fov_outside.Visible = true
             fov_outside.Radius = radius
             fov_outside.Color = SA_FOV_COLOR
             fov_outside.Position = center
- 
+
             fov_inside.Visible = true
             fov_inside.Radius = radius
             fov_inside.Color = SA_FOV_COLOR
             fov_inside.Transparency = saFOVTransparency
             fov_inside.Position = center
- 
+
             center_dot.Visible = true
             center_dot.Position = center
             center_dot.Color = SA_FOV_COLOR
             center_dot.Radius = 4
             center_dot.Transparency = 0
- 
+
             if saState.isTargetting then
                 local ps = worldToScreen(saState.predicted_position)
                 tracer.Visible = ps.on_screen
@@ -2350,35 +2324,7 @@ local function buildCombatTab(frame)
             end
         end)
     end
- 
-    -- ---- Row helpers ----
-    local function createCombatRow(name, order)
-        local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, -10, 0, 46)
-        row.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
-        row.BackgroundTransparency = 0.35
-        row.BorderSizePixel = 0
-        row.LayoutOrder = order
-        row.Parent = holder
- 
-        local rc = Instance.new("UICorner")
-        rc.CornerRadius = UDim.new(0, 8)
-        rc.Parent = row
- 
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -24, 1, 0)
-        label.Position = UDim2.new(0, 12, 0, 0)
-        label.BackgroundTransparency = 1
-        label.Text = name
-        label.TextColor3 = Color3.fromRGB(40, 25, 5)
-        label.Font = Enum.Font.GothamSemibold
-        label.TextSize = 15
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = row
- 
-        return row, label
-    end
- 
+
     local function createCombatToggle(name, order, defaultState, callback)
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1, -10, 0, 46)
@@ -2387,11 +2333,11 @@ local function buildCombatTab(frame)
         row.BorderSizePixel = 0
         row.LayoutOrder = order
         row.Parent = holder
- 
+
         local rc = Instance.new("UICorner")
         rc.CornerRadius = UDim.new(0, 8)
         rc.Parent = row
- 
+
         local label = Instance.new("TextLabel")
         label.Size = UDim2.new(1, -110, 1, 0)
         label.Position = UDim2.new(0, 12, 0, 0)
@@ -2402,7 +2348,7 @@ local function buildCombatTab(frame)
         label.TextSize = 15
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Parent = row
- 
+
         local toggle = Instance.new("TextButton")
         toggle.Size = UDim2.new(0, 70, 0, 30)
         toggle.Position = UDim2.new(1, -82, 0.5, -15)
@@ -2415,11 +2361,11 @@ local function buildCombatTab(frame)
         toggle.AutoButtonColor = false
         toggle.Active = true
         toggle.Parent = row
- 
+
         local tc = Instance.new("UICorner")
         tc.CornerRadius = UDim.new(1, 0)
         tc.Parent = toggle
- 
+
         local state = defaultState
         toggle.MouseButton1Click:Connect(function()
             state = not state
@@ -2427,10 +2373,10 @@ local function buildCombatTab(frame)
             toggle.Text = state and "ON" or "OFF"
             if callback then callback(state) end
         end)
- 
+
         return toggle, row, label
     end
- 
+
     local function createCombatSlider(name, order, minVal, maxVal, defaultVal, callback)
         local container = Instance.new("Frame")
         container.Size = UDim2.new(1, -10, 0, 70)
@@ -2439,11 +2385,11 @@ local function buildCombatTab(frame)
         container.BorderSizePixel = 0
         container.LayoutOrder = order
         container.Parent = holder
- 
+
         local cc = Instance.new("UICorner")
         cc.CornerRadius = UDim.new(0, 8)
         cc.Parent = container
- 
+
         local label = Instance.new("TextLabel")
         label.Size = UDim2.new(1, -100, 0, 24)
         label.Position = UDim2.new(0, 12, 0, 4)
@@ -2454,7 +2400,7 @@ local function buildCombatTab(frame)
         label.TextSize = 15
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Parent = container
- 
+
         local valueLabel = Instance.new("TextLabel")
         valueLabel.Size = UDim2.new(0, 70, 0, 24)
         valueLabel.Position = UDim2.new(1, -82, 0, 4)
@@ -2465,7 +2411,7 @@ local function buildCombatTab(frame)
         valueLabel.TextSize = 14
         valueLabel.TextXAlignment = Enum.TextXAlignment.Right
         valueLabel.Parent = container
- 
+
         local track = Instance.new("Frame")
         track.Size = UDim2.new(1, -24, 0, 8)
         track.Position = UDim2.new(0, 12, 1, -20)
@@ -2473,21 +2419,21 @@ local function buildCombatTab(frame)
         track.BorderSizePixel = 0
         track.Active = true
         track.Parent = container
- 
+
         local tc = Instance.new("UICorner")
         tc.CornerRadius = UDim.new(1, 0)
         tc.Parent = track
- 
+
         local fill = Instance.new("Frame")
         fill.Size = UDim2.new(0, 0, 1, 0)
         fill.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
         fill.BorderSizePixel = 0
         fill.Parent = track
- 
+
         local fc = Instance.new("UICorner")
         fc.CornerRadius = UDim.new(1, 0)
         fc.Parent = fill
- 
+
         local knob = Instance.new("Frame")
         knob.Size = UDim2.new(0, 18, 0, 18)
         knob.Position = UDim2.new(0, -9, 0.5, -9)
@@ -2495,13 +2441,13 @@ local function buildCombatTab(frame)
         knob.BorderSizePixel = 0
         knob.ZIndex = 2
         knob.Parent = track
- 
+
         local kc = Instance.new("UICorner")
         kc.CornerRadius = UDim.new(1, 0)
         kc.Parent = knob
- 
+
         local currentValue = defaultVal
- 
+
         local function setFromX(absX)
             local rel = (absX - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1)
             rel = math.clamp(rel, 0, 1)
@@ -2514,39 +2460,39 @@ local function buildCombatTab(frame)
             knob.Position = UDim2.new(rel, -9, 0.5, -9)
             valueLabel.Text = tostring(value)
         end
- 
+
         do
             local rel = (defaultVal - minVal) / (maxVal - minVal)
             rel = math.clamp(rel, 0, 1)
             fill.Size = UDim2.new(rel, 0, 1, 0)
             knob.Position = UDim2.new(rel, -9, 0.5, -9)
         end
- 
+
         local dragging = false
         local function isPressInput(t)
             return t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch
         end
- 
+
         track.InputBegan:Connect(function(input)
             if isPressInput(input.UserInputType) then
                 dragging = true
                 setFromX(input.Position.X)
             end
         end)
- 
+
         track.InputChanged:Connect(function(input)
             if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
                 or input.UserInputType == Enum.UserInputType.Touch) then
                 setFromX(input.Position.X)
             end
         end)
- 
+
         track.InputEnded:Connect(function(input)
             if isPressInput(input.UserInputType) then
                 dragging = false
             end
         end)
- 
+
         return {
             container = container,
             set = function(v)
@@ -2560,21 +2506,21 @@ local function buildCombatTab(frame)
             get = function() return currentValue end,
         }
     end
- 
+
     -- ============================================================
     -- BUILD CONTENT
     -- ============================================================
- 
+
     local aimlockToggle = createCombatToggle("Aimlock [Z]", 2, false, function(state)
         Aimlock.setEnabled(state)
     end)
- 
+
     Aimlock.onStateChange = function(on)
         if not aimlockToggle then return end
         aimlockToggle.BackgroundColor3 = on and Color3.fromRGB(80, 220, 120) or Color3.fromRGB(80, 60, 20)
         aimlockToggle.Text = on and "ON" or "OFF"
     end
- 
+
     local noJumpBtn = Instance.new("TextButton")
     noJumpBtn.Size = UDim2.new(1, -10, 0, 46)
     noJumpBtn.BackgroundColor3 = Color3.fromRGB(255, 140, 40)
@@ -2586,27 +2532,27 @@ local function buildCombatTab(frame)
     noJumpBtn.AutoButtonColor = false
     noJumpBtn.LayoutOrder = 3
     noJumpBtn.Parent = holder
- 
+
     local njCorner = Instance.new("UICorner")
     njCorner.CornerRadius = UDim.new(0, 8)
     njCorner.Parent = noJumpBtn
- 
+
     noJumpBtn.MouseButton1Click:Connect(function()
         noJumpBtn.BackgroundColor3 = Color3.fromRGB(255, 220, 100)
         task.wait(0.15)
         TweenService:Create(noJumpBtn, TweenInfo.new(0.3), {
             BackgroundColor3 = Color3.fromRGB(255, 140, 40)
         }):Play()
- 
+
         pcall(function()
             loadstring(game:HttpGet("https://pastebin.com/raw/3hmrC7bc"))()
         end)
     end)
- 
+
     createCombatToggle("Silent Aim Prediction", 4, false, function(state)
         SilentAimPrediction.setEnabled(state)
     end)
- 
+
     createCombatToggle("Silent Aim", 5, false, function(state)
         saEnabled = state
         if state and not saInit then
@@ -2624,24 +2570,29 @@ local function buildCombatTab(frame)
         end
         print("[Silent Aim] " .. (state and "Enabled" or "Disabled"))
     end)
- 
+
     createCombatSlider("FOV Radius", 6, 1, 100, 80, function(value)
         saFOVRadius = value
     end)
- 
+
     createCombatSlider("FOV Transparency", 7, 1, 100, 50, function(value)
         saFOVTransparency = value / 100
     end)
- 
+
     createCombatToggle("TriggerBot", 8, false, function(state)
         TriggerBot.setEnabled(state)
     end)
- 
+
+    createCombatToggle("Wallcheck", 9, false, function(state)
+        WallCheck.setEnabled(state)
+    end)
+
     return function()
         saEnabled = false
         SilentAimPrediction.setEnabled(false)
         Aimlock.setEnabled(false)
         TriggerBot.setEnabled(false)
+        WallCheck.setEnabled(false)
         if saVisuals.fov_outside then
             saVisuals.fov_outside.Visible = false
             saVisuals.fov_inside.Visible = false
@@ -2650,7 +2601,7 @@ local function buildCombatTab(frame)
         end
     end
 end
- 
+
 -- ========== COMBAT FRAME ==========
 local combatFrame = Instance.new("Frame")
 combatFrame.Name = "Combat"
@@ -2659,9 +2610,9 @@ combatFrame.BackgroundTransparency = 1
 combatFrame.Visible = false
 combatFrame.Parent = content
 contentFrames["Combat"] = combatFrame
- 
+
 local cleanupCombat = buildCombatTab(combatFrame)
- 
+
 -- ============================================================
 -- FLY MODULE (Universal Fly v4 â€” camera-pitch aware)
 -- ============================================================
