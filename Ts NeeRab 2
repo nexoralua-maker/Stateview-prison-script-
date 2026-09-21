@@ -1555,93 +1555,148 @@ function ToolSSs()
     end)
 
 -- ==================== Tool 24: Goku ====================
-    if LocalPlayer2.Backpack:FindFirstChild("Goku") then
-        LocalPlayer2.Backpack:FindFirstChild("Goku"):Destroy()
-    end
-    task.wait(0.1)
-    local ToolGoku = Instance.new("Tool")
-    ToolGoku.RequiresHandle = false
-    ToolGoku.Name = "Goku"
-    ToolGoku.Parent = LocalPlayer2.Backpack
-    ToolGoku.Activated:Connect(function()
-        if LocalPlayer2.Character.BodyEffects.Grabbed.Value then
-            for _, v in pairs(LocalPlayer.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
-                if v.Animation.AnimationId == "rbxassetid://3135389157" then v:Stop() end
-            end
-
-            local Character = LocalPlayer2.Character
-            local Humanoid = Character:WaitForChild("Humanoid")
-            local BodyEffects = Character:FindFirstChild("BodyEffects")
-            if not BodyEffects or not BodyEffects:FindFirstChild("Grabbed") then return end
-            local str = tostring(BodyEffects.Grabbed.Value)
-            local str4 = Players:FindFirstChild(str)
-            if not str4 or not str4.Character then return end
-            local Character2 = str4.Character
-
-            local FieldOfView = workspace.CurrentCamera.FieldOfView
-            local FogEnd = game.Lighting.FogEnd
-            local FogColor = game.Lighting.FogColor
-
-            Humanoid.WalkSpeed = 0
-            stopAlign = false
-
-            -- =========================================================
-            -- STEP 1: Align 3 studs + play animation 3354696735
-            -- =========================================================
-            spawn(function()
-                repeat
-                    task.wait()
-                    Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -3), CFrame.Angles(0, math.pi, 0))
-                until stopAlign
-            end)
-            AnimPlay(3354696735, 1)
-            task.wait(2)
-
-            -- =========================================================
-            -- STEP 2: Align 10 studs + play animation 110517638794017
-            -- =========================================================
-            stopAlign = true
-            task.wait(0.1)
-            stopAlign = false
-            spawn(function()
-                repeat
-                    task.wait()
-                    Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -10), CFrame.Angles(0, math.pi, 0))
-                until stopAlign
-            end)
-            AnimPlay(110517638794017, 1)
-            task.wait(2)
-
-            -- =========================================================
-            -- STEP 3: Play animation 73436636651186 at 0.5 speed
-            --         + EXACT Made in Heaven killing method
-            -- =========================================================
-            AnimPlay(73436636651186, 0.5)
-            TweenService:Create(workspace.CurrentCamera, TweenInfo.new(1), {FieldOfView = 120}):Play()
-            TweenService:Create(game.Lighting, TweenInfo.new(1), {FogEnd = 20, FogColor = Color3.new(1, 1, 1)}):Play()
-            TweenService:Create(Humanoid, TweenInfo.new(1), {HipHeight = 3.5}):Play()
-            repeat wait() until Humanoid.HipHeight == 3.5
-            local BodyPosition = Instance.new("BodyPosition")
-            BodyPosition.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-            BodyPosition.Position = Character2.UpperTorso.Position + Vector3.new(0, 10, -10)
-            BodyPosition.Parent = Character2.UpperTorso
-            game:GetService("Debris"):AddItem(BodyPosition, 7)
-            task.wait(7)
-            local str5 = tostring(LocalPlayer2.Character.BodyEffects.Grabbed.Value)
-            if Players:FindFirstChild(str5) then
-                Players[str5].Character.UpperTorso.CFrame = CFrame.new(0, -12000, 0)
-            end
-            task.wait(0.9)
-            ReplicatedStorage.MainEvent:FireServer("Grabbing")
-            stopAlign = true
-            AnimStopv2(73436636651186, 0.5)
-            TweenService:Create(workspace.CurrentCamera, TweenInfo.new(1), {FieldOfView = FieldOfView}):Play()
-            TweenService:Create(game.Lighting, TweenInfo.new(1), {FogColor = FogColor, FogEnd = FogEnd}):Play()
-            TweenService:Create(Humanoid, TweenInfo.new(1), {HipHeight = 2.008}):Play()
-            Humanoid.WalkSpeed = 16
-        end
-    end)
+if LocalPlayer2.Backpack:FindFirstChild("Goku") then
+    LocalPlayer2.Backpack:FindFirstChild("Goku"):Destroy()
 end
+task.wait(0.1)
+local ToolGoku = Instance.new("Tool")
+ToolGoku.RequiresHandle = false
+ToolGoku.Name = "Goku"
+ToolGoku.Parent = LocalPlayer2.Backpack
+ToolGoku.Activated:Connect(function()
+    -- Guard: character & grab state
+    if not LocalPlayer2.Character then return end
+    if not LocalPlayer2.Character:FindFirstChild("BodyEffects") then return end
+    if not LocalPlayer2.Character.BodyEffects:FindFirstChild("Grabbed") then return end
+    if not LocalPlayer2.Character.BodyEffects.Grabbed.Value then return end
+
+    -- Ensure GrabbedValue is set (in case user didn't go through Activate tool)
+    GrabbedValue = LocalPlayer2.Character.BodyEffects.Grabbed.Value
+
+    for _, v in pairs(LocalPlayer.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
+        if v.Animation.AnimationId == "rbxassetid://3135389157" then v:Stop() end
+    end
+
+    local Character = LocalPlayer2.Character
+    local Humanoid  = Character:WaitForChild("Humanoid")
+    local BodyEffects = Character:FindFirstChild("BodyEffects")
+    if not BodyEffects or not BodyEffects:FindFirstChild("Grabbed") then return end
+
+    local grabbedName  = tostring(BodyEffects.Grabbed.Value)
+    local grabbedPlayer = Players:FindFirstChild(grabbedName)
+    if not grabbedPlayer or not grabbedPlayer.Character then return end
+
+    Humanoid.WalkSpeed = 0
+    stopAlign = false
+
+    -- =========================================================
+    -- STEP 1: Align 3 studs + play 3354696735
+    -- =========================================================
+    spawn(function()
+        repeat
+            task.wait()
+            pcall(function()
+                Align(8000, 800, "UpperTorso", "HumanoidRootPart",
+                      CFrame.new(0, 0, -3), CFrame.Angles(0, math.pi, 0))
+            end)
+        until stopAlign
+    end)
+    AnimPlay(3354696735, 1)
+    task.wait(2)
+
+    -- =========================================================
+    -- STEP 2: Align 10 studs + play 110517638794017
+    -- =========================================================
+    stopAlign = true
+    task.wait(0.1)
+    stopAlign = false
+    spawn(function()
+        repeat
+            task.wait()
+            pcall(function()
+                Align(8000, 800, "UpperTorso", "HumanoidRootPart",
+                      CFrame.new(0, 0, -10), CFrame.Angles(0, math.pi, 0))
+            end)
+        until stopAlign
+    end)
+    AnimPlay(110517638794017, 1)
+    task.wait(2)
+
+    -- =========================================================
+    -- STEP 3: Align (0, 5, -10) + play 73436636651186 @ 0.5x
+    --         Wait for animation to FINISH, then run the
+    --         exact Hell-tool kill method.
+    -- =========================================================
+    stopAlign = true
+    task.wait(0.1)
+    stopAlign = false
+    spawn(function()
+        repeat
+            task.wait()
+            pcall(function()
+                Align(8000, 800, "UpperTorso", "HumanoidRootPart",
+                      CFrame.new(0, 5, -10), CFrame.Angles(0, math.pi, 0))
+            end)
+        until stopAlign
+    end)
+
+    -- Inline animation playback so we own the track reference
+    local anim3 = Instance.new("Animation")
+    anim3.AnimationId = "rbxassetid://73436636651186"
+    local track3 = nil
+    pcall(function()
+        track3 = Humanoid:LoadAnimation(anim3)
+    end)
+
+    if track3 then
+        pcall(function()
+            track3.Priority = Enum.AnimationPriority.Action4
+            track3.Looped   = false
+            track3:Play()
+            track3:AdjustSpeed(0.5)
+        end)
+
+        -- Wait for the animation to actually finish
+        local waited = false
+        pcall(function()
+            if track3.Stopped then
+                track3.Stopped:Wait()
+                waited = true
+            end
+        end)
+        if not waited then
+            -- Fallback: wait track.Length / speed if Stopped wasn't available
+            local len = track3.Length or 3
+            task.wait(len / 0.5)
+        end
+    else
+        -- Fallback if LoadAnimation itself failed
+        task.wait(5)
+    end
+    anim3:Destroy()
+
+    -- =========================================================
+    -- HELL KILL METHOD (exact copy of Hell tool)
+    -- =========================================================
+    local killName = tostring(LocalPlayer2.Character.BodyEffects.Grabbed.Value)
+    local victimPlayer = Players:FindFirstChild(killName)
+    if victimPlayer and victimPlayer.Character then
+        local victimChar = victimPlayer.Character
+        local torso = victimChar:FindFirstChild("UpperTorso")
+        if torso then
+            torso.CFrame = CFrame.new(0, -1200000, 0)
+        end
+        for _, partName in ipairs({"RightUpperArm","LeftUpperArm","RightUpperLeg","LeftUpperLeg"}) do
+            local part = victimChar:FindFirstChild(partName)
+            if part then part.CFrame = CFrame.new(0, -1200000, 0) end
+        end
+    end
+    task.wait(0.5)
+    ReplicatedStorage:WaitForChild("MainEvent"):FireServer("Grabbing")
+
+    stopAlign = true
+    Humanoid.WalkSpeed = 16
+end)
 
 -- ============================================================
 -- Run
