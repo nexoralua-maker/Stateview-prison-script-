@@ -694,19 +694,15 @@ local function buildTargetTab(targetFrame)
         end)
     end
 
-    -- Safety loop that keeps pizza/donut state correct while auto kill is on
     local pd_safetyTask = nil
     local function pd_start()
-        -- Attach health watcher
         pd_watchHealth()
 
-        -- Immediate equip attempt if already damaged
         local hum = pd_getHumanoid()
         if hum and hum.Health < PD_MAX_HEALTH then
             pd_equipAndClick()
         end
 
-        -- Safety loop
         if pd_safetyTask then
             task.cancel(pd_safetyTask)
             pd_safetyTask = nil
@@ -746,13 +742,151 @@ local function buildTargetTab(targetFrame)
         end
     end
 
-    -- Reattach health watcher on respawn while auto kill is on
     player.CharacterAdded:Connect(function()
         if autoKillEnabled then
             task.wait(0.5)
             pd_watchHealth()
         end
     end)
+
+    -- ============================================================
+    -- FLING (target the selected player)
+    -- ============================================================
+    local flingActive = false
+    local flingRunning = false
+    local savedFlingFallenHeight = workspace.FallenPartsDestroyHeight
+
+    local function doSkidFling(TargetPlayer)
+        local character = player.Character
+        local humanoid  = character and character:FindFirstChildOfClass("Humanoid")
+        local rootPart  = humanoid and humanoid.RootPart
+        local tChar     = TargetPlayer.Character
+        if not tChar then return end
+
+        local tHumanoid = tChar:FindFirstChildOfClass("Humanoid")
+        local tRootPart = tHumanoid and tHumanoid.RootPart
+        local tHead     = tChar:FindFirstChild("Head")
+        local accessory = tChar:FindFirstChildOfClass("Accessory")
+        local handle    = accessory and accessory:FindFirstChild("Handle")
+
+        if not (character and humanoid and rootPart) then return end
+
+        local oldPos
+        if rootPart.Velocity.Magnitude < 50 then
+            oldPos = rootPart.CFrame
+        end
+
+        if tHumanoid and tHumanoid.Sit then return end
+
+        if tHead then
+            camera.CameraSubject = tHead
+        elseif handle then
+            camera.CameraSubject = handle
+        elseif tHumanoid and tRootPart then
+            camera.CameraSubject = tHumanoid
+        end
+
+        if not tChar:FindFirstChildWhichIsA("BasePart") then return end
+
+        local function FPos(basePart, pos, ang)
+            rootPart.CFrame = CFrame.new(basePart.Position) * pos * ang
+            character:SetPrimaryPartCFrame(CFrame.new(basePart.Position) * pos * ang)
+            rootPart.Velocity    = Vector3.new(9e7, 9e7 * 10, 9e7)
+            rootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+        end
+
+        local function SFBasePart(basePart)
+            local timeToWait = 2
+            local startTime = tick()
+            local angle = 0
+
+            repeat
+                if rootPart and tHumanoid and flingActive then
+                    if basePart.Velocity.Magnitude < 50 then
+                        angle = angle + 100
+                        FPos(basePart, CFrame.new(0, 1.5, 0) + tHumanoid.MoveDirection * basePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(angle), 0, 0))
+                        task.wait()
+                        FPos(basePart, CFrame.new(0, -1.5, 0) + tHumanoid.MoveDirection * basePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(angle), 0, 0))
+                        task.wait()
+                        FPos(basePart, CFrame.new(0, 1.5, 0) + tHumanoid.MoveDirection, CFrame.Angles(math.rad(angle), 0, 0))
+                        task.wait()
+                        FPos(basePart, CFrame.new(0, -1.5, 0) + tHumanoid.MoveDirection, CFrame.Angles(math.rad(angle), 0, 0))
+                        task.wait()
+                    else
+                        FPos(basePart, CFrame.new(0, 1.5, tHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(basePart, CFrame.new(0, -1.5, -tHumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                        FPos(basePart, CFrame.new(0, 1.5, tHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(basePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                    end
+                end
+            until startTime + timeToWait < tick() or not flingActive
+
+            pcall(function() workspace.FallenPartsDestroyHeight = 0/0 end)
+            local bv = Instance.new("BodyVelocity")
+            bv.Parent   = rootPart
+            bv.Velocity = Vector3.new(0, 0, 0)
+            bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+
+            if flingActive then
+                if tRootPart then
+                    SFBasePart(tRootPart)
+                elseif tHead then
+                    SFBasePart(tHead)
+                elseif handle then
+                    SFBasePart(handle)
+                end
+            end
+
+            bv:Destroy()
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+            camera.CameraSubject = humanoid
+
+            if oldPos then
+                local startT = tick()
+                repeat
+                    rootPart.CFrame = oldPos * CFrame.new(0, .5, 0)
+                    character:SetPrimaryPartCFrame(oldPos * CFrame.new(0, .5, 0))
+                    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+                    for _, part in pairs(character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            part.Velocity, part.RotVelocity = Vector3.new(), Vector3.new()
+                        end
+                    end
+                    task.wait()
+                until (rootPart.Position - oldPos.p).Magnitude < 25 or tick() - startT > 1
+                pcall(function() workspace.FallenPartsDestroyHeight = savedFlingFallenHeight end)
+            end
+        end
+
+        SFBasePart(tRootPart or tHead or handle)
+    end
+
+    local function startFling()
+        if flingRunning then return end
+        flingActive = true
+        flingRunning = true
+
+        task.spawn(function()
+            while flingActive do
+                local t = selectedTarget
+                if t and t ~= player and t.Character
+                    and t.Character:FindFirstChildOfClass("Humanoid") then
+                    pcall(doSkidFling, t)
+                end
+                task.wait(0.1)
+            end
+            flingRunning = false
+        end)
+    end
+
+    local function stopFling()
+        flingActive = false
+    end
 
     -- ============================================================
     -- ANIMATION HELPERS (LOOPED)
@@ -793,6 +927,164 @@ local function buildTargetTab(targetFrame)
             playKillAnim()
         end
     end)
+
+    -- ============================================================
+    -- UI: MAIN SCROLL
+    -- ============================================================
+    local mainScroll = Instance.new("ScrollingFrame")
+    mainScroll.Name = "TargetScroll"
+    mainScroll.Size = UDim2.new(1, 0, 1, 0)
+    mainScroll.Position = UDim2.new(0, 0, 0, 0)
+    mainScroll.BackgroundTransparency = 1
+    mainScroll.BorderSizePixel = 0
+    mainScroll.ScrollBarThickness = 5
+    mainScroll.ScrollBarImageColor3 = Color3.fromRGB(255, 200, 60)
+    mainScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    mainScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    mainScroll.Parent = targetFrame
+
+    local holder = Instance.new("Frame")
+    holder.Name = "Holder"
+    holder.Size = UDim2.new(1, 0, 0, 340)
+    holder.BackgroundTransparency = 1
+    holder.Parent = mainScroll
+
+    local holderLayout = Instance.new("UIListLayout")
+    holderLayout.Padding = UDim.new(0, 6)
+    holderLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    holderLayout.Parent = holder
+
+    local topBox = Instance.new("Frame")
+    topBox.Size = UDim2.new(1, 0, 0, 92)
+    topBox.BackgroundTransparency = 1
+    topBox.LayoutOrder = 1
+    topBox.Parent = holder
+
+    local targetAvatar = Instance.new("ImageLabel")
+    targetAvatar.Size = UDim2.new(0, 70, 0, 70)
+    targetAvatar.Position = UDim2.new(0.5, -35, 0, 0)
+    targetAvatar.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
+    targetAvatar.BackgroundTransparency = 0.35
+    targetAvatar.BorderSizePixel = 0
+    targetAvatar.Image = getThumb(player)
+    targetAvatar.Parent = topBox
+
+    local avCorner = Instance.new("UICorner")
+    avCorner.CornerRadius = UDim.new(1, 0)
+    avCorner.Parent = targetAvatar
+
+    local targetName = Instance.new("TextLabel")
+    targetName.Size = UDim2.new(1, 0, 0, 18)
+    targetName.Position = UDim2.new(0, 0, 0, 74)
+    targetName.BackgroundTransparency = 1
+    targetName.Text = "@" .. player.Name
+    targetName.TextColor3 = Color3.fromRGB(40, 25, 5)
+    targetName.Font = Enum.Font.GothamBold
+    targetName.TextSize = 13
+    targetName.Parent = topBox
+
+    local listFrame = Instance.new("Frame")
+    listFrame.Size = UDim2.new(0.9, 0, 0, 110)
+    listFrame.Position = UDim2.new(0.05, 0, 0, 0)
+    listFrame.BackgroundColor3 = Color3.fromRGB(50, 38, 18)
+    listFrame.BackgroundTransparency = 0.4
+    listFrame.BorderSizePixel = 0
+    listFrame.ClipsDescendants = true
+    listFrame.LayoutOrder = 2
+    listFrame.Parent = holder
+
+    local lfCorner = Instance.new("UICorner")
+    lfCorner.CornerRadius = UDim.new(0, 6)
+    lfCorner.Parent = listFrame
+
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size = UDim2.new(1, -6, 1, -6)
+    scroll.Position = UDim2.new(0, 3, 0, 3)
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.ScrollBarThickness = 4
+    scroll.ScrollBarImageColor3 = Color3.fromRGB(255, 200, 60)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scroll.Parent = listFrame
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 3)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = scroll
+
+    local function makeRow(p, order)
+        local row = Instance.new("TextButton")
+        row.Size = UDim2.new(1, 0, 0, 24)
+        row.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
+        row.BackgroundTransparency = 0.35
+        row.BorderSizePixel = 0
+        row.Text = ""
+        row.AutoButtonColor = false
+        row.LayoutOrder = order
+        row.Parent = scroll
+
+        local rCorner = Instance.new("UICorner")
+        rCorner.CornerRadius = UDim.new(0, 5)
+        rCorner.Parent = row
+
+        local icon = Instance.new("ImageLabel")
+        icon.Size = UDim2.new(0, 18, 0, 18)
+        icon.Position = UDim2.new(0, 4, 0.5, -9)
+        icon.BackgroundTransparency = 1
+        icon.Image = getThumb(p)
+        icon.Parent = row
+
+        local icCorner = Instance.new("UICorner")
+        icCorner.CornerRadius = UDim.new(1, 0)
+        icCorner.Parent = icon
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -30, 1, 0)
+        lbl.Position = UDim2.new(0, 26, 0, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = (p.DisplayName or p.Name) .. " (@" .. p.Name .. ")"
+        lbl.TextColor3 = Color3.fromRGB(40, 25, 5)
+        lbl.Font = Enum.Font.GothamSemibold
+        lbl.TextSize = 11
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.TextTruncate = Enum.TextTruncate.AtEnd
+        lbl.Parent = row
+
+        row.MouseButton1Click:Connect(function()
+            selectedTarget = p
+            targetName.Text = (p.DisplayName or p.Name) .. " (@" .. p.Name .. ")"
+            targetAvatar.Image = getThumb(p)
+            targetHistory = {}
+        end)
+    end
+
+    local function refreshList()
+        for _, c in ipairs(scroll:GetChildren()) do
+            if c:IsA("TextButton") then c:Destroy() end
+        end
+        for i, p in ipairs(getPlayersList()) do
+            makeRow(p, i)
+        end
+    end
+
+    refreshList()
+
+    local healthBg = Instance.new("Frame")
+    healthBg.Size = UDim2.new(0.9, 0, 0, 20)
+    healthBg.Position = UDim2.new(0.05, 0, 0, 0)
+    healthBg.BackgroundColor3 = Color3.fromRGB(40, 30, 15)
+    healthBg.BorderSizePixel = 0
+    healthBg.LayoutOrder = 3
+    healthBg.Parent = holder
+
+    local hbCorner = Instance.new("UICorner")
+    hbCorner.CornerRadius = UDim.new(0, 5)
+    hbCorner.Parent = healthBg
+
+    local healthFill = Instance.new("Frame")
+    healthFill.Size = UDim2.new(1, 0, 1, 0)
+    healthFill.BackgroundColor3
 
     -- ============================================================
     -- UI: MAIN SCROLL
@@ -1117,16 +1409,12 @@ local function buildTargetTab(targetFrame)
         return false
     end
 
-    -- ============================================================
-    -- AUTO SHOOT HELPER
-    -- ============================================================
     local function tryAutoShoot()
         local char = player.Character
         if not char then return end
         local tool = char:FindFirstChildWhichIsA("Tool")
         if not tool then return end
 
-        -- Skip pizza / donut so auto-clicker handles them
         if tool.Name == "[Pizza]" or tool.Name == "[Donut]" then
             return
         end
@@ -1187,10 +1475,8 @@ local function buildTargetTab(targetFrame)
         myRoot.AssemblyLinearVelocity = Vector3.zero
         myRoot.AssemblyAngularVelocity = Vector3.zero
 
-        -- Auto shoot if a gun is equipped
         tryAutoShoot()
 
-        -- Otherwise equip the katana (only if no pizza/donut equipped)
         local equipped = myChar:FindFirstChildWhichIsA("Tool")
         if not equipped then
             pcall(function()
@@ -1215,7 +1501,7 @@ local function buildTargetTab(targetFrame)
         targetHistory = {}
 
         stopKillAnim()
-        pd_stop()   -- ⭐ stop pizza/donut auto-clicker
+        pd_stop()
 
         local char = player.Character
         if char then
@@ -1240,7 +1526,7 @@ local function buildTargetTab(targetFrame)
         autoKillBtn.Text = "Auto Kill: ON"
 
         playKillAnim()
-        pd_start()   -- ⭐ start pizza/donut auto-clicker
+        pd_start()
 
         autoKillTask = task.spawn(function()
             while autoKillEnabled do
@@ -1272,6 +1558,38 @@ local function buildTargetTab(targetFrame)
 
     autoKillBtn.MouseButton1Click:Connect(function()
         if autoKillEnabled then stopAutoKill() else startAutoKill() end
+    end)
+
+    -- ============================================================
+    -- FLING TOGGLE (below Auto Kill)
+    -- ============================================================
+    local flingBtn = Instance.new("TextButton")
+    flingBtn.Size = UDim2.new(0.9, 0, 0, 24)
+    flingBtn.Position = UDim2.new(0.05, 0, 0, 0)
+    flingBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+    flingBtn.BorderSizePixel = 0
+    flingBtn.Text = "Fling: OFF"
+    flingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    flingBtn.Font = Enum.Font.GothamBold
+    flingBtn.TextSize = 12
+    flingBtn.AutoButtonColor = false
+    flingBtn.LayoutOrder = 8
+    flingBtn.Parent = holder
+
+    local flCorner = Instance.new("UICorner")
+    flCorner.CornerRadius = UDim.new(0, 6)
+    flCorner.Parent = flingBtn
+
+    flingBtn.MouseButton1Click:Connect(function()
+        if flingActive then
+            stopFling()
+            flingBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+            flingBtn.Text = "Fling: OFF"
+        else
+            startFling()
+            flingBtn.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
+            flingBtn.Text = "Fling: ON"
+        end
     end)
 
     task.spawn(function()
@@ -1313,6 +1631,7 @@ local function buildTargetTab(targetFrame)
     return function()
         stopSpectate()
         stopAutoKill()
+        stopFling()
     end
 end
  
