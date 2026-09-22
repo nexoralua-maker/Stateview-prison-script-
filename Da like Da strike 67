@@ -1677,12 +1677,12 @@ logsTitle.TextColor3 = Color3.fromRGB(40, 25, 5)
 logsTitle.Font = Enum.Font.GothamBold
 logsTitle.TextSize = 18
 logsTitle.Parent = logsBox
- 
+
 local logsText = Instance.new("TextLabel")
 logsText.Size = UDim2.new(1, -20, 1, -50)
 logsText.Position = UDim2.new(0, 10, 0, 40)
 logsText.BackgroundTransparency = 1
-logsText.Text = "Features Added\n\n- Keybind Aimlock\n- No jump cooldown\n- Silent aim fov transparency slider\n- Triggerbot\n- Movement tab Added fly\n- Esp on visual tab"
+logsText.Text = "Features Added\n\n- WallCheck Toggle button On combat tab\n- Added a auto Heal/Eat Pizza/Donut function on Auto kill toggle button on target tab\n- Made silent aim Only hit on Head\n- Added Textbox for custom prediction for silent aim\n- Made the Aimlock That if u or ur enemy gets respawn it doesn't unlock\n- Added Kill aura on Combat tab\n- Added Fling toggle button on Target Tab"
 logsText.TextColor3 = Color3.fromRGB(50, 35, 10)
 logsText.Font = Enum.Font.Gotham
 logsText.TextSize = 15
