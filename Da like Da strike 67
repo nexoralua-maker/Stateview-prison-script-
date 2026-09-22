@@ -3403,6 +3403,233 @@ local Fly = (function()
 end)()
  
 -- ============================================================
+-- FLY MODULE (Universal Fly v4 Ã¢â‚¬â€ camera-pitch aware)
+-- ============================================================
+local Fly = (function()
+    local M = {
+        enabled       = false,
+        initialized   = false,
+        speed         = 50,
+        onStateChange = nil,
+    }
+ 
+    local CONFIG = {
+        Speed           = 50,
+        BoostMultiplier = 2.5,
+        ToggleKey       = Enum.KeyCode.F,
+        JumpHoldTime    = 0.15,
+        MaxPitchFactor  = 1.0,
+    }
+ 
+    local IS_MOBILE = UserInputService.TouchEnabled
+ 
+    local flying      = false
+    local boost       = false
+    local upHeld      = false
+    local downHeld    = false
+    local jumpUpExpire = 0
+ 
+    local bodyVelocity
+    local humanoid
+    local rootPart
+    local savedWalkSpeed, savedJumpPower, savedJumpHeight
+ 
+    local function setJumpButtonVisible(visible)
+        if not IS_MOBILE then return end
+        local pg = player:FindFirstChild("PlayerGui")
+        if not pg then return end
+        local touchGui = pg:FindFirstChild("TouchGui")
+        if not touchGui then return end
+        local cf = touchGui:FindFirstChild("TouchControlFrame")
+        if not cf then return end
+        local jb = cf:FindFirstChild("JumpButton")
+        if jb then jb.Visible = visible end
+    end
+ 
+    local function fireStateChange()
+        if M.onStateChange then
+            pcall(M.onStateChange, flying)
+        end
+    end
+ 
+    local function startFly()
+        if flying then return end
+        local char = player.Character
+        if not char then return end
+ 
+        rootPart = char:FindFirstChild("HumanoidRootPart")
+        humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not rootPart or not humanoid then return end
+ 
+        savedWalkSpeed  = humanoid.WalkSpeed
+        savedJumpPower  = humanoid.JumpPower
+        savedJumpHeight = humanoid.JumpHeight
+        humanoid.WalkSpeed  = 0
+        humanoid.JumpPower  = 0
+        humanoid.JumpHeight = 0
+ 
+        bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+        bodyVelocity.Velocity = Vector3.zero
+        bodyVelocity.Parent   = rootPart
+ 
+        flying = true
+        boost  = false
+        upHeld = false
+        downHeld = false
+ 
+        setJumpButtonVisible(false)
+        fireStateChange()
+    end
+ 
+    local function stopFly()
+        if not flying then return end
+        flying = false
+        boost  = false
+        upHeld = false
+        downHeld = false
+ 
+        if bodyVelocity then
+            bodyVelocity:Destroy()
+            bodyVelocity = nil
+        end
+ 
+        if humanoid then
+            humanoid.WalkSpeed  = savedWalkSpeed or 16
+            humanoid.JumpPower  = savedJumpPower or 50
+            humanoid.JumpHeight = savedJumpHeight or 7.2
+        end
+ 
+        setJumpButtonVisible(true)
+        fireStateChange()
+    end
+ 
+    function M.toggle()
+        if flying then stopFly() else startFly() end
+    end
+ 
+    function M.isOn()
+        return flying
+    end
+ 
+    local function init()
+        if M.initialized then return end
+        M.initialized = true
+ 
+        RunService.RenderStepped:Connect(function()
+            if not flying then return end
+ 
+            if not rootPart or not rootPart.Parent or not bodyVelocity or not humanoid then
+                stopFly()
+                return
+            end
+ 
+            local move = Vector3.zero
+ 
+            local md = humanoid.MoveDirection
+            if md.Magnitude > 0.01 then
+                local localDir   = camera.CFrame:VectorToObjectSpace(md)
+                local forwardAmt = -localDir.Z
+                local rightAmt   =  localDir.X
+ 
+                local look = camera.CFrame.LookVector
+                if CONFIG.MaxPitchFactor < 1 then
+                    local flat = Vector3.new(look.X, 0, look.Z)
+                    if flat.Magnitude > 0 then
+                        flat = flat.Unit
+                        local pitch = math.asin(math.clamp(look.Y, -1, 1))
+                        local maxP  = math.asin(CONFIG.MaxPitchFactor)
+                        pitch = math.clamp(pitch, -maxP, maxP)
+                        local horiz = math.cos(pitch)
+                        look = Vector3.new(
+                            flat.X * horiz,
+                            math.sin(pitch),
+                            flat.Z * horiz
+                        ).Unit
+                    end
+                end
+ 
+                move += look                      * forwardAmt
+                move += camera.CFrame.RightVector * rightAmt
+            end
+ 
+            local now = tick()
+            if upHeld or (now < jumpUpExpire) then move += Vector3.yAxis end
+            if downHeld then move -= Vector3.yAxis end
+ 
+            local speed = M.speed * (boost and CONFIG.BoostMultiplier or 1)
+ 
+            if move.Magnitude > 0 then
+                bodyVelocity.Velocity = move.Unit * speed
+            else
+                bodyVelocity.Velocity = Vector3.zero
+            end
+        end)
+ 
+        UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+ 
+            local key = input.KeyCode
+            if key == CONFIG.ToggleKey then
+                M.toggle()
+                return
+            end
+ 
+            if not flying then return end
+ 
+            if key == Enum.KeyCode.Space or key == Enum.KeyCode.E then
+                upHeld = true
+            elseif key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.Q then
+                downHeld = true
+            elseif key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift then
+                boost = true
+            end
+        end)
+ 
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+            local key = input.KeyCode
+            if key == Enum.KeyCode.Space or key == Enum.KeyCode.E then
+                upHeld = false
+            elseif key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.Q then
+                downHeld = false
+            elseif key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift then
+                boost = false
+            end
+        end)
+ 
+        UserInputService.JumpRequest:Connect(function()
+            if flying and IS_MOBILE then
+                jumpUpExpire = tick() + CONFIG.JumpHoldTime
+            end
+        end)
+ 
+        player.CharacterAdded:Connect(function()
+            if flying then stopFly() end
+            rootPart = nil
+            humanoid = nil
+        end)
+    end
+ 
+    function M.setEnabled(state)
+        if state then
+            init()
+            startFly()
+        else
+            stopFly()
+        end
+        print("[Fly] " .. (state and "ON" or "OFF"))
+    end
+ 
+    function M.setSpeed(v)
+        M.speed = math.clamp(tonumber(v) or 50, 1, 100)
+    end
+ 
+    return M
+end)()
+ 
+-- ============================================================
 -- MOVEMENT TAB BUILDER
 -- ============================================================
 local function buildMovementTab(frame)
@@ -3415,24 +3642,18 @@ local function buildMovementTab(frame)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
     scroll.Parent = frame
-
+ 
     local holder = Instance.new("Frame")
-    holder.Size = UDim2.new(1, 0, 0, 400)
+    holder.Size = UDim2.new(1, 0, 0, 200)
     holder.BackgroundTransparency = 1
     holder.Parent = scroll
-
+ 
     local layout = Instance.new("UIListLayout")
     layout.Padding = UDim.new(0, 8)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Parent = holder
-
-    local function isPressInput(t)
-        return t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch
-    end
-
-    -- ============================================================
-    -- FLY TOGGLE
-    -- ============================================================
+ 
+    -- ---- Fly toggle row ----
     local flyRow = Instance.new("Frame")
     flyRow.Size = UDim2.new(1, -10, 0, 46)
     flyRow.Position = UDim2.new(0, 5, 0, 0)
@@ -3441,11 +3662,11 @@ local function buildMovementTab(frame)
     flyRow.BorderSizePixel = 0
     flyRow.LayoutOrder = 1
     flyRow.Parent = holder
-
+ 
     local frCorner = Instance.new("UICorner")
     frCorner.CornerRadius = UDim.new(0, 8)
     frCorner.Parent = flyRow
-
+ 
     local flyLabel = Instance.new("TextLabel")
     flyLabel.Size = UDim2.new(1, -110, 1, 0)
     flyLabel.Position = UDim2.new(0, 12, 0, 0)
@@ -3456,7 +3677,7 @@ local function buildMovementTab(frame)
     flyLabel.TextSize = 15
     flyLabel.TextXAlignment = Enum.TextXAlignment.Left
     flyLabel.Parent = flyRow
-
+ 
     local flyToggle = Instance.new("TextButton")
     flyToggle.Size = UDim2.new(0, 70, 0, 30)
     flyToggle.Position = UDim2.new(1, -82, 0.5, -15)
@@ -3468,545 +3689,137 @@ local function buildMovementTab(frame)
     flyToggle.TextSize = 13
     flyToggle.AutoButtonColor = false
     flyToggle.Parent = flyRow
-
+ 
     local ftCorner = Instance.new("UICorner")
     ftCorner.CornerRadius = UDim.new(1, 0)
     ftCorner.Parent = flyToggle
-
+ 
     local function updateFlyToggle(on)
         flyToggle.BackgroundColor3 = on and Color3.fromRGB(80, 220, 120) or Color3.fromRGB(80, 60, 20)
         flyToggle.Text = on and "ON" or "OFF"
     end
-
+ 
     flyToggle.MouseButton1Click:Connect(function()
         Fly.setEnabled(not Fly.isOn())
     end)
-
+ 
     Fly.onStateChange = updateFlyToggle
-
-    -- ============================================================
-    -- FLY SPEED SLIDER
-    -- ============================================================
-    local flySliderContainer = Instance.new("Frame")
-    flySliderContainer.Size = UDim2.new(1, -10, 0, 70)
-    flySliderContainer.Position = UDim2.new(0, 5, 0, 0)
-    flySliderContainer.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
-    flySliderContainer.BackgroundTransparency = 0.35
-    flySliderContainer.BorderSizePixel = 0
-    flySliderContainer.LayoutOrder = 2
-    flySliderContainer.Parent = holder
-
-    local fscCorner = Instance.new("UICorner")
-    fscCorner.CornerRadius = UDim.new(0, 8)
-    fscCorner.Parent = flySliderContainer
-
-    local flySliderLabel = Instance.new("TextLabel")
-    flySliderLabel.Size = UDim2.new(1, -100, 0, 24)
-    flySliderLabel.Position = UDim2.new(0, 12, 0, 4)
-    flySliderLabel.BackgroundTransparency = 1
-    flySliderLabel.Text = "Fly speed"
-    flySliderLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
-    flySliderLabel.Font = Enum.Font.GothamSemibold
-    flySliderLabel.TextSize = 15
-    flySliderLabel.TextXAlignment = Enum.TextXAlignment.Left
-    flySliderLabel.Parent = flySliderContainer
-
-    local flyValueLabel = Instance.new("TextLabel")
-    flyValueLabel.Size = UDim2.new(0, 70, 0, 24)
-    flyValueLabel.Position = UDim2.new(1, -82, 0, 4)
-    flyValueLabel.BackgroundTransparency = 1
-    flyValueLabel.Text = "50"
-    flyValueLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
-    flyValueLabel.Font = Enum.Font.GothamBold
-    flyValueLabel.TextSize = 14
-    flyValueLabel.TextXAlignment = Enum.TextXAlignment.Right
-    flyValueLabel.Parent = flySliderContainer
-
-    local flyTrack = Instance.new("Frame")
-    flyTrack.Size = UDim2.new(1, -24, 0, 8)
-    flyTrack.Position = UDim2.new(0, 12, 1, -20)
-    flyTrack.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
-    flyTrack.BorderSizePixel = 0
-    flyTrack.Active = true
-    flyTrack.Parent = flySliderContainer
-
-    local ftcCorner = Instance.new("UICorner")
-    ftcCorner.CornerRadius = UDim.new(1, 0)
-    ftcCorner.Parent = flyTrack
-
-    local flyFill = Instance.new("Frame")
-    flyFill.Size = UDim2.new(0.5, 0, 1, 0)
-    flyFill.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
-    flyFill.BorderSizePixel = 0
-    flyFill.Parent = flyTrack
-
-    local ffcCorner = Instance.new("UICorner")
-    ffcCorner.CornerRadius = UDim.new(1, 0)
-    ffcCorner.Parent = flyFill
-
-    local flyKnob = Instance.new("Frame")
-    flyKnob.Size = UDim2.new(0, 18, 0, 18)
-    flyKnob.Position = UDim2.new(0.5, -9, 0.5, -9)
-    flyKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    flyKnob.BorderSizePixel = 0
-    flyKnob.ZIndex = 2
-    flyKnob.Parent = flyTrack
-
-    local fkCorner = Instance.new("UICorner")
-    fkCorner.CornerRadius = UDim.new(1, 0)
-    fkCorner.Parent = flyKnob
-
-    local flySpeedValue = 50
-
-    local function flySetFromX(absX)
-        local rel = (absX - flyTrack.AbsolutePosition.X) / math.max(flyTrack.AbsoluteSize.X, 1)
+ 
+    -- ---- Fly speed slider ----
+    local sliderContainer = Instance.new("Frame")
+    sliderContainer.Size = UDim2.new(1, -10, 0, 70)
+    sliderContainer.Position = UDim2.new(0, 5, 0, 0)
+    sliderContainer.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
+    sliderContainer.BackgroundTransparency = 0.35
+    sliderContainer.BorderSizePixel = 0
+    sliderContainer.LayoutOrder = 2
+    sliderContainer.Parent = holder
+ 
+    local scCorner = Instance.new("UICorner")
+    scCorner.CornerRadius = UDim.new(0, 8)
+    scCorner.Parent = sliderContainer
+ 
+    local sliderLabel = Instance.new("TextLabel")
+    sliderLabel.Size = UDim2.new(1, -100, 0, 24)
+    sliderLabel.Position = UDim2.new(0, 12, 0, 4)
+    sliderLabel.BackgroundTransparency = 1
+    sliderLabel.Text = "Fly speed"
+    sliderLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
+    sliderLabel.Font = Enum.Font.GothamSemibold
+    sliderLabel.TextSize = 15
+    sliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+    sliderLabel.Parent = sliderContainer
+ 
+    local valueLabel = Instance.new("TextLabel")
+    valueLabel.Size = UDim2.new(0, 70, 0, 24)
+    valueLabel.Position = UDim2.new(1, -82, 0, 4)
+    valueLabel.BackgroundTransparency = 1
+    valueLabel.Text = "50"
+    valueLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
+    valueLabel.Font = Enum.Font.GothamBold
+    valueLabel.TextSize = 14
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    valueLabel.Parent = sliderContainer
+ 
+    local track = Instance.new("Frame")
+    track.Size = UDim2.new(1, -24, 0, 8)
+    track.Position = UDim2.new(0, 12, 1, -20)
+    track.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+    track.BorderSizePixel = 0
+    track.Active = true
+    track.Parent = sliderContainer
+ 
+    local tc = Instance.new("UICorner")
+    tc.CornerRadius = UDim.new(1, 0)
+    tc.Parent = track
+ 
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(0.5, 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
+    fill.BorderSizePixel = 0
+    fill.Parent = track
+ 
+    local fc = Instance.new("UICorner")
+    fc.CornerRadius = UDim.new(1, 0)
+    fc.Parent = fill
+ 
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 18, 0, 18)
+    knob.Position = UDim2.new(0.5, -9, 0.5, -9)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    knob.BorderSizePixel = 0
+    knob.ZIndex = 2
+    knob.Parent = track
+ 
+    local kc = Instance.new("UICorner")
+    kc.CornerRadius = UDim.new(1, 0)
+    kc.Parent = knob
+ 
+    local minVal, maxVal = 1, 100
+    local currentValue = 50
+ 
+    local function setFromX(absX)
+        local rel = (absX - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1)
         rel = math.clamp(rel, 0, 1)
-        local value = math.floor(1 + rel * (100 - 1) + 0.5)
-        if value ~= flySpeedValue then
-            flySpeedValue = value
+        local value = math.floor(minVal + rel * (maxVal - minVal) + 0.5)
+        if value ~= currentValue then
+            currentValue = value
             Fly.setSpeed(value)
-            flyValueLabel.Text = tostring(value)
         end
-        flyFill.Size = UDim2.new(rel, 0, 1, 0)
-        flyKnob.Position = UDim2.new(rel, -9, 0.5, -9)
+        fill.Size = UDim2.new(rel, 0, 1, 0)
+        knob.Position = UDim2.new(rel, -9, 0.5, -9)
+        valueLabel.Text = tostring(value)
     end
-
-    local flyDragging = false
-
-    flyTrack.InputBegan:Connect(function(input)
+ 
+    local dragging = false
+    local function isPressInput(t)
+        return t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch
+    end
+ 
+    track.InputBegan:Connect(function(input)
         if isPressInput(input.UserInputType) then
-            flyDragging = true
-            flySetFromX(input.Position.X)
+            dragging = true
+            setFromX(input.Position.X)
         end
     end)
-    flyTrack.InputChanged:Connect(function(input)
-        if flyDragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+    track.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
             or input.UserInputType == Enum.UserInputType.Touch) then
-            flySetFromX(input.Position.X)
+            setFromX(input.Position.X)
         end
     end)
-    flyTrack.InputEnded:Connect(function(input)
+    track.InputEnded:Connect(function(input)
         if isPressInput(input.UserInputType) then
-            flyDragging = false
+            dragging = false
         end
     end)
-
-    -- ============================================================
-    -- WALKSPEED TOGGLE
-    -- ============================================================
-    local wsRow = Instance.new("Frame")
-    wsRow.Size = UDim2.new(1, -10, 0, 46)
-    wsRow.Position = UDim2.new(0, 5, 0, 0)
-    wsRow.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
-    wsRow.BackgroundTransparency = 0.35
-    wsRow.BorderSizePixel = 0
-    wsRow.LayoutOrder = 3
-    wsRow.Parent = holder
-
-    local wsCorner = Instance.new("UICorner")
-    wsCorner.CornerRadius = UDim.new(0, 8)
-    wsCorner.Parent = wsRow
-
-    local wsLabel = Instance.new("TextLabel")
-    wsLabel.Size = UDim2.new(1, -110, 1, 0)
-    wsLabel.Position = UDim2.new(0, 12, 0, 0)
-    wsLabel.BackgroundTransparency = 1
-    wsLabel.Text = "Walkspeed"
-    wsLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
-    wsLabel.Font = Enum.Font.GothamSemibold
-    wsLabel.TextSize = 15
-    wsLabel.TextXAlignment = Enum.TextXAlignment.Left
-    wsLabel.Parent = wsRow
-
-    local wsToggle = Instance.new("TextButton")
-    wsToggle.Size = UDim2.new(0, 70, 0, 30)
-    wsToggle.Position = UDim2.new(1, -82, 0.5, -15)
-    wsToggle.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
-    wsToggle.BorderSizePixel = 0
-    wsToggle.Text = "OFF"
-    wsToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    wsToggle.Font = Enum.Font.GothamBold
-    wsToggle.TextSize = 13
-    wsToggle.AutoButtonColor = false
-    wsToggle.Parent = wsRow
-
-    local wstCorner = Instance.new("UICorner")
-    wstCorner.CornerRadius = UDim.new(1, 0)
-    wstCorner.Parent = wsToggle
-
-    -- ============================================================
-    -- WALKSPEED SLIDER (1-100)
-    -- ============================================================
-    local wsSliderContainer = Instance.new("Frame")
-    wsSliderContainer.Size = UDim2.new(1, -10, 0, 70)
-    wsSliderContainer.Position = UDim2.new(0, 5, 0, 0)
-    wsSliderContainer.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
-    wsSliderContainer.BackgroundTransparency = 0.35
-    wsSliderContainer.BorderSizePixel = 0
-    wsSliderContainer.LayoutOrder = 4
-    wsSliderContainer.Parent = holder
-
-    local wscCorner = Instance.new("UICorner")
-    wscCorner.CornerRadius = UDim.new(0, 8)
-    wscCorner.Parent = wsSliderContainer
-
-    local wsSliderLabel = Instance.new("TextLabel")
-    wsSliderLabel.Size = UDim2.new(1, -100, 0, 24)
-    wsSliderLabel.Position = UDim2.new(0, 12, 0, 4)
-    wsSliderLabel.BackgroundTransparency = 1
-    wsSliderLabel.Text = "Walkspeed value"
-    wsSliderLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
-    wsSliderLabel.Font = Enum.Font.GothamSemibold
-    wsSliderLabel.TextSize = 15
-    wsSliderLabel.TextXAlignment = Enum.TextXAlignment.Left
-    wsSliderLabel.Parent = wsSliderContainer
-
-    local wsValueLabel = Instance.new("TextLabel")
-    wsValueLabel.Size = UDim2.new(0, 70, 0, 24)
-    wsValueLabel.Position = UDim2.new(1, -82, 0, 4)
-    wsValueLabel.BackgroundTransparency = 1
-    wsValueLabel.Text = "16"
-    wsValueLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
-    wsValueLabel.Font = Enum.Font.GothamBold
-    wsValueLabel.TextSize = 14
-    wsValueLabel.TextXAlignment = Enum.TextXAlignment.Right
-    wsValueLabel.Parent = wsSliderContainer
-
-    local wsTrack = Instance.new("Frame")
-    wsTrack.Size = UDim2.new(1, -24, 0, 8)
-    wsTrack.Position = UDim2.new(0, 12, 1, -20)
-    wsTrack.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
-    wsTrack.BorderSizePixel = 0
-    wsTrack.Active = true
-    wsTrack.Parent = wsSliderContainer
-
-    local wstcCorner = Instance.new("UICorner")
-    wstcCorner.CornerRadius = UDim.new(1, 0)
-    wstcCorner.Parent = wsTrack
-
-    local wsFill = Instance.new("Frame")
-    wsFill.Size = UDim2.new(0.16, 0, 1, 0)
-    wsFill.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
-    wsFill.BorderSizePixel = 0
-    wsFill.Parent = wsTrack
-
-    local wsfcCorner = Instance.new("UICorner")
-    wsfcCorner.CornerRadius = UDim.new(1, 0)
-    wsfcCorner.Parent = wsFill
-
-    local wsKnob = Instance.new("Frame")
-    wsKnob.Size = UDim2.new(0, 18, 0, 18)
-    wsKnob.Position = UDim2.new(0.16, -9, 0.5, -9)
-    wsKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    wsKnob.BorderSizePixel = 0
-    wsKnob.ZIndex = 2
-    wsKnob.Parent = wsTrack
-
-    local wskCorner = Instance.new("UICorner")
-    wskCorner.CornerRadius = UDim.new(1, 0)
-    wskCorner.Parent = wsKnob
-
-    local wsEnabled = false
-    local wsValue = 16
-    local wsLoopTask = nil
-
-    local function wsStartLoop()
-        if wsLoopTask then return end
-        wsLoopTask = task.spawn(function()
-            while wsEnabled do
-                local char = player.Character
-                if char then
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    if hum and hum.WalkSpeed ~= wsValue then
-                        hum.WalkSpeed = wsValue
-                    end
-                end
-                RunService.RenderStepped:Wait()
-            end
-            wsLoopTask = nil
-        end)
-    end
-
-    wsToggle.MouseButton1Click:Connect(function()
-        wsEnabled = not wsEnabled
-        wsToggle.BackgroundColor3 = wsEnabled and Color3.fromRGB(80, 220, 120) or Color3.fromRGB(80, 60, 20)
-        wsToggle.Text = wsEnabled and "ON" or "OFF"
-
-        if wsEnabled then
-            wsStartLoop()
-        else
-            local char = player.Character
-            if char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum then hum.WalkSpeed = 16 end
-            end
-        end
-        print("[Walkspeed] " .. (wsEnabled and "ON" or "OFF") .. "  value=" .. tostring(wsValue))
-    end)
-
-    local wsDragging = false
-
-    local function wsSetFromX(absX)
-        local rel = (absX - wsTrack.AbsolutePosition.X) / math.max(wsTrack.AbsoluteSize.X, 1)
-        rel = math.clamp(rel, 0, 1)
-        local value = math.floor(1 + rel * (100 - 1) + 0.5)
-        if value ~= wsValue then
-            wsValue = value
-            wsValueLabel.Text = tostring(wsValue)
-        end
-        wsFill.Size = UDim2.new(rel, 0, 1, 0)
-        wsKnob.Position = UDim2.new(rel, -9, 0.5, -9)
-    end
-
-    wsTrack.InputBegan:Connect(function(input)
-        if isPressInput(input.UserInputType) then
-            wsDragging = true
-            wsSetFromX(input.Position.X)
-        end
-    end)
-
-    wsTrack.InputChanged:Connect(function(input)
-        if wsDragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch) then
-            wsSetFromX(input.Position.X)
-        end
-    end)
-
-    wsTrack.InputEnded:Connect(function(input)
-        if isPressInput(input.UserInputType) then
-            wsDragging = false
-        end
-    end)
-
-    -- ============================================================
-    -- JUMPPOWER TOGGLE
-    -- ============================================================
-    local jpRow = Instance.new("Frame")
-    jpRow.Size = UDim2.new(1, -10, 0, 46)
-    jpRow.Position = UDim2.new(0, 5, 0, 0)
-    jpRow.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
-    jpRow.BackgroundTransparency = 0.35
-    jpRow.BorderSizePixel = 0
-    jpRow.LayoutOrder = 5
-    jpRow.Parent = holder
-
-    local jpCorner = Instance.new("UICorner")
-    jpCorner.CornerRadius = UDim.new(0, 8)
-    jpCorner.Parent = jpRow
-
-    local jpLabel = Instance.new("TextLabel")
-    jpLabel.Size = UDim2.new(1, -110, 1, 0)
-    jpLabel.Position = UDim2.new(0, 12, 0, 0)
-    jpLabel.BackgroundTransparency = 1
-    jpLabel.Text = "JumpPower"
-    jpLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
-    jpLabel.Font = Enum.Font.GothamSemibold
-    jpLabel.TextSize = 15
-    jpLabel.TextXAlignment = Enum.TextXAlignment.Left
-    jpLabel.Parent = jpRow
-
-    local jpToggle = Instance.new("TextButton")
-    jpToggle.Size = UDim2.new(0, 70, 0, 30)
-    jpToggle.Position = UDim2.new(1, -82, 0.5, -15)
-    jpToggle.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
-    jpToggle.BorderSizePixel = 0
-    jpToggle.Text = "OFF"
-    jpToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    jpToggle.Font = Enum.Font.GothamBold
-    jpToggle.TextSize = 13
-    jpToggle.AutoButtonColor = false
-    jpToggle.Parent = jpRow
-
-    local jptCorner = Instance.new("UICorner")
-    jptCorner.CornerRadius = UDim.new(1, 0)
-    jptCorner.Parent = jpToggle
-
-    -- ============================================================
-    -- JUMPPOWER SLIDER (1-100)
-    -- ============================================================
-    local jpSliderContainer = Instance.new("Frame")
-    jpSliderContainer.Size = UDim2.new(1, -10, 0, 70)
-    jpSliderContainer.Position = UDim2.new(0, 5, 0, 0)
-    jpSliderContainer.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
-    jpSliderContainer.BackgroundTransparency = 0.35
-    jpSliderContainer.BorderSizePixel = 0
-    jpSliderContainer.LayoutOrder = 6
-    jpSliderContainer.Parent = holder
-
-    local jpscCorner = Instance.new("UICorner")
-    jpscCorner.CornerRadius = UDim.new(0, 8)
-    jpscCorner.Parent = jpSliderContainer
-
-    local jpSliderLabel = Instance.new("TextLabel")
-    jpSliderLabel.Size = UDim2.new(1, -100, 0, 24)
-    jpSliderLabel.Position = UDim2.new(0, 12, 0, 4)
-    jpSliderLabel.BackgroundTransparency = 1
-    jpSliderLabel.Text = "JumpPower value"
-    jpSliderLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
-    jpSliderLabel.Font = Enum.Font.GothamSemibold
-    jpSliderLabel.TextSize = 15
-    jpSliderLabel.TextXAlignment = Enum.TextXAlignment.Left
-    jpSliderLabel.Parent = jpSliderContainer
-
-    local jpValueLabel = Instance.new("TextLabel")
-    jpValueLabel.Size = UDim2.new(0, 70, 0, 24)
-    jpValueLabel.Position = UDim2.new(1, -82, 0, 4)
-    jpValueLabel.BackgroundTransparency = 1
-    jpValueLabel.Text = "50"
-    jpValueLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
-    jpValueLabel.Font = Enum.Font.GothamBold
-    jpValueLabel.TextSize = 14
-    jpValueLabel.TextXAlignment = Enum.TextXAlignment.Right
-    jpValueLabel.Parent = jpSliderContainer
-
-    local jpTrack = Instance.new("Frame")
-    jpTrack.Size = UDim2.new(1, -24, 0, 8)
-    jpTrack.Position = UDim2.new(0, 12, 1, -20)
-    jpTrack.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
-    jpTrack.BorderSizePixel = 0
-    jpTrack.Active = true
-    jpTrack.Parent = jpSliderContainer
-
-    local jptcCorner = Instance.new("UICorner")
-    jptcCorner.CornerRadius = UDim.new(1, 0)
-    jptcCorner.Parent = jpTrack
-
-    local jpFill = Instance.new("Frame")
-    jpFill.Size = UDim2.new(0.5, 0, 1, 0)
-    jpFill.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
-    jpFill.BorderSizePixel = 0
-    jpFill.Parent = jpTrack
-
-    local jpfcCorner = Instance.new("UICorner")
-    jpfcCorner.CornerRadius = UDim.new(1, 0)
-    jpfcCorner.Parent = jpFill
-
-    local jpKnob = Instance.new("Frame")
-    jpKnob.Size = UDim2.new(0, 18, 0, 18)
-    jpKnob.Position = UDim2.new(0.5, -9, 0.5, -9)
-    jpKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    jpKnob.BorderSizePixel = 0
-    jpKnob.ZIndex = 2
-    jpKnob.Parent = jpTrack
-
-    local jpkCorner = Instance.new("UICorner")
-    jpkCorner.CornerRadius = UDim.new(1, 0)
-    jpkCorner.Parent = jpKnob
-
-    local jpEnabled = false
-    local jpValue = 50
-    local jpLoopTask = nil
-
-    local function jpStartLoop()
-        if jpLoopTask then return end
-        jpLoopTask = task.spawn(function()
-            while jpEnabled do
-                local char = player.Character
-                if char then
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    if hum then
-                        if hum.UseJumpPower == false then
-                            hum.UseJumpPower = true
-                        end
-                        if hum.JumpPower ~= jpValue then
-                            hum.JumpPower = jpValue
-                        end
-                    end
-                end
-                RunService.RenderStepped:Wait()
-            end
-            jpLoopTask = nil
-        end)
-    end
-
-    jpToggle.MouseButton1Click:Connect(function()
-        jpEnabled = not jpEnabled
-        jpToggle.BackgroundColor3 = jpEnabled and Color3.fromRGB(80, 220, 120) or Color3.fromRGB(80, 60, 20)
-        jpToggle.Text = jpEnabled and "ON" or "OFF"
-
-        if jpEnabled then
-            jpStartLoop()
-        else
-            local char = player.Character
-            if char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    hum.UseJumpPower = true
-                    hum.JumpPower = 50
-                end
-            end
-        end
-        print("[JumpPower] " .. (jpEnabled and "ON" or "OFF") .. "  value=" .. tostring(jpValue))
-    end)
-
-    local jpDragging = false
-
-    local function jpSetFromX(absX)
-        local rel = (absX - jpTrack.AbsolutePosition.X) / math.max(jpTrack.AbsoluteSize.X, 1)
-        rel = math.clamp(rel, 0, 1)
-        local value = math.floor(1 + rel * (100 - 1) + 0.5)
-        if value ~= jpValue then
-            jpValue = value
-            jpValueLabel.Text = tostring(jpValue)
-        end
-        jpFill.Size = UDim2.new(rel, 0, 1, 0)
-        jpKnob.Position = UDim2.new(rel, -9, 0.5, -9)
-    end
-
-    jpTrack.InputBegan:Connect(function(input)
-        if isPressInput(input.UserInputType) then
-            jpDragging = true
-            jpSetFromX(input.Position.X)
-        end
-    end)
-
-    jpTrack.InputChanged:Connect(function(input)
-        if jpDragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-            or input.UserInputType == Enum.UserInputType.Touch) then
-            jpSetFromX(input.Position.X)
-        end
-    end)
-
-    jpTrack.InputEnded:Connect(function(input)
-        if isPressInput(input.UserInputType) then
-            jpDragging = false
-        end
-    end)
-
-    -- ============================================================
-    -- CLEANUP
-    -- ============================================================
+ 
     return function()
         Fly.onStateChange = nil
         Fly.setEnabled(false)
-
-        -- Reset Walkspeed
-        if wsEnabled then
-            wsEnabled = false
-            if wsLoopTask then task.cancel(wsLoopTask) wsLoopTask = nil end
-            local char = player.Character
-            if char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum then hum.WalkSpeed = 16 end
-            end
-        end
-
-        -- Reset JumpPower
-        if jpEnabled then
-            jpEnabled = false
-            if jpLoopTask then task.cancel(jpLoopTask) jpLoopTask = nil end
-            local char = player.Character
-            if char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    hum.UseJumpPower = true
-                    hum.JumpPower = 50
-                end
-            end
-        end
     end
 end
-
+ 
 -- ========== MOVEMENT FRAME ==========
 local movementFrame = Instance.new("Frame")
 movementFrame.Name = "Movement"
@@ -4015,7 +3828,7 @@ movementFrame.BackgroundTransparency = 1
 movementFrame.Visible = false
 movementFrame.Parent = content
 contentFrames["Movement"] = movementFrame
-
+ 
 local cleanupMovement = buildMovementTab(movementFrame)
  
 -- ============================================================
