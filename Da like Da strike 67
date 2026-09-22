@@ -3710,7 +3710,6 @@ local function buildMovementTab(frame)
     local wsValue = 16
     local wsLoopTask = nil
 
-    -- ⭐ Continuous loop that overrides game's server WalkSpeed reset
     local function wsStartLoop()
         if wsLoopTask then return end
         wsLoopTask = task.spawn(function()
@@ -3898,8 +3897,6 @@ local function buildMovementTab(frame)
     local jpValue = 50
     local jpLoopTask = nil
 
-    -- ⭐ Continuous loop that overrides game's server JumpPower reset
-local function jpStartLoop()
     local function jpStartLoop()
         if jpLoopTask then return end
         jpLoopTask = task.spawn(function()
