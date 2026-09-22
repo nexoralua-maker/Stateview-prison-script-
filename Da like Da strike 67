@@ -3426,6 +3426,10 @@ local function buildMovementTab(frame)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Parent = holder
 
+    local function isPressInput(t)
+        return t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch
+    end
+
     -- ============================================================
     -- FLY TOGGLE
     -- ============================================================
@@ -3568,9 +3572,6 @@ local function buildMovementTab(frame)
     end
 
     local flyDragging = false
-    local function isPressInput(t)
-        return t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch
-    end
 
     flyTrack.InputBegan:Connect(function(input)
         if isPressInput(input.UserInputType) then
@@ -3707,23 +3708,25 @@ local function buildMovementTab(frame)
 
     local wsEnabled = false
     local wsValue = 16
+    local wsLoopTask = nil
 
-    local function applyWalkspeed()
-        local char = player.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum then return end
-        if wsEnabled then
-            hum.WalkSpeed = wsValue
-        end
+    -- ⭐ Continuous loop that overrides game's server WalkSpeed reset
+    local function wsStartLoop()
+        if wsLoopTask then return end
+        wsLoopTask = task.spawn(function()
+            while wsEnabled do
+                local char = player.Character
+                if char then
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.WalkSpeed ~= wsValue then
+                        hum.WalkSpeed = wsValue
+                    end
+                end
+                RunService.RenderStepped:Wait()
+            end
+            wsLoopTask = nil
+        end)
     end
-
-    player.CharacterAdded:Connect(function()
-        if wsEnabled then
-            task.wait(0.5)
-            applyWalkspeed()
-        end
-    end)
 
     wsToggle.MouseButton1Click:Connect(function()
         wsEnabled = not wsEnabled
@@ -3731,14 +3734,12 @@ local function buildMovementTab(frame)
         wsToggle.Text = wsEnabled and "ON" or "OFF"
 
         if wsEnabled then
-            applyWalkspeed()
+            wsStartLoop()
         else
             local char = player.Character
             if char then
                 local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    hum.WalkSpeed = 16
-                end
+                if hum then hum.WalkSpeed = 16 end
             end
         end
         print("[Walkspeed] " .. (wsEnabled and "ON" or "OFF") .. "  value=" .. tostring(wsValue))
@@ -3753,9 +3754,6 @@ local function buildMovementTab(frame)
         if value ~= wsValue then
             wsValue = value
             wsValueLabel.Text = tostring(wsValue)
-            if wsEnabled then
-                applyWalkspeed()
-            end
         end
         wsFill.Size = UDim2.new(rel, 0, 1, 0)
         wsKnob.Position = UDim2.new(rel, -9, 0.5, -9)
@@ -3898,24 +3896,31 @@ local function buildMovementTab(frame)
 
     local jpEnabled = false
     local jpValue = 50
+    local jpLoopTask = nil
 
-    local function applyJumpPower()
-        local char = player.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum then return end
-        if jpEnabled then
-            hum.UseJumpPower = true
-            hum.JumpPower = jpValue
-        end
+    -- ⭐ Continuous loop that overrides game's server JumpPower reset
+    JumpPower reset
+    local function jpStartLoop()
+        if jpLoopTask then return end
+        jpLoopTask = task.spawn(function()
+            while jpEnabled do
+                local char = player.Character
+                if char then
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum then
+                        if hum.UseJumpPower == false then
+                            hum.UseJumpPower = true
+                        end
+                        if hum.JumpPower ~= jpValue then
+                            hum.JumpPower = jpValue
+                        end
+                    end
+                end
+                RunService.RenderStepped:Wait()
+            end
+            jpLoopTask = nil
+        end)
     end
-
-    player.CharacterAdded:Connect(function()
-        if jpEnabled then
-            task.wait(0.5)
-            applyJumpPower()
-        end
-    end)
 
     jpToggle.MouseButton1Click:Connect(function()
         jpEnabled = not jpEnabled
@@ -3923,7 +3928,7 @@ local function buildMovementTab(frame)
         jpToggle.Text = jpEnabled and "ON" or "OFF"
 
         if jpEnabled then
-            applyJumpPower()
+            jpStartLoop()
         else
             local char = player.Character
             if char then
@@ -3946,9 +3951,6 @@ local function buildMovementTab(frame)
         if value ~= jpValue then
             jpValue = value
             jpValueLabel.Text = tostring(jpValue)
-            if jpEnabled then
-                applyJumpPower()
-            end
         end
         jpFill.Size = UDim2.new(rel, 0, 1, 0)
         jpKnob.Position = UDim2.new(rel, -9, 0.5, -9)
@@ -3984,6 +3986,7 @@ local function buildMovementTab(frame)
         -- Reset Walkspeed
         if wsEnabled then
             wsEnabled = false
+            if wsLoopTask then task.cancel(wsLoopTask) wsLoopTask = nil end
             local char = player.Character
             if char then
                 local hum = char:FindFirstChildOfClass("Humanoid")
@@ -3994,6 +3997,7 @@ local function buildMovementTab(frame)
         -- Reset JumpPower
         if jpEnabled then
             jpEnabled = false
+            if jpLoopTask then task.cancel(jpLoopTask) jpLoopTask = nil end
             local char = player.Character
             if char then
                 local hum = char:FindFirstChildOfClass("Humanoid")
