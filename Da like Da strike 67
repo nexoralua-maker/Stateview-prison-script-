@@ -1759,12 +1759,13 @@ local Aimlock = (function()
     end
 
     local function get_predicted_position()
-        local target = M.state.locked_target
-        if not target or not has_character(target) then return Vector3.new(0, 0, 0) end
+    local target = M.state.locked_target
+    if not target or not target.Character then return Vector3.new(0, 0, 0) end
+    if not has_character(target) then return Vector3.new(0, 0, 0) end
 
-        local aim_part = target.Character:FindFirstChild("Head")
-            or target.Character:FindFirstChild("HumanoidRootPart")
-        if not aim_part then return Vector3.new(0, 0, 0) end
+    local aim_part = target.Character:FindFirstChild("Head")
+        or target.Character:FindFirstChild("HumanoidRootPart")
+    if not aim_part then return Vector3.new(0, 0, 0) end
 
         local velocity = Settings.ResolverEnabled
             and resolve_velocity(target)
@@ -1994,10 +1995,10 @@ local Aimlock = (function()
         end
 
         if player.Character then hook_gun(player.Character) end
-        player.CharacterAdded:Connect(function(c)
-            hook_gun(c)
-            do_unlock()
-        end)
+player.CharacterAdded:Connect(function(c)
+    hook_gun(c)
+    -- ⭐ don't unlock on respawn — stay locked onto the same target
+end)
 
         UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
@@ -2012,16 +2013,23 @@ RunService.RenderStepped:Connect(function()
         return
     end
 
+    -- ⭐ Only unlock if the target left the game entirely.
+    -- Respawning (no Character) keeps the lock so it re-acquires
+    -- when the target respawns.
     if M.state.locked_target then
-        if not M.state.locked_target.Parent
-            or not has_character(M.state.locked_target) then
+        if not M.state.locked_target.Parent then
             do_unlock()
         end
-        -- WallCheck no longer auto-unlocks here. WallCheck only
-        -- blocks the INITIAL lock inside get_player_in_look_direction.
     end
 
     if not M.state.locked_target then
+        if dot_frame then dot_frame.Visible = false end
+        return
+    end
+
+    -- ⭐ If the target's character is temporarily missing (respawning),
+    -- keep the lock but pause updates until they come back.
+    if not has_character(M.state.locked_target) then
         if dot_frame then dot_frame.Visible = false end
         return
     end
