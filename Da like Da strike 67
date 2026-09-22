@@ -2342,7 +2342,7 @@ local function buildCombatTab(frame)
 
     local SA_FOV_MULT = 1.5
     local SA_FOV_COLOR = Color3.fromRGB(255, 210, 60)
-    local SA_PREDICTION = 0.134
+    local saPrediction = 0.134
 
     local function getScreenCenter()
         local vp = camera.ViewportSize
@@ -2409,12 +2409,12 @@ local function buildCombatTab(frame)
 end
 
     local function getPredictedPosition()
-        local target = saState.target
-        if not target then return Vector3.new(0, 0, 0) end
-        local head = target.Character:FindFirstChild("Head")
-        if not head then return Vector3.new(0, 0, 0) end
-        return head.Position + head.Velocity * SA_PREDICTION
-    end
+    local target = saState.target
+    if not target then return Vector3.new(0, 0, 0) end
+    local head = target.Character:FindFirstChild("Head")
+    if not head then return Vector3.new(0, 0, 0) end
+    return head.Position + head.Velocity * saPrediction
+end
 
     local function initSilentAim()
         if saInit then return end
@@ -2766,6 +2766,68 @@ end
     createCombatSlider("FOV Radius", 6, 1, 100, 80, function(value)
         saFOVRadius = value
     end)
+
+    -- ============================================================
+-- CUSTOM PREDICTION TEXTBOX (below Silent Aim toggle)
+-- ============================================================
+local predRow = Instance.new("Frame")
+predRow.Size = UDim2.new(1, -10, 0, 46)
+predRow.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
+predRow.BackgroundTransparency = 0.35
+predRow.BorderSizePixel = 0
+predRow.LayoutOrder = 5.5
+predRow.Parent = holder
+
+local prCorner = Instance.new("UICorner")
+prCorner.CornerRadius = UDim.new(0, 8)
+prCorner.Parent = predRow
+
+local predLabel = Instance.new("TextLabel")
+predLabel.Size = UDim2.new(0.55, -12, 1, 0)
+predLabel.Position = UDim2.new(0, 12, 0, 0)
+predLabel.BackgroundTransparency = 1
+predLabel.Text = "Custom Prediction"
+predLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
+predLabel.Font = Enum.Font.GothamSemibold
+predLabel.TextSize = 15
+predLabel.TextXAlignment = Enum.TextXAlignment.Left
+predLabel.Parent = predRow
+
+local predBox = Instance.new("TextBox")
+predBox.Size = UDim2.new(0.45, -12, 0, 30)
+predBox.Position = UDim2.new(0.55, 0, 0.5, -15)
+predBox.BackgroundColor3 = Color3.fromRGB(50, 38, 18)
+predBox.BorderSizePixel = 0
+predBox.Text = tostring(saPrediction)
+predBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+predBox.Font = Enum.Font.GothamBold
+predBox.TextSize = 14
+predBox.PlaceholderText = "0.134"
+predBox.ClearTextOnFocus = false
+predBox.TextInputType = Enum.TextInputType.Number
+predBox.Parent = predRow
+
+local pbCorner = Instance.new("UICorner")
+pbCorner.CornerRadius = UDim.new(0, 6)
+pbCorner.Parent = predBox
+
+local function applyPrediction()
+    local num = tonumber(predBox.Text)
+    if num and num >= 0 then
+        saPrediction = num
+        print("[Silent Aim] Prediction set to: " .. tostring(num))
+    else
+        predBox.Text = tostring(saPrediction)
+    end
+end
+
+predBox.FocusLost:Connect(function()
+    applyPrediction()
+end)
+
+predBox.ReturnPressedFromOnScreenKeyboard:Connect(function()
+    applyPrediction()
+end)
 
     createCombatSlider("FOV Transparency", 7, 1, 100, 50, function(value)
         saFOVTransparency = value / 100
