@@ -1,0 +1,492 @@
+-- =========================================================
+-- KILL AURA v2 - Yellow Gradient Panel + X Close Button
+-- =========================================================
+local players      = game:GetService("Players")
+local run_service  = game:GetService("RunService")
+local uis          = game:GetService("UserInputService")
+local rs           = game:GetService("ReplicatedStorage")
+local camera       = workspace.CurrentCamera
+local local_player = players.LocalPlayer
+
+local remote = rs:FindFirstChild("MAINEVENT")
+local mouse_argument = "MOUSE"
+
+-- ==================== CONFIG ====================
+local CONFIG = {
+    Range        = 60,
+    FireDelay    = 0.1,
+    Prediction   = 0.134,
+    SilentAim    = true,
+    VisibleOnly  = false,
+    IgnoreKnocked = false,
+    HeadPriority = true,
+    PingComp     = true,
+}
+-- ================================================
+
+local enabled       = false
+local last_shot     = 0
+local target_index  = 1
+local velocity_cache = {}
+
+-- =================== HELPERS ===================
+local function has_char(p)
+    return p and p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+end
+
+local function is_knocked(p)
+    if not has_char(p) then return false end
+    local be = p.Character:FindFirstChild("BodyEffects")
+    if not be then return false end
+    local ko = be:FindFirstChild("K.O")
+    return ko and ko.Value or false
+end
+
+local function is_dead(p)
+    if not has_char(p) then return true end
+    local hum = p.Character:FindFirstChild("Humanoid")
+    return not hum or hum.Health <= 0
+end
+
+local function is_behind_wall(p)
+    if not has_char(p) or not has_char(local_player) then return false end
+    local parts = camera:GetPartsObscuringTarget(
+        {local_player.Character.HumanoidRootPart.Position, p.Character.HumanoidRootPart.Position},
+        {local_player.Character, p.Character}
+    )
+    return #parts > 0
+end
+
+local function get_equipped_gun()
+    if not local_player.Character then return nil end
+    return local_player.Character:FindFirstChildWhichIsA("Tool")
+end
+
+local function get_ping()
+    local ok, ping = pcall(function()
+        return game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    return (ok and ping) or 50
+end
+
+-- =================== RESOLVER ===================
+local function resolve_velocity(player)
+    if not has_char(player) then return nil end
+    local hrp = player.Character.HumanoidRootPart
+    local now = tick()
+    local cache = velocity_cache[player]
+
+    if not cache or now - cache.tick > 0.5 then
+        velocity_cache[player] = { pos = hrp.Position, vel = hrp.Velocity, tick = now }
+        return hrp.Velocity
+    end
+
+    local dt = now - cache.tick
+    if dt > 0.001 then
+        local frame_vel = (hrp.Position - cache.pos) / dt
+        cache.vel  = (hrp.Velocity * 0.6) + (frame_vel * 0.4)
+        cache.pos  = hrp.Position
+        cache.tick = now
+    end
+    return cache.vel
+end
+
+-- =================== PREDICTION ===================
+local function predict_position(player)
+    if not has_char(player) then return nil end
+
+    local char = player.Character
+    local hrp  = char.HumanoidRootPart
+
+    local part
+    if CONFIG.HeadPriority then
+        part = char:FindFirstChild("Head")
+            or char:FindFirstChild("UpperTorso")
+            or hrp
+    else
+        part = char:FindFirstChild("UpperTorso")
+            or char:FindFirstChild("Head")
+            or hrp
+    end
+
+    local vel = resolve_velocity(player) or hrp.Velocity
+    local my_pos = has_char(local_player) and local_player.Character.HumanoidRootPart.Position or Vector3.zero
+    local dist = (part.Position - my_pos).Magnitude
+
+    local pred = CONFIG.Prediction * (1 + (dist / 300))
+
+    if CONFIG.PingComp then
+        local ping_s = math.clamp(get_ping() / 1000, 0, 0.3)
+        pred = pred + ping_s
+    end
+
+    if vel.Y < -5 then
+        vel = Vector3.new(vel.X, vel.Y * 0.5, vel.Z)
+    end
+
+    return part.Position + vel * pred
+end
+
+-- =================== FIRE ===================
+local function fire_at(player)
+    local gun = get_equipped_gun()
+    if not gun then return false end
+    local aim_pos = predict_position(player)
+    if not aim_pos then return false end
+
+    if CONFIG.SilentAim and remote then
+        for i = 1, 3 do
+            pcall(function() remote:FireServer(mouse_argument, aim_pos) end)
+        end
+    end
+
+    pcall(function() gun:Activate() end)
+
+    if CONFIG.SilentAim and remote then
+        pcall(function() remote:FireServer(mouse_argument, aim_pos) end)
+    end
+
+    return true
+end
+
+-- =================== TARGETS ===================
+local function get_valid_targets()
+    local list = {}
+    if not has_char(local_player) then return list end
+    local my_pos = local_player.Character.HumanoidRootPart.Position
+
+    for _, p in ipairs(players:GetPlayers()) do
+        if p ~= local_player and has_char(p) and not is_dead(p) then
+            local hrp = p.Character.HumanoidRootPart
+            local dist = (hrp.Position - my_pos).Magnitude
+            if dist <= CONFIG.Range then
+                local skip = false
+                if CONFIG.VisibleOnly   and is_behind_wall(p) then skip = true end
+                if CONFIG.IgnoreKnocked and is_knocked(p)     then skip = true end
+                if not skip then
+                    table.insert(list, {player = p, hrp = hrp, dist = dist})
+                end
+            end
+        end
+    end
+    table.sort(list, function(a, b) return a.dist < b.dist end)
+    return list
+end
+
+-- =================== TICK ===================
+local function kill_aura_tick()
+    if not enabled then return end
+    if tick() - last_shot < CONFIG.FireDelay then return end
+    if not get_equipped_gun() then return end
+
+    local targets = get_valid_targets()
+    if #targets == 0 then return end
+
+    target_index = target_index + 1
+    if target_index > #targets then target_index = 1 end
+
+    local target = targets[target_index]
+    last_shot = tick()
+    fire_at(target.player)
+end
+
+-- =========================================================
+-- ==================== GUI SECTION ========================
+-- =========================================================
+
+local YELLOW_LIGHT  = Color3.fromRGB(255, 240, 130)
+local YELLOW_MID    = Color3.fromRGB(255, 210, 40)
+local YELLOW_DARK   = Color3.fromRGB(200, 150, 0)
+local YELLOW_STROKE = Color3.fromRGB(150, 110, 0)
+local DARK_TEXT     = Color3.fromRGB(45, 30, 0)
+local ORANGE_X      = Color3.fromRGB(255, 140, 0)
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "KillAuraGui"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 9999
+gui.Parent = local_player:WaitForChild("PlayerGui")
+
+-- ==================== PANEL ====================
+local panel = Instance.new("Frame")
+panel.Name = "Panel"
+panel.Size = UDim2.new(0, 180, 0, 132)
+panel.Position = UDim2.new(0, 60, 0.5, -66)
+panel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+panel.BorderSizePixel = 0
+panel.Active = true
+panel.Parent = gui
+
+local bg_gradient = Instance.new("UIGradient")
+bg_gradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, YELLOW_LIGHT),
+    ColorSequenceKeypoint.new(0.5, YELLOW_MID),
+    ColorSequenceKeypoint.new(1, YELLOW_DARK),
+})
+bg_gradient.Rotation = 90
+bg_gradient.Parent = panel
+
+local panel_corner = Instance.new("UICorner")
+panel_corner.CornerRadius = UDim.new(0, 14)
+panel_corner.Parent = panel
+
+local panel_stroke = Instance.new("UIStroke")
+panel_stroke.Color = YELLOW_STROKE
+panel_stroke.Thickness = 2
+panel_stroke.Parent = panel
+
+local glow = Instance.new("UIStroke")
+glow.Color = Color3.fromRGB(255, 220, 80)
+glow.Thickness = 6
+glow.Transparency = 0.6
+glow.Parent = panel
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -40, 0, 18)
+title.Position = UDim2.new(0, 6, 0, 4)
+title.BackgroundTransparency = 1
+title.Text = "-  KILL AURA"
+title.TextColor3 = DARK_TEXT
+title.TextSize = 13
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.ZIndex = 2
+title.Parent = panel
+
+-- ==================== X CLOSE BUTTON ====================
+local close_btn = Instance.new("TextButton")
+close_btn.Name = "CloseButton"
+close_btn.Size = UDim2.new(0, 24, 0, 24)
+close_btn.Position = UDim2.new(1, -26, 0, 4)
+close_btn.BackgroundTransparency = 1      -- no background
+close_btn.BorderSizePixel = 0
+close_btn.Text = "X"
+close_btn.TextColor3 = ORANGE_X
+close_btn.TextSize = 20
+close_btn.Font = Enum.Font.GothamBold
+close_btn.AutoButtonColor = false
+close_btn.ZIndex = 5
+close_btn.Parent = panel
+
+-- Slight hover/press effect via text transparency
+close_btn.MouseEnter:Connect(function()
+    close_btn.TextTransparency = 0.2
+end)
+close_btn.MouseLeave:Connect(function()
+    close_btn.TextTransparency = 0
+end)
+
+-- ==================== BUTTON ====================
+local button = Instance.new("TextButton")
+button.Name = "KillAuraToggle"
+button.Size = UDim2.new(1, -20, 0, 46)
+button.Position = UDim2.new(0, 10, 0, 26)
+button.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+button.BorderSizePixel = 0
+button.Text = "KILL AURA: OFF"
+button.TextColor3 = DARK_TEXT
+button.TextSize = 15
+button.Font = Enum.Font.GothamBold
+button.AutoButtonColor = false
+button.Active = true
+button.ZIndex = 3
+button.Parent = panel
+
+local button_gradient = Instance.new("UIGradient")
+button_gradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 230)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 220, 100)),
+})
+button_gradient.Rotation = 90
+button_gradient.Parent = button
+
+local button_corner = Instance.new("UICorner")
+button_corner.CornerRadius = UDim.new(0, 8)
+button_corner.Parent = button
+
+local button_stroke = Instance.new("UIStroke")
+button_stroke.Color = YELLOW_STROKE
+button_stroke.Thickness = 1.5
+button_stroke.Parent = button
+
+local status_label = Instance.new("TextLabel")
+status_label.Size = UDim2.new(1, 0, 0, 13)
+status_label.Position = UDim2.new(0, 0, 1, -14)
+status_label.BackgroundTransparency = 1
+status_label.Text = "tap to enable"
+status_label.TextColor3 = Color3.fromRGB(90, 65, 0)
+status_label.TextSize = 10
+status_label.Font = Enum.Font.Gotham
+status_label.ZIndex = 4
+status_label.Parent = button
+
+-- ==================== TEXTBOX ====================
+local pred_box = Instance.new("TextBox")
+pred_box.Name = "PredictionBox"
+pred_box.Size = UDim2.new(1, -20, 0, 38)
+pred_box.Position = UDim2.new(0, 10, 0, 78)
+pred_box.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+pred_box.BorderSizePixel = 0
+pred_box.Text = " " .. tostring(CONFIG.Prediction) .. " "
+pred_box.PlaceholderText = "Prediction"
+pred_box.PlaceholderColor3 = Color3.fromRGB(150, 120, 40)
+pred_box.TextColor3 = DARK_TEXT
+pred_box.TextSize = 14
+pred_box.Font = Enum.Font.GothamBold
+pred_box.TextXAlignment = Enum.TextXAlignment.Right
+pred_box.ClearTextOnFocus = false
+pred_box.ZIndex = 3
+pred_box.Parent = panel
+
+local box_gradient = Instance.new("UIGradient")
+box_gradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 245, 170)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(250, 200, 60)),
+})
+box_gradient.Rotation = 90
+box_gradient.Parent = pred_box
+
+local box_corner = Instance.new("UICorner")
+box_corner.CornerRadius = UDim.new(0, 8)
+box_corner.Parent = pred_box
+
+local box_stroke = Instance.new("UIStroke")
+box_stroke.Color = YELLOW_STROKE
+box_stroke.Thickness = 1.5
+box_stroke.Parent = pred_box
+
+local prefix = Instance.new("TextLabel")
+prefix.Size = UDim2.new(0, 95, 1, 0)
+prefix.Position = UDim2.new(0, 12, 0, 0)
+prefix.BackgroundTransparency = 1
+prefix.Text = "Prediction:"
+prefix.TextColor3 = DARK_TEXT
+prefix.TextSize = 13
+prefix.Font = Enum.Font.GothamBold
+prefix.TextXAlignment = Enum.TextXAlignment.Left
+prefix.ZIndex = 4
+prefix.Parent = pred_box
+
+-- ==================== TOGGLE VISUALS ====================
+local function update_button_visuals()
+    if enabled then
+        button.Text = "KILL AURA: ON"
+        status_label.Text = "range: " .. CONFIG.Range .. " studs"
+        button_stroke.Color = Color3.fromRGB(80, 60, 0)
+        button_gradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 200, 0)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 130, 0)),
+        })
+    else
+        button.Text = "KILL AURA: OFF"
+        status_label.Text = "tap to enable"
+        button_stroke.Color = YELLOW_STROKE
+        button_gradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 230)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 220, 100)),
+        })
+    end
+end
+
+button.Activated:Connect(function()
+    enabled = not enabled
+    update_button_visuals()
+end)
+
+-- ==================== X BUTTON HANDLER ====================
+close_btn.Activated:Connect(function()
+    -- 1. Kill the aura first
+    enabled = false
+
+    -- 2. Then destroy the GUI
+    if gui then
+        gui:Destroy()
+    end
+end)
+
+-- ==================== PREDICTION HANDLER ====================
+pred_box.FocusLost:Connect(function()
+    local num = tonumber(pred_box.Text)
+    if num and num >= 0 and num <= 2 then
+        CONFIG.Prediction = num
+        pred_box.Text = " " .. tostring(num) .. " "
+        pred_box.TextColor3 = DARK_TEXT
+    else
+        pred_box.Text = " " .. tostring(CONFIG.Prediction) .. " "
+        pred_box.TextColor3 = Color3.fromRGB(180, 40, 40)
+        task.wait(0.3)
+        pred_box.TextColor3 = DARK_TEXT
+    end
+end)
+
+-- ==================== DRAGGING ====================
+local function is_point_in_frame(frame, x, y)
+    local abs = frame.AbsolutePosition
+    local size = frame.AbsoluteSize
+    return x >= abs.X and x <= abs.X + size.X
+       and y >= abs.Y and y <= abs.Y + size.Y
+end
+
+local dragging = false
+local drag_start_pos
+local start_panel_pos
+
+panel.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local x, y = input.Position.X, input.Position.Y
+
+        -- Skip drag if pressing on button, textbox, or X button
+        if is_point_in_frame(button, x, y)    then return end
+        if is_point_in_frame(pred_box, x, y)  then return end
+        if is_point_in_frame(close_btn, x, y) then return end
+
+        dragging = true
+        drag_start_pos = Vector2.new(x, y)
+        start_panel_pos = panel.Position
+    end
+end)
+
+uis.InputChanged:Connect(function(input)
+    if not dragging then return end
+    if input.UserInputType ~= Enum.UserInputType.Touch
+    and input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+
+    local current = Vector2.new(input.Position.X, input.Position.Y)
+    local delta = current - drag_start_pos
+
+    panel.Position = UDim2.new(
+        start_panel_pos.X.Scale, start_panel_pos.X.Offset + delta.X,
+        start_panel_pos.Y.Scale, start_panel_pos.Y.Offset + delta.Y
+    )
+end)
+
+uis.InputEnded:Connect(function(input)
+    if not dragging then return end
+    if input.UserInputType ~= Enum.UserInputType.Touch
+    and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    dragging = false
+end)
+
+-- ==================== LIVE STATUS ====================
+run_service.RenderStepped:Connect(function()
+    if not enabled then return end
+
+    if not get_equipped_gun() then
+        status_label.Text = "no gun equipped"
+        return
+    end
+
+    local targets = get_valid_targets()
+    if #targets == 0 then
+        status_label.Text = "no targets nearby"
+    else
+        status_label.Text = "shooting " .. #targets .. " target(s)"
+    end
+end)
+
+-- ==================== MAIN LOOP ====================
+run_service.RenderStepped:Connect(kill_aura_tick)
+
+print("[Kill Aura v2] Loaded — tap ✕ to close and disable.")
