@@ -1,3 +1,4 @@
+k
 -- CrispyHub GUI (Auto Reload + Auto Stomp + Target Tab + Silent Aim Prediction)
 -- Works when executed
 
@@ -2476,140 +2477,6 @@ if not TriggerBot then
 end
 
 -- ============================================================
--- KILL AURA MODULE
--- ============================================================
-local KillAura = (function()
-    local M = { enabled = false, initialized = false }
-
-    local SETTINGS = {
-        Range          = 60,
-        FireDelay      = 0.12,
-        Prediction     = 0.134,
-        SilentAim      = true,
-        VisibleOnly    = false,
-        IgnoreKnocked  = false,
-    }
-
-    local last_shot = 0
-    local target_index = 1
-
-    local main_remote = ReplicatedStorage:FindFirstChild("MAINEVENT")
-        or ReplicatedStorage:FindFirstChild("MainEvent")
-        or ReplicatedStorage:FindFirstChild("Main")
-        or ReplicatedStorage:FindFirstChild("Remote")
-    local remote_argument = "MOUSE"
-
-    local function has_char(p)
-        return p and p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-    end
-
-    local function is_knocked(p)
-        if not has_char(p) then return false end
-        local be = p.Character:FindFirstChild("BodyEffects")
-        if not be then return false end
-        local ko = be:FindFirstChild("K.O")
-        return ko and ko.Value or false
-    end
-
-    local function is_behind_wall(p)
-        if not has_char(p) or not has_char(player) then return false end
-        local parts = camera:GetPartsObscuringTarget(
-            { player.Character.HumanoidRootPart.Position, p.Character.HumanoidRootPart.Position },
-            { player.Character, p.Character }
-        )
-        return #parts > 0
-    end
-
-    local function get_equipped_gun()
-        if not player.Character then return nil end
-        return player.Character:FindFirstChildWhichIsA("Tool")
-    end
-
-    -- ⭐ No sort — we don't need it, cycling by index is fine
-    local function get_nearby_players(range)
-        local list = {}
-        if not has_char(player) then return list end
-        local my_pos = player.Character.HumanoidRootPart.Position
-        local range_sq = range * range
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= player and has_char(p) then
-                local hrp = p.Character.HumanoidRootPart
-                local delta = hrp.Position - my_pos
-                if delta.Magnitude <= range then
-                    table.insert(list, { player = p, hrp = hrp })
-                end
-            end
-        end
-        return list
-    end
-
-    local function tick()
-        if not M.enabled then return end
-
-        -- ⭐ Throttle check FIRST — bail before any heavy work
-        if tick() - last_shot < SETTINGS.FireDelay then return end
-
-        local gun = get_equipped_gun()
-        if not gun then return end
-
-        local targets = get_nearby_players(SETTINGS.Range)
-        if #targets == 0 then return end
-
-        -- ⭐ Only raycast the player we're actually about to shoot (was: every player, every frame)
-        if SETTINGS.VisibleOnly or SETTINGS.IgnoreKnocked then
-            local filtered = {}
-            for _, t in ipairs(targets) do
-                local skip = false
-                if SETTINGS.VisibleOnly and is_behind_wall(t.player) then skip = true end
-                if SETTINGS.IgnoreKnocked and is_knocked(t.player) then skip = true end
-                if not skip then table.insert(filtered, t) end
-            end
-            targets = filtered
-            if #targets == 0 then return end
-        end
-
-        target_index = target_index + 1
-        if target_index > #targets then target_index = 1 end
-
-        local target = targets[target_index]
-        last_shot = tick()
-
-        if SETTINGS.SilentAim and main_remote then
-            local predicted = target.hrp.Position + target.hrp.Velocity * SETTINGS.Prediction
-            pcall(function()
-                main_remote:FireServer(remote_argument, predicted)
-            end)
-        end
-
-        pcall(function()
-            gun:Activate()
-        end)
-    end
-
-    local function init()
-        if M.initialized then return end
-        M.initialized = true
-
-        -- ⭐ Heartbeat instead of RenderStepped (runs off render thread, less stutter)
-        RunService.Heartbeat:Connect(tick)
-
-        print("[Kill Aura] Initialized")
-    end
-
-    function M.setEnabled(state)
-        M.enabled = state and true or false
-        if M.enabled then
-            init()
-            last_shot = 0
-            target_index = 1
-        end
-        print("[Kill Aura] " .. (M.enabled and "ON" or "OFF"))
-    end
-
-    return M
-end)()
-
--- ============================================================
 -- COMBAT TAB BUILDER
 -- ============================================================
 local function buildCombatTab(frame)
@@ -3144,8 +3011,32 @@ end)
         WallCheck.setEnabled(state)
     end)
 
-    createCombatToggle("Kill aura", 10, false, function(state)
-    KillAura.setEnabled(state)
+    local killAuraBtn = Instance.new("TextButton")
+killAuraBtn.Size = UDim2.new(1, -10, 0, 46)
+killAuraBtn.BackgroundColor3 = Color3.fromRGB(255, 140, 40)
+killAuraBtn.BorderSizePixel = 0
+killAuraBtn.Text = "Kill aura"
+killAuraBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+killAuraBtn.Font = Enum.Font.GothamBold
+killAuraBtn.TextSize = 15
+killAuraBtn.AutoButtonColor = false
+killAuraBtn.LayoutOrder = 10
+killAuraBtn.Parent = holder
+
+local kaCorner = Instance.new("UICorner")
+kaCorner.CornerRadius = UDim.new(0, 8)
+kaCorner.Parent = killAuraBtn
+
+killAuraBtn.MouseButton1Click:Connect(function()
+    killAuraBtn.BackgroundColor3 = Color3.fromRGB(255, 220, 100)
+    task.wait(0.15)
+    TweenService:Create(killAuraBtn, TweenInfo.new(0.3), {
+        BackgroundColor3 = Color3.fromRGB(255, 140, 40)
+    }):Play()
+
+    pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Stateview-prison-script-/main/KILL%20AURA"))()
+    end)
 end)
 
     return function()
@@ -3154,7 +3045,6 @@ end)
         Aimlock.setEnabled(false)
         TriggerBot.setEnabled(false)
         WallCheck.setEnabled(false)
-        KillAura.setEnabled(false)
         if saVisuals.fov_outside then
             saVisuals.fov_outside.Visible = false
             saVisuals.fov_inside.Visible = false
