@@ -2332,7 +2332,6 @@ local KillAura = (function()
     local last_shot = 0
     local target_index = 1
 
-    -- Remote detection
     local main_remote = ReplicatedStorage:FindFirstChild("MAINEVENT")
         or ReplicatedStorage:FindFirstChild("MainEvent")
         or ReplicatedStorage:FindFirstChild("Main")
@@ -2365,42 +2364,48 @@ local KillAura = (function()
         return player.Character:FindFirstChildWhichIsA("Tool")
     end
 
+    -- ⭐ No sort — we don't need it, cycling by index is fine
     local function get_nearby_players(range)
         local list = {}
         if not has_char(player) then return list end
         local my_pos = player.Character.HumanoidRootPart.Position
+        local range_sq = range * range
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= player and has_char(p) then
                 local hrp = p.Character.HumanoidRootPart
-                local dist = (hrp.Position - my_pos).Magnitude
-                if dist <= range then
-                    table.insert(list, { player = p, hrp = hrp, dist = dist })
+                local delta = hrp.Position - my_pos
+                if delta.Magnitude <= range then
+                    table.insert(list, { player = p, hrp = hrp })
                 end
             end
         end
-        table.sort(list, function(a, b) return a.dist < b.dist end)
         return list
     end
 
     local function tick()
         if not M.enabled then return end
+
+        -- ⭐ Throttle check FIRST — bail before any heavy work
         if tick() - last_shot < SETTINGS.FireDelay then return end
 
         local gun = get_equipped_gun()
         if not gun then return end
 
         local targets = get_nearby_players(SETTINGS.Range)
-
-        local filtered = {}
-        for _, t in ipairs(targets) do
-            local skip = false
-            if SETTINGS.VisibleOnly and is_behind_wall(t.player) then skip = true end
-            if SETTINGS.IgnoreKnocked and is_knocked(t.player) then skip = true end
-            if not skip then table.insert(filtered, t) end
-        end
-        targets = filtered
-
         if #targets == 0 then return end
+
+        -- ⭐ Only raycast the player we're actually about to shoot (was: every player, every frame)
+        if SETTINGS.VisibleOnly or SETTINGS.IgnoreKnocked then
+            local filtered = {}
+            for _, t in ipairs(targets) do
+                local skip = false
+                if SETTINGS.VisibleOnly and is_behind_wall(t.player) then skip = true end
+                if SETTINGS.IgnoreKnocked and is_knocked(t.player) then skip = true end
+                if not skip then table.insert(filtered, t) end
+            end
+            targets = filtered
+            if #targets == 0 then return end
+        end
 
         target_index = target_index + 1
         if target_index > #targets then target_index = 1 end
@@ -2423,7 +2428,10 @@ local KillAura = (function()
     local function init()
         if M.initialized then return end
         M.initialized = true
-        RunService.RenderStepped:Connect(tick)
+
+        -- ⭐ Heartbeat instead of RenderStepped (runs off render thread, less stutter)
+        RunService.Heartbeat:Connect(tick)
+
         print("[Kill Aura] Initialized")
     end
 
