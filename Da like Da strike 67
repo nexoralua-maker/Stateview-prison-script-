@@ -3145,8 +3145,40 @@ end)
         WallCheck.setEnabled(state)
     end)
 
-    createCombatToggle("Kill aura", 10, false, function(state)
-    KillAura.setEnabled(state)
+    -- ============================================================
+-- KILL AURA (normal button — loads external script)
+-- ============================================================
+local killAuraBtn = Instance.new("TextButton")
+killAuraBtn.Size = UDim2.new(1, -10, 0, 46)
+killAuraBtn.BackgroundColor3 = Color3.fromRGB(255, 140, 40)
+killAuraBtn.BorderSizePixel = 0
+killAuraBtn.Text = "Kill aura"
+killAuraBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+killAuraBtn.Font = Enum.Font.GothamBold
+killAuraBtn.TextSize = 15
+killAuraBtn.AutoButtonColor = false
+killAuraBtn.LayoutOrder = 10
+killAuraBtn.Parent = holder
+
+local kaCorner = Instance.new("UICorner")
+kaCorner.CornerRadius = UDim.new(0, 8)
+kaCorner.Parent = killAuraBtn
+
+killAuraBtn.MouseButton1Click:Connect(function()
+    -- Flash feedback (same style as your other buttons)
+    killAuraBtn.BackgroundColor3 = Color3.fromRGB(255, 220, 100)
+    task.wait(0.15)
+    TweenService:Create(killAuraBtn, TweenInfo.new(0.3), {
+        BackgroundColor3 = Color3.fromRGB(255, 140, 40)
+    }):Play()
+
+    -- Load external Kill Aura script
+    local ok, err = pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Stateview-prison-script-/main/KILL%20AURA"))()
+    end)
+    if not ok then
+        warn("[Kill Aura] Failed to load: " .. tostring(err))
+    end
 end)
 
     return function()
@@ -3155,7 +3187,6 @@ end)
         Aimlock.setEnabled(false)
         TriggerBot.setEnabled(false)
         WallCheck.setEnabled(false)
-        KillAura.setEnabled(false)
         if saVisuals.fov_outside then
             saVisuals.fov_outside.Visible = false
             saVisuals.fov_inside.Visible = false
