@@ -218,7 +218,7 @@ local mainTabBtn = Instance.new("TextButton")
 mainTabBtn.Size = UDim2.new(0, 130, 0, 38)
 mainTabBtn.Position = UDim2.new(0, 10, 0, 15)
 mainTabBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-mainTabBtn.Text = "   Main"
+mainTabBtn.Text = "" -- No default text, we use custom icon + label
 mainTabBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
 mainTabBtn.Font = Enum.Font.GothamBold
 mainTabBtn.TextSize = 15
@@ -227,16 +227,35 @@ mainTabBtn.ZIndex = 3
 mainTabBtn.Parent = leftPanel
 
 applyGradient(mainTabBtn)
+
 local tabCorner = Instance.new("UICorner")
 tabCorner.CornerRadius = UDim.new(0, 6)
 tabCorner.Parent = mainTabBtn
 
-local tabIcon = Instance.new("Frame")
-tabIcon.Size = UDim2.new(0, 16, 0, 16)
-tabIcon.Position = UDim2.new(0, 15, 0.5, -8)
-tabIcon.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-tabIcon.ZIndex = 4
-tabIcon.Parent = mainTabBtn
+-- House / Home Logo
+local homeIcon = Instance.new("ImageLabel")
+homeIcon.Name = "HomeIcon"
+homeIcon.Size = UDim2.new(0, 20, 0, 20)
+homeIcon.Position = UDim2.new(0, 12, 0.5, -10)
+homeIcon.BackgroundTransparency = 1
+homeIcon.Image = "rbxassetid://6031075931" -- House icon
+homeIcon.ImageColor3 = Color3.fromRGB(20, 20, 20) -- Dark icon to match tab
+homeIcon.ZIndex = 4
+homeIcon.Parent = mainTabBtn
+
+-- "Main" Text
+local mainLabel = Instance.new("TextLabel")
+mainLabel.Name = "MainLabel"
+mainLabel.Size = UDim2.new(1, -45, 1, 0)
+mainLabel.Position = UDim2.new(0, 40, 0, 0)
+mainLabel.BackgroundTransparency = 1
+mainLabel.Text = "Main"
+mainLabel.TextColor3 = Color3.fromRGB(20, 20, 20)
+mainLabel.Font = Enum.Font.GothamBold
+mainLabel.TextSize = 15
+mainLabel.TextXAlignment = Enum.TextXAlignment.Left
+mainLabel.ZIndex = 4
+mainLabel.Parent = mainTabBtn
 
 local iconCorner = Instance.new("UICorner")
 iconCorner.CornerRadius = UDim.new(1, 0)
