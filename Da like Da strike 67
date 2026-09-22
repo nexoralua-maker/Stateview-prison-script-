@@ -3899,7 +3899,7 @@ local function buildMovementTab(frame)
     local jpLoopTask = nil
 
     -- ⭐ Continuous loop that overrides game's server JumpPower reset
-    JumpPower reset
+local function jpStartLoop()
     local function jpStartLoop()
         if jpLoopTask then return end
         jpLoopTask = task.spawn(function()
