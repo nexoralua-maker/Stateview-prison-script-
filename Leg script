@@ -1,9 +1,9 @@
 --//==========================================================
---// LEGION GRABS GUI  —  Full Rewrite
+--// LEGION GRABS GUI — Full Rewrite
 --// - Tool-based grabs (toggle in GUI -> equip from backpack -> click)
 --// - Core "Grab Function Tool" that actually grips the victim
---// - Make Player Stand: clone faces player's look direction
---// - Chat Bypass / Send Message (TextChatService + Legacy chat)
+--// - Make Player Stand: Clone behind player, facing same way
+--// - M.Chat uses TextChatService (with legacy fallback)
 --// - Respawn-safe (grab rehooks, tools recreated)
 --//==========================================================
 
@@ -201,10 +201,40 @@ function M.StopAudio()
     pcall(function() RS:WaitForChild("MainEvent"):FireServer("BoomboxStop") end)
 end
 
+--==========================================================
+-- NEW CHAT FUNCTION (uses TextChatService, legacy fallback)
+--==========================================================
 function M.Chat(msg)
+    if msg == nil or msg == "" or msg:gsub("%s", "") == "" then
+        return false
+    end
+
+    local success = false
+
+    -- 1) Modern TextChatService
     pcall(function()
-        RS.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(msg, "All")
+        local channels = TextChatService:FindFirstChild("TextChannels")
+        if channels then
+            local general = channels:FindFirstChild("RBXGeneral")
+            if general then
+                general:SendAsync(msg)
+                success = true
+            end
+        end
     end)
+
+    -- 2) Legacy chat fallback (older games)
+    if not success then
+        pcall(function()
+            local legacy = RS:FindFirstChild("DefaultChatSystemChatEvents")
+            if legacy and legacy:FindFirstChild("SayMessageRequest") then
+                legacy.SayMessageRequest:FireServer(msg, "All")
+                success = true
+            end
+        end)
+    end
+
+    return success
 end
 
 function M.FwdPos(dist)
@@ -455,7 +485,7 @@ T["Made In Heaven"] = function()
 end
 
 T["Chezburger"] = function()
-    if Settings.Grab["Chezburger"] then
+     if Settings.Grab["Chezburger"] then
         M.CreateTool("Mmm.. chezburger", function()
             if not Settings.Grab.GrabbedCharacter then return end
             M.Play("6647570"); M.Chat("Can i haz chezburger ples?")
@@ -532,6 +562,9 @@ T["Get Over Here"] = function()
     end
 end
 
+--==========================================================
+-- MAKE PLAYER STAND  — Clone goes BEHIND the player
+--==========================================================
 T["Make Player Stand"] = function()
     if Settings.Grab["Make Player Stand"] then
         M.CreateTool("Make Player Stand", function()
@@ -560,9 +593,10 @@ T["Make Player Stand"] = function()
                 M.NoVelocity(Clone)
                 M.NoVelocity(Settings.Grab.GrabbedCharacter)
 
-                -- Face the player's look direction, offset 3 studs forward / 1 stud right / random height
+                -- BEHIND the player: +Z is backward.
+                -- Offset: -1 X (right side), random Y (up), +3 Z (behind player)
                 local rp = LP.Character.HumanoidRootPart
-                Clone.HumanoidRootPart.CFrame = rp.CFrame * CFrame.new(-1, math.random(3,4.2), -3)
+                Clone.HumanoidRootPart.CFrame = rp.CFrame * CFrame.new(-1, math.random(3,4.2), 3)
             end)
             M.AnimPlay(Clone, 3541114300)
         end)
@@ -736,8 +770,8 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = CoreGui
 
 local main = Instance.new("Frame", gui)
-main.Size = UDim2.new(0, 640, 0, 520)
-main.Position = UDim2.new(.5, -320, .5, -260)
+main.Size = UDim2.new(0, 640, 0, 480)
+main.Position = UDim2.new(.5, -320, .5, -240)
 main.BackgroundColor3 = Color3.fromRGB(15,15,15)
 main.BorderSizePixel = 0
 main.Active = true
@@ -797,51 +831,28 @@ iTitle.TextColor3 = Color3.fromRGB(220,220,220); iTitle.TextSize = 12
 iTitle.Font = Enum.Font.GothamMedium; iTitle.TextXAlignment = Enum.TextXAlignment.Left
 
 local iDesc = Instance.new("TextLabel", info)
-iDesc.Size = UDim2.new(1, -20, 0, 70); iDesc.Position = UDim2.new(0, 10, 0, 40)
+iDesc.Size = UDim2.new(1, -20, 0, 200); iDesc.Position = UDim2.new(0, 10, 0, 45)
 iDesc.BackgroundTransparency = 1
-iDesc.Text = "Step 1 — Turn ON Grab Function Tool below.\nStep 2 — Turn ON any grab tool in the list.\nStep 3 — Equip it from your hotbar and click.\n\nTip: Crouch + CTRL+G on a torso to grab."
+iDesc.Text = "Step 1 — Turn ON Grab Function Tool below.\n"..
+             "Step 2 — Turn ON any grab tool in the list.\n"..
+             "Step 3 — Equip it from your hotbar and click.\n\n"..
+             "Tip: Crouch + CTRL+G on a torso to grab.\n\n"..
+             "Tools added to the Backpack:\n"..
+             " • Time Stop\n"..
+             " • Hado 90\n"..
+             " • C Moon\n"..
+             " • Made In Heaven\n"..
+             " • Chezburger\n"..
+             " • Orbit\n"..
+             " • Get Over Here\n"..
+             " • Make Player Stand\n"..
+             " • Punch Back\n"..
+             " • Domain Expansion\n"..
+             " • Portal\n"..
+             " • Whirlwind Kick\n"
 iDesc.TextColor3 = Color3.fromRGB(150,150,150); iDesc.TextSize = 11
 iDesc.Font = Enum.Font.Gotham; iDesc.TextXAlignment = Enum.TextXAlignment.Left
 iDesc.TextYAlignment = Enum.TextYAlignment.Top; iDesc.TextWrapped = true
-
--- Chat Section
-local chatTitle = Instance.new("TextLabel", info)
-chatTitle.Size = UDim2.new(1, -20, 0, 18); chatTitle.Position = UDim2.new(0, 10, 0, 115)
-chatTitle.BackgroundTransparency = 1; chatTitle.Text = "Chat Bypass / Send Message:"
-chatTitle.TextColor3 = Color3.fromRGB(220,220,220); chatTitle.TextSize = 12
-chatTitle.Font = Enum.Font.GothamBold; chatTitle.TextXAlignment = Enum.TextXAlignment.Left
-
-local displayBox = Instance.new("ScrollingFrame", info)
-displayBox.Size = UDim2.new(1, -20, 0, 100); displayBox.Position = UDim2.new(0, 10, 0, 138)
-displayBox.BackgroundColor3 = Color3.fromRGB(28,28,28); displayBox.BorderSizePixel = 0
-displayBox.ScrollBarThickness = 2; displayBox.ScrollBarImageColor3 = Color3.fromRGB(60,60,60)
-displayBox.CanvasSize = UDim2.new(0, 0, 0, 0)
-displayBox.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Instance.new("UICorner", displayBox).CornerRadius = UDim.new(0,6)
-
-local displayText = Instance.new("TextLabel", displayBox)
-displayText.Size = UDim2.new(1, -10, 0, 0); displayText.Position = UDim2.new(0, 5, 0, 0)
-displayText.BackgroundTransparency = 1; displayText.Text = ""
-displayText.TextColor3 = Color3.fromRGB(200,200,200); displayText.TextSize = 11
-displayText.Font = Enum.Font.Code; displayText.TextXAlignment = Enum.TextXAlignment.Left
-displayText.TextYAlignment = Enum.TextYAlignment.Top; displayText.TextWrapped = true
-displayText.AutomaticSize = Enum.AutomaticSize.Y
-
-local inputBox = Instance.new("TextBox", info)
-inputBox.Size = UDim2.new(1, -80, 0, 32); inputBox.Position = UDim2.new(0, 10, 0, 246)
-inputBox.BackgroundColor3 = Color3.fromRGB(28,28,28); inputBox.BorderSizePixel = 0
-inputBox.PlaceholderText = "Type a message..."; inputBox.Text = ""
-inputBox.TextColor3 = Color3.fromRGB(220,220,220); inputBox.TextSize = 12
-inputBox.Font = Enum.Font.Gotham; inputBox.TextXAlignment = Enum.TextXAlignment.Left
-Instance.new("UICorner", inputBox).CornerRadius = UDim.new(0,6)
-local ip = Instance.new("UIPadding", inputBox); ip.PaddingLeft = UDim.new(0, 10)
-
-local sendBtn = Instance.new("TextButton", info)
-sendBtn.Size = UDim2.new(0, 60, 0, 32); sendBtn.Position = UDim2.new(1, -70, 0, 246)
-sendBtn.BackgroundColor3 = Color3.fromRGB(45,45,45); sendBtn.BorderSizePixel = 0
-sendBtn.Text = "Send"; sendBtn.TextColor3 = Color3.fromRGB(220,220,220)
-sendBtn.TextSize = 12; sendBtn.Font = Enum.Font.GothamBold; sendBtn.AutoButtonColor = false
-Instance.new("UICorner", sendBtn).CornerRadius = UDim.new(0,6)
 
 -- Core toggles
 local grabBtn = Instance.new("TextButton", info)
@@ -920,63 +931,6 @@ local order = {
     "Portal","Whirlwind Kick",
 }
 for i, name in ipairs(order) do makeToggle(name, i) end
-
---==========================================================
--- CHAT FUNCTIONS
---==========================================================
-local function appendDisplay(text)
-    if displayText.Text == "" then
-        displayText.Text = text
-    else
-        displayText.Text = displayText.Text .. "\n" .. text
-    end
-    -- Auto-scroll to bottom
-    task.defer(function()
-        displayBox.CanvasPosition = Vector2.new(0, displayBox.AbsoluteCanvasSize.Y)
-    end)
-end
-
-local function sendMessage()
-    local msg = inputBox.Text
-    if msg == nil or msg:gsub("%s", "") == "" then return end
-
-    local sent = false
-
-    -- 1. Try modern TextChatService
-    pcall(function()
-        local channels = TextChatService:FindFirstChild("TextChannels")
-        if channels then
-            local general = channels:FindFirstChild("RBXGeneral")
-            if general then
-                general:SendAsync(msg)
-                sent = true
-            end
-        end
-    end)
-
-    -- 2. Fallback to legacy chat
-    if not sent then
-        pcall(function()
-            local legacy = RS:FindFirstChild("DefaultChatSystemChatEvents")
-            if legacy and legacy:FindFirstChild("SayMessageRequest") then
-                legacy.SayMessageRequest:FireServer(msg, "All")
-                sent = true
-            end
-        end)
-    end
-
-    if sent then
-        appendDisplay("[You] " .. msg)
-        inputBox.Text = ""
-    else
-        appendDisplay("[Error] Could not send message.")
-    end
-end
-
-sendBtn.MouseButton1Click:Connect(sendMessage)
-inputBox.FocusLost:Connect(function(enterPressed)
-    if enterPressed then sendMessage() end
-end)
 
 --==========================================================
 -- CORE "Grab Function Tool"
@@ -1059,4 +1013,4 @@ RunService.Heartbeat:Connect(function()
     if LP.Character then M.StopAnim(LP.Character, "4798175381") end
 end)
 
-print("[Legion] Grab GUI loaded — 12 grab tools + core Grab Function Tool + Chat Bypass.")
+print("[Legion] Grab GUI loaded — 12 grab tools + core Grab Function Tool.")
