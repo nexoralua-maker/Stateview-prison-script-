@@ -1,109 +1,72 @@
---// Legion Grabs GUI – Toggle Button Layout
---// All grabs preserved from original file
+--//==========================================================
+--// LEGION GRABS GUI  —  Tool-based grabs + toggle layout
+--//==========================================================
+local CoreGui   = game:GetService("CoreGui")
+local Players   = game:GetService("Players")
+local RunService= game:GetService("RunService")
+local TweenSvc  = game:GetService("TweenService")
+local UIS       = game:GetService("UserInputService")
+local RS        = game:GetService("ReplicatedStorage")
+local WS        = game:GetService("Workspace")
+local Lighting  = game:GetService("Lighting")
+local LP        = Players.LocalPlayer
+local Sound     = Instance.new("Sound", RS)
 
-local CoreGui = game:GetService("CoreGui")
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
-local Lighting = game:GetService("Lighting")
-local LP = Players.LocalPlayer
-
-local Sound = Instance.new("Sound", ReplicatedStorage)
-
---============================================================
+--==========================================================
 -- CACHE / SETTINGS
---============================================================
+--==========================================================
 local Cache = {
     Tools = {},
-    Loops = {
-        Grab = nil, Orbit = nil, Ora = nil, Portal = nil,
-        Make_Player_Stand = nil, InvisDesync = nil,
-    },
-    Connections = { Grab = nil, Clone = nil, Yes = nil },
+    Loops = { Grab=nil, Orbit=nil, Ora=nil, Portal=nil, MakeStand=nil, Invis=nil },
+    Connections = { Grab=nil, Clone=nil, Yes=nil },
 }
 
 local Settings = {
     Grab = {
-        Grab = false,
-        Effects = true,
-        GrabbedCharacter = nil,
-        ["Time Stop"] = false,
-        ["Hado 90"] = false,
-        ["C Moon"] = false,
-        ["Made In Heaven"] = false,
-        ["Chezburger"] = false,
-        ["Orbit"] = false,
-        ["Get Over Here"] = false,
-        ["Make Player Stand"] = false,
-        ["Punch Back"] = false,
-        ["Domain Expansion"] = false,
-        ["Portal"] = false,
-        ["Whirlwind Kick"] = false,
+        Grab = false, Effects = true, GrabbedCharacter = nil,
+        ["Time Stop"]=false, ["Hado 90"]=false, ["C Moon"]=false,
+        ["Made In Heaven"]=false, ["Chezburger"]=false, ["Orbit"]=false,
+        ["Get Over Here"]=false, ["Make Player Stand"]=false,
+        ["Punch Back"]=false, ["Domain Expansion"]=false,
+        ["Portal"]=false, ["Whirlwind Kick"]=false,
     },
 }
 
-local Animations = {
-    Grab        = "3135389157",
-    Punch       = "3354696735",
-    Elevate     = "11394033602",
-    ["Get Over Here"] = "16768625968",
-    ["Ora1"]    = "8254787838",
-    ["Ora2"]    = "8254794168",
-    ["Punch back"] = "17360699557",
-    ["Time Stop Charging"] = "10714177846",
-}
+--==========================================================
+-- MODULES (all helpers used by the grabs)
+--==========================================================
+local M = {}
 
-local Sounds = {
-    Rip = "429400881", Ora = "6889746326",
-    Punch = "3280066384", LoudPunch = "2319521125",
-    TimeStop = "5455437798", TimeResume = "3084539117",
-    Countdown = "6675055864", Muda = "6889746326",
-    Zero = "7099835652", WhenTimeStopped = "6964764259",
-}
-
---============================================================
--- MODULES (core helpers used by every grab)
---============================================================
-local Modules = {}
-
-function Modules.Grab(character, grabAnimation)
+function M.Grab(character, grabAnimId)
     assert(character, "Character is nil")
     Settings.Grab.GrabbedCharacter = character
-
     if Cache.Loops.Grab then Cache.Loops.Grab:Disconnect() end
 
-    for _, part in ipairs(character:GetDescendants()) do
-        if part:IsA("BodyVelocity") or part:IsA("BodyGyro") or part:IsA("BodyPosition") then
-            part:Destroy()
+    for _, p in ipairs(character:GetDescendants()) do
+        if p:IsA("BodyVelocity") or p:IsA("BodyGyro") or p:IsA("BodyPosition") then
+            p:Destroy()
         end
     end
 
-    for _, anim in ipairs(LP.Character:FindFirstChildOfClass("Humanoid"):GetPlayingAnimationTracks()) do
-        if anim.Animation.AnimationId:match("11075367458") then anim:Stop() end
+    for _, a in ipairs(LP.Character.Humanoid:GetPlayingAnimationTracks()) do
+        if a.Animation.AnimationId:match("11075367458") then a:Stop() end
     end
 
     repeat task.wait() until character:FindFirstChild("GRABBING_CONSTRAINT")
-    if not character:FindFirstChild("GRABBING_CONSTRAINT"):FindFirstChild("H") then return end
+    if not character.GRABBING_CONSTRAINT:FindFirstChild("H") then return end
 
-    local BodyPosition = Instance.new("BodyPosition", character.UpperTorso)
-    local BodyGyro     = Instance.new("BodyGyro", character.UpperTorso)
-    local GrabAnim     = LP.Character.Humanoid:LoadAnimation(
-        Instance.new("Animation").AnimationId == nil and
-        (function() local a = Instance.new("Animation"); a.AnimationId = "rbxassetid://"..grabAnimation; return a end)() or nil
-    )
+    local BP = Instance.new("BodyPosition", character.UpperTorso)
+    local BG = Instance.new("BodyGyro",     character.UpperTorso)
+    local anim = Instance.new("Animation")
+    anim.AnimationId = "rbxassetid://"..grabAnimId
+    local GrabAnim = LP.Character.Humanoid:LoadAnimation(anim)
 
-    BodyPosition.D, BodyGyro.D = 200, 100
-    BodyPosition.MaxForce = Vector3.new(10000,10000,10000)
-    BodyGyro.MaxTorque    = Vector3.new(10000,10000,10000)
+    BP.D, BG.D = 200, 100
+    BP.MaxForce  = Vector3.new(10000,10000,10000)
+    BG.MaxTorque = Vector3.new(10000,10000,10000)
 
-    local Position    = LP.Character.RightHand.Position - Vector3.new(0,1,0)
-    local Orientation = CFrame.new(character.UpperTorso.Position, LP.Character.HumanoidRootPart.Position)
-    BodyGyro.CFrame   = Orientation
-    BodyPosition.Position = Position
-
+    BG.CFrame       = CFrame.new(character.UpperTorso.Position, LP.Character.HumanoidRootPart.Position)
+    BP.Position     = LP.Character.RightHand.Position - Vector3.new(0,1,0)
     character.GRABBING_CONSTRAINT.H.Length = 9e9
 
     GrabAnim.Priority = Enum.AnimationPriority.Action4
@@ -111,20 +74,19 @@ function Modules.Grab(character, grabAnimation)
 
     Cache.Loops.Grab = RunService.Heartbeat:Connect(function()
         if Settings.Grab.GrabbedCharacter and LP.Character
-           and LP.Character:FindFirstChild("BodyEffects")
-           and LP.Character.BodyEffects.Grabbed.Value ~= nil
-           and Settings.Grab.Grab then
-            BodyGyro.CFrame = CFrame.new(character.UpperTorso.Position, LP.Character.HumanoidRootPart.Position)
-            BodyPosition.Position = LP.Character.RightHand.Position - Vector3.new(0,1,0)
+        and LP.Character:FindFirstChild("BodyEffects")
+        and LP.Character.BodyEffects.Grabbed.Value ~= nil
+        and Settings.Grab.Grab then
+            BG.CFrame   = CFrame.new(character.UpperTorso.Position, LP.Character.HumanoidRootPart.Position)
+            BP.Position = LP.Character.RightHand.Position - Vector3.new(0,1,0)
         end
     end)
 end
 
-function Modules.CreateTool(name, func)
+function M.CreateTool(name, func)
     local Tool = Instance.new("Tool", LP.Backpack)
     Tool.Name = name
     Tool.RequiresHandle = false
-
     Cache.Tools[name] = Tool.Activated:Connect(function()
         if Settings.Grab.GrabbedCharacter == nil then return end
         func()
@@ -132,48 +94,44 @@ function Modules.CreateTool(name, func)
     return Tool
 end
 
-function Modules.DestroyTool(name)
-    local Tool = LP.Backpack:FindFirstChild(name) or LP.Character:FindFirstChild(name)
-    if Tool then Tool:Destroy() end
+function M.DestroyTool(name)
+    local t = LP.Backpack:FindFirstChild(name) or LP.Character:FindFirstChild(name)
+    if t then t:Destroy() end
     if Cache.Tools[name] then Cache.Tools[name]:Disconnect(); Cache.Tools[name] = nil end
 end
 
-function Modules.StopAnimation(character, id)
+function M.StopAnim(chr, id)
     pcall(function()
-        for _, anim in ipairs(character:FindFirstChildOfClass("Humanoid"):GetPlayingAnimationTracks()) do
-            if anim.Animation.AnimationId:match("rbxassetid://"..tostring(id)) then anim:Stop() end
+        for _, a in ipairs(chr:FindFirstChildOfClass("Humanoid"):GetPlayingAnimationTracks()) do
+            if a.Animation.AnimationId:match("rbxassetid://"..tostring(id)) then a:Stop() end
         end
     end)
 end
 
-function Modules.AnimPlay(character, id, speed, time, smoothing)
+function M.AnimPlay(chr, id, speed, time, smoothing)
     pcall(function()
-        for _, anim in ipairs(character:FindFirstChildOfClass("Humanoid"):GetPlayingAnimationTracks()) do
-            if anim.Animation.AnimationId:match("rbxassetid://"..tostring(id)) then anim:Stop() end
+        for _, a in ipairs(chr:FindFirstChildOfClass("Humanoid"):GetPlayingAnimationTracks()) do
+            if a.Animation.AnimationId:match("rbxassetid://"..tostring(id)) then a:Stop() end
         end
-        local a = Instance.new("Animation")
-        a.AnimationId = "rbxassetid://"..tostring(id)
-        local loaded = character:FindFirstChildOfClass("Humanoid"):LoadAnimation(a)
+        local anim = Instance.new("Animation")
+        anim.AnimationId = "rbxassetid://"..tostring(id)
+        local loaded = chr:FindFirstChildOfClass("Humanoid"):LoadAnimation(anim)
         loaded.Priority = Enum.AnimationPriority.Action4
         if smoothing then loaded:Play(tonumber(smoothing)) else loaded:Play() end
         if speed then loaded:AdjustSpeed(tonumber(speed)) end
         if time  then loaded.TimePosition = tonumber(time) end
-        a:Destroy()
+        anim:Destroy()
     end)
 end
 
-function Modules.LoadAnimation(character, anim)
-    return character:FindFirstChildOfClass("Humanoid"):LoadAnimation(anim)
-end
-
-function Modules.CreateAnimation(id)
+function M.NewAnim(id)
     local a = Instance.new("Animation")
     a.AnimationId = "rbxassetid://"..id
     return a
 end
 
-function Modules.NoVelocity(player)
-    for _, p in ipairs(player:GetChildren()) do
+function M.NoVelocity(chr)
+    for _, p in ipairs(chr:GetChildren()) do
         if p:IsA("BasePart") then
             p.AssemblyLinearVelocity  = Vector3.zero
             p.AssemblyAngularVelocity = Vector3.zero
@@ -182,726 +140,616 @@ function Modules.NoVelocity(player)
     end
 end
 
-function Modules.CanCollide(player, value)
-    for _, p in ipairs(player:GetChildren()) do
-        if p:IsA("BasePart") then p.CanCollide = value end
+function M.CanCollide(chr, v)
+    for _, p in ipairs(chr:GetChildren()) do
+        if p:IsA("BasePart") then p.CanCollide = v end
     end
 end
 
-function Modules.Remove(path, bodypart)
-    if bodypart == "all" then
-        path.LeftUpperLeg.Position  = Vector3.new(0,-1200,0)
-        path.RightUpperLeg.Position = Vector3.new(0,-1200,0)
-        path.LeftUpperArm.Position  = Vector3.new(0,-1200,0)
-        path.RightUpperArm.Position = Vector3.new(0,-1200,0)
+function M.Remove(chr, part)
+    if part == "all" then
+        chr.LeftUpperLeg.Position  = Vector3.new(0,-1200,0)
+        chr.RightUpperLeg.Position = Vector3.new(0,-1200,0)
+        chr.LeftUpperArm.Position  = Vector3.new(0,-1200,0)
+        chr.RightUpperArm.Position = Vector3.new(0,-1200,0)
     else
-        path[bodypart].Position = Vector3.new(0,-1200,0)
+        chr[part].Position = Vector3.new(0,-1200,0)
     end
 end
 
-function Modules.Play(Id)
-    Id = tostring(Id)
-    local success = pcall(function()
-        if LP.Backpack:FindFirstChild("[Boombox]") then
+function M.Play(id)
+    id = tostring(id)
+    local used = false
+    if LP.Backpack:FindFirstChild("[Boombox]") then
+        pcall(function()
             LP.Backpack["[Boombox]"].Parent = LP.Character
-            ReplicatedStorage.MainEvent:FireServer("Boombox", tonumber(Id))
+            RS.MainEvent:FireServer("Boombox", tonumber(id))
             LP.Character["[Boombox]"].RequiresHandle = false
             LP.Character["[Boombox]"].Parent = LP.Backpack
             LP.PlayerGui.MainScreenGui.BoomboxFrame.Visible = false
-            LP.Character.LowerTorso:WaitForChild("BOOMBOXSOUND")
-        end
-    end)
-    if not success or not LP.Backpack:FindFirstChild("[Boombox]") then
-        Sound.SoundId = "rbxassetid://"..Id
+        end)
+        used = true
+    end
+    if not used then
+        Sound.SoundId = "rbxassetid://"..id
         Sound:Play()
     end
 end
 
-function Modules.StopAudio()
+function M.StopAudio()
     Sound:Stop()
-    pcall(function() ReplicatedStorage:WaitForChild("MainEvent"):FireServer("BoomboxStop") end)
+    pcall(function() RS:WaitForChild("MainEvent"):FireServer("BoomboxStop") end)
 end
 
-function Modules.Chat(msg)
+function M.Chat(msg)
     pcall(function()
-        ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(msg, "All")
+        RS.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(msg, "All")
     end)
 end
 
-function Modules.GetForwardPosition(distance)
-    return LP.Character.HumanoidRootPart.Position + (LP.Character.HumanoidRootPart.CFrame.LookVector * distance)
+function M.FwdPos(dist)
+    return LP.Character.HumanoidRootPart.Position
+         + LP.Character.HumanoidRootPart.CFrame.LookVector * dist
 end
 
-function Modules.TweenPosition(Part, Speed, Position)
-    TweenService:Create(Part, TweenInfo.new(Speed, Enum.EasingStyle.Linear), {Position = Position}):Play()
+function M.TweenPos(part, speed, pos)
+    TweenSvc:Create(part, TweenInfo.new(speed, Enum.EasingStyle.Linear), {Position = pos}):Play()
 end
 
-function Modules.Void(character, part, drop)
-    local BodyVelocity = Instance.new("BodyVelocity")
-    BodyVelocity.MaxForce = Vector3.new(9e9,9e9,9e9)
-    BodyVelocity.Velocity = Vector3.new(9e9,-9e9,9e9)
-    BodyVelocity.Parent = part and character[part] or character.UpperTorso
-    task.wait(0.1)
+function M.Void(chr, part, drop)
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(9e9,9e9,9e9)
+    bv.Velocity = Vector3.new(9e9,-9e9,9e9)
+    bv.Parent = part and chr[part] or chr.UpperTorso
+    task.wait(.1)
     if not drop then
-        ReplicatedStorage:FindFirstChild("MainEvent"):FireServer("Grabbing", false)
+        RS:FindFirstChild("MainEvent"):FireServer("Grabbing", false)
     end
 end
 
-function Modules.CloneCharacter(character)
-    character.Archivable = true
-    local Clone = character:Clone()
-    Clone.HumanoidRootPart.Anchored = false
-    Clone.Humanoid.Health = 9e9
-    Clone.Humanoid.MaxHealth = 9e9
-    for _, c in ipairs({"RagdollConstraints","BodyEffects","GRABBING_CONSTRAINT"}) do
-        if Clone:FindFirstChild(c) then Clone[c]:Destroy() end
+function M.CloneChar(chr)
+    chr.Archivable = true
+    local c = chr:Clone()
+    c.HumanoidRootPart.Anchored = false
+    c.Humanoid.Health, c.Humanoid.MaxHealth = 9e9, 9e9
+    for _, n in ipairs({"RagdollConstraints","BodyEffects","GRABBING_CONSTRAINT"}) do
+        if c:FindFirstChild(n) then c[n]:Destroy() end
     end
-    for _, part in ipairs(Clone:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CustomPhysicalProperties = PhysicalProperties.new(100,2,.5,100,1)
-            part.Transparency = 1
+    for _, p in ipairs(c:GetDescendants()) do
+        if p:IsA("BasePart") then
+            p.CustomPhysicalProperties = PhysicalProperties.new(100,2,.5,100,1)
+            p.Transparency = 1
         end
-        if part:IsA("Decal") then part.Transparency = 1 end
-        if part:IsA("Motor6D") then part:Destroy() end
+        if p:IsA("Decal") then p.Transparency = 1 end
+        if p:IsA("Motor6D") then p:Destroy() end
     end
-    Clone.Parent = LP.Character
-    Clone.Humanoid:ChangeState("GettingUp")
-    character.LeftHand:FindFirstChildOfClass("Motor6D").Enabled  = false
-    character.RightHand:FindFirstChildOfClass("Motor6D").Enabled = false
-    character.LeftFoot:FindFirstChildOfClass("Motor6D").Enabled  = false
-    character.RightFoot:FindFirstChildOfClass("Motor6D").Enabled = false
-    return Clone
+    c.Parent = LP.Character
+    c.Humanoid:ChangeState("GettingUp")
+    chr.LeftHand:FindFirstChildOfClass("Motor6D").Enabled  = false
+    chr.RightHand:FindFirstChildOfClass("Motor6D").Enabled = false
+    chr.LeftFoot:FindFirstChildOfClass("Motor6D").Enabled  = false
+    chr.RightFoot:FindFirstChildOfClass("Motor6D").Enabled = false
+    return c
 end
 
-function Modules.DestroyClone(clone, origin)
-    if clone then clone:Destroy() end
-    if origin then
-        origin.LeftHand:FindFirstChildOfClass("Motor6D").Enabled  = true
-        origin.RightHand:FindFirstChildOfClass("Motor6D").Enabled = true
-        origin.LeftFoot:FindFirstChildOfClass("Motor6D").Enabled  = true
-        origin.RightFoot:FindFirstChildOfClass("Motor6D").Enabled = true
+function M.DestroyClone(c, orig)
+    if c then c:Destroy() end
+    if orig then
+        orig.LeftHand:FindFirstChildOfClass("Motor6D").Enabled  = true
+        orig.RightHand:FindFirstChildOfClass("Motor6D").Enabled = true
+        orig.LeftFoot:FindFirstChildOfClass("Motor6D").Enabled  = true
+        orig.RightFoot:FindFirstChildOfClass("Motor6D").Enabled = true
     end
 end
 
-function Modules.AlignControl(P1, P2, Offset)
-    P1.AssemblyLinearVelocity  = Vector3.zero
-    P1.AssemblyAngularVelocity = Vector3.zero
-    P1.Velocity = Vector3.zero
-    P1.CFrame = P2.CFrame * (Offset or CFrame.new())
-    P1.CanCollide = false
-    P2.CanCollide = false
+function M.Align(p1, p2, off)
+    p1.AssemblyLinearVelocity  = Vector3.zero
+    p1.AssemblyAngularVelocity = Vector3.zero
+    p1.Velocity = Vector3.zero
+    p1.CFrame = p2.CFrame * (off or CFrame.new())
+    p1.CanCollide, p2.CanCollide = false, false
 end
 
-function Modules.ImpactFrame()
+function M.ImpactFrame()
     if not Settings.Grab.Effects then return end
     local black = Instance.new("ColorCorrectionEffect", Lighting)
     black.TintColor = Color3.fromRGB(0,0,0)
     local white = Instance.new("Highlight", LP.Character)
-    white.FillColor = Color3.fromRGB(255,255,255)
-    white.FillTransparency = 0
+    white.FillColor = Color3.fromRGB(255,255,255); white.FillTransparency = 0
     task.wait(.1)
     white.FillColor = Color3.fromRGB(0,0,0)
-    black.TintColor = Color3.fromRGB(255,255,255)
-    black.Brightness = 1
+    black.TintColor = Color3.fromRGB(255,255,255); black.Brightness = 1
     task.wait(.1)
     black:Destroy(); white:Destroy()
 end
 
---============================================================
--- TOOLS (every grab from file)
---============================================================
-local Tools = {}
+--==========================================================
+-- TOOLS (every grab preserved 1:1)
+--==========================================================
+local T = {}
 
-Tools["Time Stop"] = function()
+T["Time Stop"] = function()
     if Settings.Grab["Time Stop"] then
-        Modules.CreateTool("Time Stop", function()
+        M.CreateTool("Time Stop", function()
             if not Settings.Grab.GrabbedCharacter then return end
             Settings.Grab.Grab = false
-            Modules.StopAnimation(LP.Character, "3135389157")
-            Modules.StopAnimation(LP.Character, "11075367458")
-            Modules.Play(Sounds.TimeStop)
-            Modules.AnimPlay(LP.Character, Animations["Time Stop Charging"])
+            M.StopAnim(LP.Character, "3135389157")
+            M.StopAnim(LP.Character, "11075367458")
+            M.Play("5455437798")
+            local a = Instance.new("Animation"); a.AnimationId="rbxassetid://10714177846"
+            local load = LP.Character.Humanoid:LoadAnimation(a)
+            load.Priority = Enum.AnimationPriority.Action4; load:Play()
             task.wait(2.5)
-            Modules.StopAudio(); task.wait(.3)
-            Modules.Play(Sounds.WhenTimeStopped)
-            Modules.Chat("When Time is Stopped, There is Only Dio!")
-            if Settings.Grab.Effects and Lighting:FindFirstChild("ColorCorrection") then
-                TweenService:Create(Lighting.ColorCorrection, TweenInfo.new(1), {Contrast = -1.8}):Play()
+            M.StopAnim(LP.Character,"10714177846"); M.StopAudio(); task.wait(.3)
+            M.Play("6964764259"); M.Chat("When Time is Stopped, There is Only Dio!")
+            if Settings.Grab.Effects and Lighting:FindFirstChildOfClass("ColorCorrectionEffect") then
+                TweenSvc:Create(Lighting:FindFirstChildOfClass("ColorCorrectionEffect"),
+                    TweenInfo.new(1),{Contrast=-1.8}):Play()
             end
             task.wait(4)
-            Modules.StopAudio()
-            Modules.Play(Sounds.Countdown)
-            for _, v in ipairs({4,3,2,1}) do
-                Modules.Chat(tostring(v).." Seconds left...")
-                task.wait(1.5)
-            end
-            task.wait(1)
-            Modules.Play(Sounds.Muda)
-            for i = 1,10 do
-                Modules.AnimPlay(LP.Character, Animations.Ora1, 9); task.wait(.2)
-                Modules.AnimPlay(LP.Character, Animations.Ora2, 9); task.wait(.2)
-            end
-            Modules.Play(Sounds.Muda)
-            Modules.AnimPlay(LP.Character, Animations.Punch, 1.5); task.wait(1)
-            Modules.Play(Sounds.Zero); Modules.Chat("Zero."); task.wait(3)
-            Modules.Play(Sounds.TimeResume); Modules.Chat("The time shall move again!"); task.wait(2)
-            Modules.Play(Sounds.LoudPunch)
-            if Settings.Grab.GrabbedCharacter.UpperTorso:FindFirstChild("BodyPosition") then
-                Modules.TweenPosition(Settings.Grab.GrabbedCharacter.UpperTorso.BodyPosition, .8, Modules.GetForwardPosition(19))
-            end
-            task.wait(1)
-            Modules.Remove(Settings.Grab.GrabbedCharacter, "all")
-            Modules.Play(Sounds.Rip)
-            if Lighting:FindFirstChild("ColorCorrection") then
-                TweenService:Create(Lighting.ColorCorrection, TweenInfo.new(1), {Contrast = 0}):Play()
-            end
-            task.wait(.3)
-            ReplicatedStorage.MainEvent:FireServer("Grabbing", false)
-            task.wait(.7)
-            Modules.StopAudio()
-            Settings.Grab.Grab = true
-        end)
-    else
-        Modules.DestroyTool("Time Stop")
-    end
-end
-
-Tools["Hado 90"] = function()
-    if Settings.Grab["Hado 90"] then
-        Modules.CreateTool("Hado 90", function()
-            if not Settings.Grab.GrabbedCharacter then return end
-            Settings.Grab.Grab = false
-            Modules.Chat("Watashi no Reiatsu de jikai-shiro")
-            Modules.Play("4743237673")
-            task.wait(2.5)
-            Modules.Play("18641380807")
-            Modules.Chat("Hado 90")
-            local Part
-            if Settings.Grab.Effects then
-                Part = Instance.new("Part")
-                Part.Anchored = true; Part.CanCollide = false
-                Part.Color = Color3.fromRGB(17,17,17)
-                Part.Material = Enum.Material.Neon
-                Part.Size = Vector3.new(9,25,9)
-                local hl = Instance.new("Highlight", Part)
-                hl.OutlineColor = Color3.fromRGB(170,0,255)
-                hl.FillColor = Color3.fromRGB(0,0,0)
-                Part.Parent = Workspace
-                Part.CFrame = CFrame.new(Settings.Grab.GrabbedCharacter.UpperTorso.Position + Vector3.new(0,-50,0))
-                TweenService:Create(Part, TweenInfo.new(1), {CFrame = CFrame.new(Settings.Grab.GrabbedCharacter.UpperTorso.Position + Vector3.new(0,5,0))}):Play()
-            end
-            task.wait(5)
-            if Part then
-                TweenService:Create(Part, TweenInfo.new(1), {CFrame = CFrame.new(Settings.Grab.GrabbedCharacter.UpperTorso.Position + Vector3.new(0,50,0))}):Play()
-            end
-            Modules.Void(Settings.Grab.GrabbedCharacter)
-            task.wait(1)
-            if Part then Part:Destroy() end
-            Settings.Grab.Grab = true
-        end)
-    else
-        Modules.DestroyTool("Hado 90")
-    end
-end
-
-Tools["C Moon"] = function()
-    if Settings.Grab["C Moon"] then
-        Modules.CreateTool("C Moon", function()
-            if not Settings.Grab.GrabbedCharacter then return end
-            LP.Character.Humanoid.WalkSpeed = 0
-            Settings.Grab.Grab = false
-            Modules.Play("8063279487")
-            if Settings.Grab.Effects then
-                TweenService:Create(Lighting, TweenInfo.new(.7), {ColorShift_Bottom = Color3.fromRGB(0,255,0)}):Play()
-                TweenService:Create(Lighting, TweenInfo.new(.7), {ColorShift_Top = Color3.fromRGB(0,255,0)}):Play()
-                TweenService:Create(Lighting, TweenInfo.new(.7), {Brightness = 100}):Play()
-                TweenService:Create(Lighting, TweenInfo.new(.7), {Ambient = Color3.fromRGB(0,255,0)}):Play()
-            end
-            Modules.Chat("C MOON: GRAVITY MOON")
-            Modules.AnimPlay(LP.Character, "8254789608")
-            Settings.Grab.GrabbedCharacter.UpperTorso.Position = LP.Character.HumanoidRootPart.Position + Vector3.new(0,2000,0)
-            task.wait(3.5)
-            TweenService:Create(Lighting, TweenInfo.new(.7), {ColorShift_Bottom = Color3.fromRGB(0,0,0)}):Play()
-            TweenService:Create(Lighting, TweenInfo.new(.7), {ColorShift_Top = Color3.fromRGB(0,0,0)}):Play()
-            TweenService:Create(Lighting, TweenInfo.new(.7), {Brightness = 1}):Play()
-            TweenService:Create(Lighting, TweenInfo.new(.7), {Ambient = Color3.fromRGB(0,0,0)}):Play()
-            Settings.Grab.Grab = true
-        end)
-    else
-        Modules.DestroyTool("C Moon")
-    end
-end
-
-Tools["Made In Heaven"] = function()
-    if Settings.Grab["Made In Heaven"] then
-        Modules.CreateTool("Made In Heaven", function()
-            if not Settings.Grab.GrabbedCharacter then return end
-            local old_fov = Workspace.CurrentCamera.FieldOfView
-            local old_fog = Lighting.FogEnd
-            local old_fog_color = Lighting.FogColor
-            LP.Character.Humanoid.WalkSpeed = 0
-            Settings.Grab.Grab = false
-            Modules.Play("8004825017")
-            Modules.Chat("Made In Heaven..")
-            LP.Character.HumanoidRootPart.CFrame = Settings.Grab.GrabbedCharacter.UpperTorso.CFrame * CFrame.new(1,0,3)
-            LP.Character.BodyEffects.Grabbed:GetPropertyChangedSignal("Value"):Connect(function()
-                if LP.Character.BodyEffects.Grabbed.Value == nil then
-                    TweenService:Create(Workspace.CurrentCamera, TweenInfo.new(1), {FieldOfView = old_fov}):Play()
-                    TweenService:Create(Lighting, TweenInfo.new(1), {FogEnd = old_fog}):Play()
-                    TweenService:Create(Lighting, TweenInfo.new(1), {FogColor = old_fog_color}):Play()
-                    TweenService:Create(LP.Character.Humanoid, TweenInfo.new(1), {HipHeight = 2}):Play()
+            M.StopAudio(); M.Play("6675055864")
+            for _,v in ipairs({4,3,2,1}) do M.Chat(tostring(v).." Seconds left..."); task.wait(1.5) end
+            task.wait(1); M.StopAudio(); task.wait(.2); M.Play("6889746326")
+            Cache.Loops.Ora = RunService.Heartbeat:Connect(function()
+                if Settings.Grab.GrabbedCharacter and Settings.Grab.GrabbedCharacter.UpperTorso:FindFirstChild("BodyPosition") then
+                    Settings.Grab.GrabbedCharacter.UpperTorso.BodyPosition.Position = M.FwdPos(2.8)
+                else
+                    Cache.Loops.Ora:Disconnect(); Cache.Loops.Ora = nil
                 end
             end)
-            Modules.AnimPlay(LP.Character, Animations.Elevate)
-            if Settings.Grab.Effects then
-                TweenService:Create(Workspace.CurrentCamera, TweenInfo.new(1), {FieldOfView = 120}):Play()
-                TweenService:Create(Lighting, TweenInfo.new(1), {FogEnd = 20}):Play()
-                TweenService:Create(Lighting, TweenInfo.new(1), {FogColor = Color3.fromRGB(255,255,255)}):Play()
+            for i = 1,10 do
+                M.AnimPlay(LP.Character, 8254787838, 9); task.wait(.2)
+                M.AnimPlay(LP.Character, 8254794168, 9); task.wait(.2)
             end
-            TweenService:Create(LP.Character.Humanoid, TweenInfo.new(1), {HipHeight = 3.5}):Play()
-            repeat task.wait() until LP.Character.Humanoid.HipHeight == 3.5
-            Modules.Chat("Heaven Has Arrived...")
+            M.StopAnim(LP.Character,"8254794168"); task.wait(.1)
+            if Cache.Loops.Ora then Cache.Loops.Ora:Disconnect(); Cache.Loops.Ora=nil end
+            M.Play("6191764144"); M.AnimPlay(LP.Character,"3354696735",1.5); task.wait(1)
+            M.Play("7099835652"); task.wait(.3); M.Chat("Zero."); task.wait(3)
+            M.Play("3084539117"); M.Chat("The time shall move again!"); task.wait(2)
+            M.Play("2319521125")
             if Settings.Grab.GrabbedCharacter.UpperTorso:FindFirstChild("BodyPosition") then
-                Modules.TweenPosition(Settings.Grab.GrabbedCharacter.UpperTorso.BodyPosition, .5, Modules.GetForwardPosition(10) + Vector3.new(0,10,0))
+                M.TweenPos(Settings.Grab.GrabbedCharacter.UpperTorso.BodyPosition, .8, M.FwdPos(19))
             end
-            task.wait(7)
-            Modules.Void(Settings.Grab.GrabbedCharacter)
-            task.wait(.8)
+            task.wait(1)
+            M.Remove(Settings.Grab.GrabbedCharacter,"all")
+            M.Play("429400881")
+            if Lighting:FindFirstChildOfClass("ColorCorrectionEffect") then
+                TweenSvc:Create(Lighting:FindFirstChildOfClass("ColorCorrectionEffect"),TweenInfo.new(1),{Contrast=0}):Play()
+            end
+            task.wait(.3)
+            RS.MainEvent:FireServer("Grabbing", false); task.wait(.7)
+            M.StopAudio(); Settings.Grab.Grab = true
+        end)
+    else M.DestroyTool("Time Stop") end
+end
+
+T["Hado 90"] = function()
+    if Settings.Grab["Hado 90"] then
+        M.CreateTool("Hado 90", function()
+            if not Settings.Grab.GrabbedCharacter then return end
+            Settings.Grab.Grab = false
+            M.Chat("Watashi no Reiatsu de jikai-shiro")
+            M.Play("4743237673"); task.wait(2.5)
+            M.Play("18641380807"); M.Chat("Hado 90")
+            local part
+            if Settings.Grab.Effects then
+                part = Instance.new("Part")
+                part.Anchored=true; part.CanCollide=false
+                part.Color=Color3.fromRGB(17,17,17); part.Material=Enum.Material.Neon
+                part.Size=Vector3.new(9,25,9)
+                local hl=Instance.new("Highlight",part)
+                hl.OutlineColor=Color3.fromRGB(170,0,255); hl.FillColor=Color3.fromRGB(0,0,0)
+                part.Parent=WS
+                part.CFrame = CFrame.new(Settings.Grab.GrabbedCharacter.UpperTorso.Position+Vector3.new(0,-50,0))
+                TweenSvc:Create(part,TweenInfo.new(1),{CFrame=CFrame.new(Settings.Grab.GrabbedCharacter.UpperTorso.Position+Vector3.new(0,5,0))}):Play()
+            end
+            task.wait(5)
+            if part then TweenSvc:Create(part,TweenInfo.new(1),{CFrame=CFrame.new(Settings.Grab.GrabbedCharacter.UpperTorso.Position+Vector3.new(0,50,0))}):Play() end
+            M.Void(Settings.Grab.GrabbedCharacter); task.wait(1)
+            if part then part:Destroy() end
             Settings.Grab.Grab = true
         end)
-    else
-        Modules.DestroyTool("Made In Heaven")
-    end
+    else M.DestroyTool("Hado 90") end
 end
 
-Tools["Chezburger"] = function()
-    if Settings.Grab["Chezburger"] then
-        Modules.CreateTool("Mmm.. chezburger", function()
+T["C Moon"] = function()
+    if Settings.Grab["C Moon"] then
+        M.CreateTool("C Moon", function()
             if not Settings.Grab.GrabbedCharacter then return end
-            Modules.Play("6647570")
-            Modules.Chat("Can i haz chezburger ples?")
-            task.wait(3)
-            Modules.StopAnimation(LP.Character, "3135389157")
-            Modules.AnimPlay(LP.Character, "2953512033")
-            Modules.Play("3043029786")
-            Modules.Remove(Settings.Grab.GrabbedCharacter, "all")
-            task.wait(.2)
-            ReplicatedStorage.MainEvent:FireServer("Grabbing", false)
-            task.wait(1.5)
-            Modules.Play("16647579")
-            Modules.Chat("Mmm... chezburger!")
+            LP.Character.Humanoid.WalkSpeed = 0
+            Settings.Grab.Grab = false
+            M.Play("8063279487")
+            if Settings.Grab.Effects then
+                TweenSvc:Create(Lighting,TweenInfo.new(.7),{ColorShift_Bottom=Color3.fromRGB(0,255,0)}):Play()
+                TweenSvc:Create(Lighting,TweenInfo.new(.7),{ColorShift_Top=Color3.fromRGB(0,255,0)}):Play()
+                TweenSvc:Create(Lighting,TweenInfo.new(.7),{Brightness=100}):Play()
+                TweenSvc:Create(Lighting,TweenInfo.new(.7),{Ambient=Color3.fromRGB(0,255,0)}):Play()
+            end
+            M.Chat("C MOON: GRAVITY MOON")
+            M.AnimPlay(LP.Character,8254789608)
+            Settings.Grab.GrabbedCharacter.UpperTorso.Position = LP.Character.HumanoidRootPart.Position+Vector3.new(0,2000,0)
+            task.wait(3.5)
+            TweenSvc:Create(Lighting,TweenInfo.new(.7),{ColorShift_Bottom=Color3.fromRGB(0,0,0)}):Play()
+            TweenSvc:Create(Lighting,TweenInfo.new(.7),{ColorShift_Top=Color3.fromRGB(0,0,0)}):Play()
+            TweenSvc:Create(Lighting,TweenInfo.new(.7),{Brightness=1}):Play()
+            TweenSvc:Create(Lighting,TweenInfo.new(.7),{Ambient=Color3.fromRGB(0,0,0)}):Play()
+            Settings.Grab.Grab = true
         end)
-    else
-        Modules.DestroyTool("Mmm.. chezburger")
-    end
+    else M.DestroyTool("C Moon") end
 end
 
-Tools["Orbit"] = function()
+T["Made In Heaven"] = function()
+    if Settings.Grab["Made In Heaven"] then
+        M.CreateTool("Made In Heaven", function()
+            if not Settings.Grab.GrabbedCharacter then return end
+            local fov0, fog0, fogc0 = WS.CurrentCamera.FieldOfView, Lighting.FogEnd, Lighting.FogColor
+            LP.Character.Humanoid.WalkSpeed = 0
+            M.StopAnim(LP.Character,"3135389157")
+            Settings.Grab.Grab = false
+            M.Play("8004825017"); M.Chat("Made In Heaven..")
+            LP.Character.HumanoidRootPart.CFrame = Settings.Grab.GrabbedCharacter.UpperTorso.CFrame*CFrame.new(1,0,3)
+            LP.Character.BodyEffects.Grabbed:GetPropertyChangedSignal("Value"):Connect(function()
+                if LP.Character.BodyEffects.Grabbed.Value == nil then
+                    TweenSvc:Create(WS.CurrentCamera,TweenInfo.new(1),{FieldOfView=fov0}):Play()
+                    TweenSvc:Create(Lighting,TweenInfo.new(1),{FogEnd=fog0}):Play()
+                    TweenSvc:Create(Lighting,TweenInfo.new(1),{FogColor=fogc0}):Play()
+                    TweenSvc:Create(LP.Character.Humanoid,TweenInfo.new(1),{HipHeight=2}):Play()
+                end
+            end)
+            M.AnimPlay(LP.Character,11394033602)
+            if Settings.Grab.Effects then
+                TweenSvc:Create(WS.CurrentCamera,TweenInfo.new(1),{FieldOfView=120}):Play()
+                TweenSvc:Create(Lighting,TweenInfo.new(1),{FogEnd=20}):Play()
+                TweenSvc:Create(Lighting,TweenInfo.new(1),{FogColor=Color3.fromRGB(255,255,255)}):Play()
+            end
+            TweenSvc:Create(LP.Character.Humanoid,TweenInfo.new(1),{HipHeight=3.5}):Play()
+            repeat task.wait() until LP.Character.Humanoid.HipHeight == 3.5
+            M.Chat("Heaven Has Arrived...")
+            if Settings.Grab.GrabbedCharacter.UpperTorso:FindFirstChild("BodyPosition") then
+                M.TweenPos(Settings.Grab.GrabbedCharacter.UpperTorso.BodyPosition,.5,M.FwdPos(10)+Vector3.new(0,10,0))
+            end
+            task.wait(7); M.Void(Settings.Grab.GrabbedCharacter); task.wait(.8)
+            Settings.Grab.Grab = true
+        end)
+    else M.DestroyTool("Made In Heaven") end
+end
+
+T["Chezburger"] = function()
+    if Settings.Grab["Chezburger"] then
+        M.CreateTool("Mmm.. chezburger", function()
+            if not Settings.Grab.GrabbedCharacter then return end
+            M.Play("6647570"); M.Chat("Can i haz chezburger ples?")
+            task.wait(3)
+            M.StopAnim(LP.Character,3135389157)
+            M.AnimPlay(LP.Character,2953512033)
+            M.Play("3043029786")
+            M.Remove(Settings.Grab.GrabbedCharacter,"all")
+            task.wait(.2)
+            RS.MainEvent:FireServer("Grabbing", false)
+            task.wait(1.5)
+            M.Play("16647579"); M.Chat("Mmm... chezburger!")
+        end)
+    else M.DestroyTool("Mmm.. chezburger") end
+end
+
+T["Orbit"] = function()
     if Settings.Grab["Orbit"] then
-        Modules.CreateTool("Orbit", function()
+        M.CreateTool("Orbit", function()
             if Cache.Loops.Orbit then Cache.Loops.Orbit:Disconnect() end
             local t = 0
-            Modules.StopAnimation(LP.Character, "3135389157")
-            Modules.StopAnimation(LP.Character, "11075367458")
+            M.StopAnim(LP.Character,"3135389157")
+            M.StopAnim(LP.Character,"11075367458")
             Cache.Loops.Orbit = RunService.Heartbeat:Connect(function(dt)
                 t = t + dt
                 if LP.Character.BodyEffects:FindFirstChild("Grabbed").Value == nil then
                     Cache.Loops.Orbit:Disconnect(); Cache.Loops.Orbit = nil
                 end
                 local C = Settings.Grab.GrabbedCharacter
-                C.UpperTorso.CFrame    = CFrame.Angles(math.pi*.1, 1.5*math.pi*t, 0) * CFrame.new(1,2,5) + LP.Character.HumanoidRootPart.Position
-                C.LowerTorso.CFrame    = CFrame.Angles(math.pi*-.1, 1.5*math.pi*-t, 0) * CFrame.new(1,2,5) + LP.Character.HumanoidRootPart.Position
-                C.LeftUpperArm.CFrame  = CFrame.Angles(math.pi*.25, 3*math.pi*t, 0) * CFrame.new(1,2,5) + LP.Character.HumanoidRootPart.Position
-                C.RightUpperArm.CFrame = CFrame.Angles(math.pi*-.25, 3*math.pi*-t, 0) * CFrame.new(1,2,5) + LP.Character.HumanoidRootPart.Position
-                C.LeftUpperLeg.CFrame  = CFrame.Angles(math.pi*.3, 2.5*math.pi*t, 0) * CFrame.new(1,2,5) + LP.Character.HumanoidRootPart.Position
-                C.RightUpperLeg.CFrame = CFrame.Angles(math.pi*-.3, 2.5*math.pi*-t, 0) * CFrame.new(1,0,5) + LP.Character.HumanoidRootPart.Position
-                C.LeftLowerLeg.CFrame  = CFrame.Angles(math.pi*.7, 2*math.pi*t, 0) * CFrame.new(1,2,7) + LP.Character.HumanoidRootPart.Position
-                C.RightLowerLeg.CFrame = CFrame.Angles(math.pi*.8, 2*math.pi*-t, 0) * CFrame.new(1,2,7) + LP.Character.HumanoidRootPart.Position
-                C.LeftLowerArm.CFrame  = CFrame.Angles(math.pi*.9, 2*math.pi*t, 0) * CFrame.new(1,2,7) + LP.Character.HumanoidRootPart.Position
-                C.RightLowerArm.CFrame = CFrame.Angles(math.pi*1, 2*math.pi*-t, 0) * CFrame.new(1,2,7) + LP.Character.HumanoidRootPart.Position
+                C.UpperTorso.CFrame    = CFrame.Angles(math.pi*.1, 1.5*math.pi*t, 0)*CFrame.new(1,2,5)+LP.Character.HumanoidRootPart.Position
+                C.LowerTorso.CFrame    = CFrame.Angles(math.pi*-.1, 1.5*math.pi*-t,0)*CFrame.new(1,2,5)+LP.Character.HumanoidRootPart.Position
+                C.LeftUpperArm.CFrame  = CFrame.Angles(math.pi*.25, 3*math.pi*t, 0)*CFrame.new(1,2,5)+LP.Character.HumanoidRootPart.Position
+                C.RightUpperArm.CFrame = CFrame.Angles(math.pi*-.25,3*math.pi*-t,0)*CFrame.new(1,2,5)+LP.Character.HumanoidRootPart.Position
+                C.LeftUpperLeg.CFrame  = CFrame.Angles(math.pi*.3, 2.5*math.pi*t, 0)*CFrame.new(1,2,5)+LP.Character.HumanoidRootPart.Position
+                C.RightUpperLeg.CFrame = CFrame.Angles(math.pi*-.3,2.5*math.pi*-t,0)*CFrame.new(1,0,5)+LP.Character.HumanoidRootPart.Position
+                C.LeftLowerLeg.CFrame  = CFrame.Angles(math.pi*.7, 2*math.pi*t, 0)*CFrame.new(1,2,7)+LP.Character.HumanoidRootPart.Position
+                C.RightLowerLeg.CFrame = CFrame.Angles(math.pi*.8, 2*math.pi*-t,0)*CFrame.new(1,2,7)+LP.Character.HumanoidRootPart.Position
+                C.LeftLowerArm.CFrame  = CFrame.Angles(math.pi*.9, 2*math.pi*t, 0)*CFrame.new(1,2,7)+LP.Character.HumanoidRootPart.Position
+                C.RightLowerArm.CFrame = CFrame.Angles(math.pi*1, 2*math.pi*-t, 0)*CFrame.new(1,2,7)+LP.Character.HumanoidRootPart.Position
             end)
         end)
     else
-        if Cache.Loops.Orbit then Cache.Loops.Orbit:Disconnect(); Cache.Loops.Orbit = nil end
-        Modules.DestroyTool("Orbit")
+        if Cache.Loops.Orbit then Cache.Loops.Orbit:Disconnect(); Cache.Loops.Orbit=nil end
+        M.DestroyTool("Orbit")
     end
 end
 
-Tools["Get Over Here"] = function()
+T["Get Over Here"] = function()
     if Settings.Grab["Get Over Here"] then
-        Modules.CreateTool("Get Over Here", function()
+        M.CreateTool("Get Over Here", function()
             Settings.Grab.Grab = false
-            Modules.StopAnimation(LP.Character, "3135389157")
-            Modules.StopAnimation(LP.Character, "11075367458")
-            Modules.Play("8643750815")
-            task.wait(1.6)
-            Modules.StopAudio()
-            Modules.Play("7592607446")
-            local a = Modules.CreateAnimation(Animations["Get Over Here"])
-            Modules.LoadAnimation(LP.Character, a):Play()
+            M.StopAnim(LP.Character,"3135389157")
+            M.StopAnim(LP.Character,"11075367458")
+            M.Play("8643750815"); task.wait(1.6)
+            M.StopAudio(); M.Play("7592607446")
+            local a = M.NewAnim(16768625968)
+            LP.Character.Humanoid:LoadAnimation(a):Play()
             task.wait(1.1)
             if Settings.Grab.GrabbedCharacter.UpperTorso:FindFirstChild("BodyPosition") then
-                Modules.TweenPosition(Settings.Grab.GrabbedCharacter.UpperTorso.BodyPosition, .6, LP.Character.HumanoidRootPart.Position)
+                M.TweenPos(Settings.Grab.GrabbedCharacter.UpperTorso.BodyPosition,.6,LP.Character.HumanoidRootPart.Position)
             end
-            task.wait(.6)
-            Modules.StopAudio()
+            task.wait(.6); M.StopAudio()
         end)
-    else
-        Modules.DestroyTool("Get Over Here")
-    end
+    else M.DestroyTool("Get Over Here") end
 end
 
-Tools["Make Player Stand"] = function()
+T["Make Player Stand"] = function()
     if Settings.Grab["Make Player Stand"] then
-        Modules.CreateTool("Make Player Stand", function()
+        M.CreateTool("Make Player Stand", function()
             Settings.Grab.Grab = false
             if not Settings.Grab.GrabbedCharacter then return end
-            if Cache.Loops.Make_Player_Stand then Cache.Loops.Make_Player_Stand:Disconnect() end
-            local Clone = Modules.CloneCharacter(Settings.Grab.GrabbedCharacter)
-            Modules.StopAnimation(LP.Character, "3135389157")
-            Modules.StopAnimation(LP.Character, "11075367458")
-            local OldChar = Settings.Grab.GrabbedCharacter
-            for _, part in ipairs(OldChar:GetDescendants()) do
-                if part:IsA("BodyPosition") or part:IsA("BodyGyro") then part:Destroy() end
+            if Cache.Loops.MakeStand then Cache.Loops.MakeStand:Disconnect() end
+            local Clone = M.CloneChar(Settings.Grab.GrabbedCharacter)
+            M.StopAnim(LP.Character,"3135389157")
+            M.StopAnim(LP.Character,"11075367458")
+            local Old = Settings.Grab.GrabbedCharacter
+            for _,p in ipairs(Old:GetDescendants()) do
+                if p:IsA("BodyPosition") or p:IsA("BodyGyro") then p:Destroy() end
             end
-            Cache.Loops.Make_Player_Stand = RunService.Heartbeat:Connect(function()
+            Cache.Loops.MakeStand = RunService.Heartbeat:Connect(function()
                 if LP.Character.BodyEffects.Grabbed.Value == nil then
                     Settings.Grab.Grab = true
-                    Modules.DestroyClone(Clone, OldChar)
-                    Cache.Loops.Make_Player_Stand:Disconnect()
-                    Cache.Loops.Make_Player_Stand = nil
+                    M.DestroyClone(Clone, Old)
+                    Cache.Loops.MakeStand:Disconnect(); Cache.Loops.MakeStand = nil
                 end
-                for _, part in ipairs(Settings.Grab.GrabbedCharacter:GetChildren()) do
-                    if part:IsA("BasePart") then
-                        Modules.AlignControl(part, Clone[part.Name], CFrame.new())
-                    end
+                for _, p in ipairs(Settings.Grab.GrabbedCharacter:GetChildren()) do
+                    if p:IsA("BasePart") then M.Align(p, Clone[p.Name], CFrame.new()) end
                 end
-                Modules.NoVelocity(Clone)
-                Modules.NoVelocity(Settings.Grab.GrabbedCharacter)
-                Modules.TweenPosition(Clone.HumanoidRootPart, .4, CFrame.new(
-                    LP.Character.HumanoidRootPart.Position
-                    + LP.Character.HumanoidRootPart.CFrame.LookVector * -3
-                    + LP.Character.HumanoidRootPart.CFrame.RightVector * -1
-                    + Vector3.new(0, math.random(3,4.2), 0)
-                ).Position)
+                M.NoVelocity(Clone); M.NoVelocity(Settings.Grab.GrabbedCharacter)
+                local rp = LP.Character.HumanoidRootPart
+                TweenSvc:Create(Clone.HumanoidRootPart, TweenInfo.new(.4,Enum.EasingStyle.Linear,Enum.EasingDirection.Out),
+                    {CFrame = CFrame.new(rp.Position + rp.CFrame.LookVector*-3 + rp.CFrame.RightVector*-1 + Vector3.new(0,math.random(3,4.2),0))}):Play()
             end)
-            Modules.AnimPlay(Clone, "3541114300")
+            M.AnimPlay(Clone, 3541114300)
         end)
     else
-        if Cache.Loops.Make_Player_Stand then
-            Cache.Loops.Make_Player_Stand:Disconnect()
-            Cache.Loops.Make_Player_Stand = nil
-        end
+        if Cache.Loops.MakeStand then Cache.Loops.MakeStand:Disconnect(); Cache.Loops.MakeStand=nil end
         Settings.Grab.Grab = true
-        Modules.DestroyTool("Make Player Stand")
+        M.DestroyTool("Make Player Stand")
     end
 end
 
-Tools["Punch Back"] = function()
+T["Punch Back"] = function()
     if Settings.Grab["Punch Back"] then
-        Modules.CreateTool("Punch Back", function()
+        M.CreateTool("Punch Back", function()
             Settings.Grab.Grab = false
-            local ForwardPosition = Modules.GetForwardPosition(50)
-            Modules.StopAnimation(LP.Character, "3135389157")
-            Modules.StopAnimation(LP.Character, "11075367458")
-            local PunchAnim = Modules.LoadAnimation(LP.Character, Modules.CreateAnimation(Animations.Punch))
-            PunchAnim:Play()
-            task.wait(.3)
-            PunchAnim:AdjustSpeed(0.05)
-            Modules.Play("8578316223")
-            task.wait(11.1)
-            PunchAnim:AdjustSpeed(1)
-            Modules.StopAudio()
-            Modules.Play("6290067239")
+            local fwd = M.FwdPos(50)
+            M.StopAnim(LP.Character,"3135389157")
+            M.StopAnim(LP.Character,"11075367458")
+            local a = M.NewAnim(3354696735)
+            local punch = LP.Character.Humanoid:LoadAnimation(a)
+            punch:Play(); task.wait(.3); punch:AdjustSpeed(.05)
+            M.Play("8578316223"); task.wait(11.1)
+            punch:AdjustSpeed(1)
+            M.StopAudio(); M.Play("6290067239")
             if Settings.Grab.GrabbedCharacter.UpperTorso:FindFirstChild("BodyPosition") then
-                Modules.TweenPosition(Settings.Grab.GrabbedCharacter.UpperTorso.BodyPosition, .3, ForwardPosition)
+                M.TweenPos(Settings.Grab.GrabbedCharacter.UpperTorso.BodyPosition, .3, fwd)
             end
             task.wait(.08)
-            Modules.Void(Settings.Grab.GrabbedCharacter)
+            M.Void(Settings.Grab.GrabbedCharacter)
         end)
-    else
-        Modules.DestroyTool("Punch Back")
-    end
+    else M.DestroyTool("Punch Back") end
 end
 
-Tools["Domain Expansion"] = function()
+T["Domain Expansion"] = function()
     if Settings.Grab["Domain Expansion"] then
-        Modules.CreateTool("Domain Expansion", function()
+        M.CreateTool("Domain Expansion", function()
             if not Settings.Grab.GrabbedCharacter then return end
-            local Animation = game:GetObjects("rbxassetid://15554016057")[1]
-            local loaded = LP.Character.Humanoid:LoadAnimation(Animation)
-            Modules.StopAnimation(LP.Character, "3135389157")
-            Modules.StopAnimation(LP.Character, "11075367458")
+            local anim = game:GetObjects("rbxassetid://15554016057")[1]
+            local loaded = LP.Character.Humanoid:LoadAnimation(anim)
+            M.StopAnim(LP.Character,"3135389157")
+            M.StopAnim(LP.Character,"11075367458")
             Settings.Grab.Grab = false
             LP.Character.Humanoid.WalkSpeed = 0
-            Modules.Play("7817341182"); Modules.Chat("Domain Expansion..")
+            M.Play("7817341182"); M.Chat("Domain Expansion..")
             task.wait(1.8)
-            Modules.Play("7817367014"); Modules.Chat("Malevolent Shrine.")
-            task.wait(5)
-            Modules.Play("7817336081")
-            task.wait(2.8)
-            loaded:Play(); loaded.Looped = false
-            task.wait(2.5)
+            M.Play("7817367014"); M.Chat("Malevolent Shrine.")
+            task.wait(5); M.Play("7817336081"); task.wait(2.8)
+            loaded:Play(); loaded.Looped = false; task.wait(2.5)
             if Settings.Grab.Effects then
-                TweenService:Create(Lighting, TweenInfo.new(1), {FogColor = Color3.fromRGB(0,0,0)}):Play()
-                TweenService:Create(Lighting, TweenInfo.new(1), {FogEnd = 50}):Play()
+                TweenSvc:Create(Lighting,TweenInfo.new(1),{FogColor=Color3.fromRGB(0,0,0)}):Play()
+                TweenSvc:Create(Lighting,TweenInfo.new(1),{FogEnd=50}):Play()
             end
-            TweenService:Create(LP.Character.Humanoid, TweenInfo.new(1), {HipHeight = 10}):Play()
+            TweenSvc:Create(LP.Character.Humanoid,TweenInfo.new(1),{HipHeight=10}):Play()
             task.wait(1)
             if Settings.Grab.GrabbedCharacter.UpperTorso:FindFirstChild("BodyPosition") then
-                Modules.TweenPosition(Settings.Grab.GrabbedCharacter.UpperTorso.BodyPosition, .5, Modules.GetForwardPosition(10))
+                M.TweenPos(Settings.Grab.GrabbedCharacter.UpperTorso.BodyPosition, .5, M.FwdPos(10))
             end
             loaded.Stopped:Wait()
-            Modules.Void(Settings.Grab.GrabbedCharacter)
+            M.Void(Settings.Grab.GrabbedCharacter)
             Settings.Grab.Grab = true
-            TweenService:Create(LP.Character.Humanoid, TweenInfo.new(1), {HipHeight = 2.008}):Play()
+            TweenSvc:Create(LP.Character.Humanoid,TweenInfo.new(1),{HipHeight=2.008}):Play()
         end)
-    else
-        Modules.DestroyTool("Domain Expansion")
-    end
+    else M.DestroyTool("Domain Expansion") end
 end
 
-Tools["Portal"] = function()
+T["Portal"] = function()
     if Settings.Grab["Portal"] then
-        Modules.CreateTool("Portal", function()
+        M.CreateTool("Portal", function()
             if Cache.Loops.Portal then return end
-            local StoredPos = LP.Character.HumanoidRootPart.CFrame
+            local storedPos = LP.Character.HumanoidRootPart.CFrame
             Settings.Grab.Grab = false
-            local Storage = ReplicatedStorage
-            local Assets, Cloud, StoredAssets = {}, {}, {}
-            local function LoadAsset(delete, where)
-                if delete then
-                    for _, e in ipairs(StoredAssets) do e:Destroy() end
-                    for _, c in ipairs(Workspace:GetChildren()) do
-                        if c.Name == "Clouds" then c:Destroy() end
-                    end
+            local storage = RS
+            local assets, cloud, stored = {}, {}, {}
+            local function loadAsset(del, where)
+                if del then
+                    for _, e in ipairs(stored) do e:Destroy() end
+                    for _, c in ipairs(WS:GetChildren()) do if c.Name=="Clouds" then c:Destroy() end end
                     return
                 end
-                for _, a in ipairs(Assets:GetChildren()) do
-                    local Clone = a:Clone(); Clone.Parent = Lighting
-                    table.insert(StoredAssets, Clone)
+                for _, a in ipairs(assets:GetChildren()) do
+                    local cl = a:Clone(); cl.Parent = Lighting
+                    table.insert(stored, cl)
                 end
-                local c = Cloud:Clone(); c.Parent = Workspace; c.CFrame = where; c.Anchored = true
+                local c = cloud:Clone(); c.Parent=WS; c.CFrame=where; c.Anchored=true
                 return c
             end
-            Assets = Storage:FindFirstChild("Assets") or game:GetObjects("rbxassetid://81123099704912")[1]
-            Assets.Parent = Storage
-            Cloud = Storage:FindFirstChild("Clouds") or game:GetObjects("rbxassetid://96210417036558")[1]
-            Cloud.Parent = Storage
-            local GrabbedChar = Settings.Grab.GrabbedCharacter
-            for _, v in ipairs(GrabbedChar:GetDescendants()) do
+            assets = storage:FindFirstChild("Assets") or game:GetObjects("rbxassetid://81123099704912")[1]
+            assets.Parent = storage
+            cloud  = storage:FindFirstChild("Clouds") or game:GetObjects("rbxassetid://96210417036558")[1]
+            cloud.Parent  = storage
+            local GC = Settings.Grab.GrabbedCharacter
+            for _, v in ipairs(GC:GetDescendants()) do
                 if v:IsA("BodyGyro") or v:IsA("BodyPosition") then v:Destroy() end
             end
-            local Clone = Modules.CloneCharacter(GrabbedChar)
-            Clone.Parent = Workspace
+            local clone = M.CloneChar(GC); clone.Parent = WS
             local yes = false
-            Clone.HumanoidRootPart.CFrame = LP.Character.HumanoidRootPart.CFrame
+            clone.HumanoidRootPart.CFrame = LP.Character.HumanoidRootPart.CFrame
             Cache.Loops.Portal = RunService.Heartbeat:Connect(function()
-                for _, part in ipairs(GrabbedChar:GetChildren()) do
-                    if part:IsA("BasePart") and not yes then
-                        Modules.AlignControl(part, Clone[part.Name], CFrame.new())
-                    end
+                for _, p in ipairs(GC:GetChildren()) do
+                    if p:IsA("BasePart") and not yes then M.Align(p, clone[p.Name], CFrame.new()) end
                 end
-                Modules.NoVelocity(GrabbedChar); Modules.CanCollide(GrabbedChar, false)
-                if Clone then
-                    LP.Character.HumanoidRootPart.CFrame = Clone.HumanoidRootPart.CFrame - Vector3.new(0,15,0)
-                end
+                M.NoVelocity(GC); M.CanCollide(GC, false)
+                if clone then LP.Character.HumanoidRootPart.CFrame = clone.HumanoidRootPart.CFrame - Vector3.new(0,15,0) end
                 if LP.Character.BodyEffects.Grabbed.Value == nil then
-                    LoadAsset(true); Settings.Grab.Grab = true
-                    Cache.Loops.Portal:Disconnect(); Cache.Loops.Portal = nil
+                    loadAsset(true); Settings.Grab.Grab = true
+                    Cache.Loops.Portal:Disconnect(); Cache.Loops.Portal=nil
                 end
             end)
-            Workspace.Camera.CameraSubject = Clone.Humanoid
-            Modules.AnimPlay(Clone, "10714360343")
-            task.wait(2)
-            Modules.StopAnimation(Clone, "10714360343")
-            if Settings.Grab.Effects then
-                LoadAsset(false, Clone.HumanoidRootPart.CFrame + Vector3.new(0,20,0))
-            end
-            Modules.AnimPlay(Clone, "4940561610")
-            Modules.Play("7224830040")
-            task.wait(6)
-            local BodyPos = Instance.new("BodyPosition", GrabbedChar.UpperTorso)
-            BodyPos.D = 200
-            BodyPos.Position = Clone.UpperTorso.Position
+            WS.CurrentCamera.CameraSubject = clone.Humanoid
+            M.AnimPlay(clone, 10714360343); task.wait(2)
+            M.StopAnim(clone, 10714360343)
+            if Settings.Grab.Effects then loadAsset(false, clone.HumanoidRootPart.CFrame+Vector3.new(0,20,0)) end
+            M.AnimPlay(clone, 4940561610)
+            M.Play("7224830040"); task.wait(6)
+            local bp = Instance.new("BodyPosition", GC.UpperTorso)
+            bp.D = 200; bp.Position = clone.UpperTorso.Position
             yes = true
-            Modules.NoVelocity(GrabbedChar)
-            Modules.TweenPosition(BodyPos, 6, Clone.UpperTorso.Position + Vector3.new(0,20,0))
+            M.NoVelocity(GC)
+            M.TweenPos(bp, 6, clone.UpperTorso.Position + Vector3.new(0,20,0))
             task.wait(3.5)
-            Modules.Void(GrabbedChar)
-            Modules.DestroyClone(GrabbedChar, Clone)
-            Clone = nil
-            if Cache.Loops.Portal then Cache.Loops.Portal:Disconnect(); Cache.Loops.Portal = nil end
-            LoadAsset(true)
-            Workspace.Camera.CameraSubject = LP.Character.Humanoid
-            for _ = 1,40 do LP.Character.HumanoidRootPart.CFrame = StoredPos end
+            M.Void(GC); M.DestroyClone(GC, clone); clone = nil
+            if Cache.Loops.Portal then Cache.Loops.Portal:Disconnect(); Cache.Loops.Portal=nil end
+            loadAsset(true)
+            WS.CurrentCamera.CameraSubject = LP.Character.Humanoid
+            for _ = 1,40 do LP.Character.HumanoidRootPart.CFrame = storedPos end
             Settings.Grab.Grab = true
         end)
     else
         Settings.Grab.Grab = true
-        Modules.DestroyTool("Portal")
+        M.DestroyTool("Portal")
     end
 end
 
-Tools["Whirlwind Kick"] = function()
+T["Whirlwind Kick"] = function()
     if Settings.Grab["Whirlwind Kick"] then
-        Modules.CreateTool("Whirlwind Kick", function()
+        M.CreateTool("Whirlwind Kick", function()
             if not Settings.Grab.GrabbedCharacter then return end
-            Settings.Grab.Grab = false
-            task.wait(.1)
-            Modules.AnimPlay(LP.Character, "2791328524", .15, .42)
-            Modules.Play("4752664208")
-            LP.Character.HumanoidRootPart.CFrame = Settings.Grab.GrabbedCharacter.UpperTorso.CFrame * CFrame.new(0,0,3)
-            LP.Character.HumanoidRootPart.CFrame = CFrame.lookAt(
-                LP.Character.HumanoidRootPart.Position,
-                Settings.Grab.GrabbedCharacter.HumanoidRootPart.Position
-            )
+            Settings.Grab.Grab = false; task.wait(.1)
+            M.AnimPlay(LP.Character, 2791328524, .15, .42)
+            M.Play("4752664208")
+            LP.Character.HumanoidRootPart.CFrame = Settings.Grab.GrabbedCharacter.UpperTorso.CFrame*CFrame.new(0,0,3)
+            LP.Character.HumanoidRootPart.CFrame = CFrame.lookAt(LP.Character.HumanoidRootPart.Position,
+                Settings.Grab.GrabbedCharacter.HumanoidRootPart.Position)
             task.wait(1)
-            Modules.ImpactFrame()
-            Modules.Void(Settings.Grab.GrabbedCharacter)
+            M.ImpactFrame()
+            M.Void(Settings.Grab.GrabbedCharacter)
             Settings.Grab.Grab = true
         end)
-    else
-        Modules.DestroyTool("Whirlwind Kick")
-    end
+    else M.DestroyTool("Whirlwind Kick") end
 end
 
---============================================================
+--==========================================================
 -- GUI
---============================================================
-local oldGui = CoreGui:FindFirstChild("LegionGrabs")
-if oldGui then oldGui:Destroy() end
+--==========================================================
+local old = CoreGui:FindFirstChild("LegionGrabsGUI")
+if old then old:Destroy() end
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "LegionGrabs"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = CoreGui
+local gui = Instance.new("ScreenGui")
+gui.Name="LegionGrabsGUI"; gui.ResetOnSpawn=false; gui.Parent=CoreGui
 
-local Main = Instance.new("Frame", ScreenGui)
-Main.Size = UDim2.new(0, 640, 0, 480)
-Main.Position = UDim2.new(0.5, -320, 0.5, -240)
-Main.BackgroundColor3 = Color3.fromRGB(15,15,15)
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.Draggable = true
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
-local MainStroke = Instance.new("UIStroke", Main)
-MainStroke.Color = Color3.fromRGB(35,35,35); MainStroke.Thickness = 1.5
+local main = Instance.new("Frame", gui)
+main.Size = UDim2.new(0,640,0,480)
+main.Position = UDim2.new(.5,-320,.5,-240)
+main.BackgroundColor3 = Color3.fromRGB(15,15,15)
+main.BorderSizePixel=0; main.Active=true; main.Draggable=true
+Instance.new("UICorner",main).CornerRadius = UDim.new(0,12)
+local ms = Instance.new("UIStroke",main); ms.Color=Color3.fromRGB(35,35,35); ms.Thickness=1.5
 
--- Title Bar
-local TitleBar = Instance.new("Frame", Main)
-TitleBar.Size = UDim2.new(1, 0, 0, 45)
-TitleBar.BackgroundColor3 = Color3.fromRGB(18,18,18)
-TitleBar.BorderSizePixel = 0
-Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 12)
+-- Title bar
+local tbar = Instance.new("Frame",main)
+tbar.Size=UDim2.new(1,0,0,45); tbar.BackgroundColor3=Color3.fromRGB(18,18,18); tbar.BorderSizePixel=0
+Instance.new("UICorner",tbar).CornerRadius=UDim.new(0,12)
 
-local Title = Instance.new("TextLabel", TitleBar)
-Title.Size = UDim2.new(1, -80, 1, 0)
-Title.Position = UDim2.new(0, 20, 0, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "Legion · Grabs"
-Title.TextColor3 = Color3.fromRGB(255,255,255)
-Title.TextSize = 18
-Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment = Enum.TextXAlignment.Left
+local title = Instance.new("TextLabel",tbar)
+title.Size=UDim2.new(1,-80,1,0); title.Position=UDim2.new(0,20,0,0)
+title.BackgroundTransparency=1; title.Text="Legion · Grabs (Tool-Based)"
+title.TextColor3=Color3.fromRGB(255,255,255); title.TextSize=18
+title.Font=Enum.Font.GothamBold; title.TextXAlignment=Enum.TextXAlignment.Left
 
-local CloseBtn = Instance.new("TextButton", TitleBar)
-CloseBtn.Size = UDim2.new(0, 28, 0, 28)
-CloseBtn.Position = UDim2.new(1, -38, 0.5, -14)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(255,90,82)
-CloseBtn.Text = ""
-CloseBtn.BorderSizePixel = 0
-Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(1, 0)
-CloseBtn.MouseButton1Click:Connect(function() Main.Visible = false end)
+local close = Instance.new("TextButton",tbar)
+close.Size=UDim2.new(0,28,0,28); close.Position=UDim2.new(1,-38,.5,-14)
+close.BackgroundColor3=Color3.fromRGB(255,90,82); close.Text=""; close.BorderSizePixel=0
+Instance.new("UICorner",close).CornerRadius=UDim.new(1,0)
+close.MouseButton1Click:Connect(function() main.Visible=false end)
 
--- Left Side (Toggle list)
-local ListHolder = Instance.new("ScrollingFrame", Main)
-ListHolder.Size = UDim2.new(0, 220, 1, -60)
-ListHolder.Position = UDim2.new(0, 10, 0, 50)
-ListHolder.BackgroundColor3 = Color3.fromRGB(20,20,20)
-ListHolder.BorderSizePixel = 0
-ListHolder.ScrollBarThickness = 3
-ListHolder.ScrollBarImageColor3 = Color3.fromRGB(60,60,60)
-ListHolder.CanvasSize = UDim2.new(0, 0, 0, 0)
-ListHolder.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Instance.new("UICorner", ListHolder).CornerRadius = UDim.new(0, 10)
-local ListPadding = Instance.new("UIPadding", ListHolder)
-ListPadding.PaddingTop = UDim.new(0, 10)
-ListPadding.PaddingBottom = UDim.new(0, 10)
+-- Left list
+local list = Instance.new("ScrollingFrame",main)
+list.Size=UDim2.new(0,240,1,-60); list.Position=UDim2.new(0,10,0,50)
+list.BackgroundColor3=Color3.fromRGB(20,20,20); list.BorderSizePixel=0
+list.ScrollBarThickness=3; list.ScrollBarImageColor3=Color3.fromRGB(60,60,60)
+list.CanvasSize=UDim2.new(0,0,0,0); list.AutomaticCanvasSize=Enum.AutomaticSize.Y
+Instance.new("UICorner",list).CornerRadius=UDim.new(0,10)
+local lp = Instance.new("UIPadding",list); lp.PaddingTop=UDim.new(0,10); lp.PaddingBottom=UDim.new(0,10)
+local ll = Instance.new("UIListLayout",list)
+ll.Padding=UDim.new(0,8); ll.HorizontalAlignment=Enum.HorizontalAlignment.Center
 
-local ListLayout = Instance.new("UIListLayout", ListHolder)
-ListLayout.Padding = UDim.new(0, 8)
-ListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+-- Right info panel
+local info = Instance.new("Frame",main)
+info.Size=UDim2.new(1,-260,1,-60); info.Position=UDim2.new(0,260,0,50)
+info.BackgroundColor3=Color3.fromRGB(20,20,20); info.BorderSizePixel=0
+Instance.new("UICorner",info).CornerRadius=UDim.new(0,10)
 
--- Right Side (Info / Grab toggle)
-local InfoHolder = Instance.new("Frame", Main)
-InfoHolder.Size = UDim2.new(1, -250, 1, -60)
-InfoHolder.Position = UDim2.new(0, 240, 0, 50)
-InfoHolder.BackgroundColor3 = Color3.fromRGB(20,20,20)
-InfoHolder.BorderSizePixel = 0
-Instance.new("UICorner", InfoHolder).CornerRadius = UDim.new(0, 10)
+local iTitle = Instance.new("TextLabel",info)
+iTitle.Size=UDim2.new(1,-20,0,30); iTitle.Position=UDim2.new(0,10,0,15)
+iTitle.BackgroundTransparency=1
+iTitle.Text="Equip a grab from your backpack, then click it to fire."
+iTitle.TextColor3=Color3.fromRGB(220,220,220); iTitle.TextSize=13
+iTitle.Font=Enum.Font.GothamMedium; iTitle.TextXAlignment=Enum.TextXAlignment.Left
 
-local InfoTitle = Instance.new("TextLabel", InfoHolder)
-InfoTitle.Size = UDim2.new(1, -20, 0, 40)
-InfoTitle.Position = UDim2.new(0, 10, 0, 10)
-InfoTitle.BackgroundTransparency = 1
-InfoTitle.Text = "Select a grab from the list"
-InfoTitle.TextColor3 = Color3.fromRGB(220,220,220)
-InfoTitle.TextSize = 14
-InfoTitle.Font = Enum.Font.GothamMedium
-InfoTitle.TextXAlignment = Enum.TextXAlignment.Left
+local iDesc = Instance.new("TextLabel",info)
+iDesc.Size=UDim2.new(1,-20,0,180); iDesc.Position=UDim2.new(0,10,0,50)
+iDesc.BackgroundTransparency=1
+iDesc.Text="Step 1 — Turn ON Grab below.\nStep 2 — Turn ON any grab tool in the list.\nStep 3 — Equip the tool in your Backpack (hotbar) and click.\n\nOnly the core Grab needs to be on for the tools to actually grip the victim.\n\nTip: grab a player by crouching and pressing CTRL+G on their torso."
+iDesc.TextColor3=Color3.fromRGB(150,150,150); iDesc.TextSize=12
+iDesc.Font=Enum.Font.Gotham; iDesc.TextXAlignment=Enum.TextXAlignment.Left
+iDesc.TextYAlignment=Enum.TextYAlignment.Top; iDesc.TextWrapped=true
 
-local InfoDesc = Instance.new("TextLabel", InfoHolder)
-InfoDesc.Size = UDim2.new(1, -20, 0, 100)
-InfoDesc.Position = UDim2.new(0, 10, 0, 50)
-InfoDesc.BackgroundTransparency = 1
-InfoDesc.Text = ""
-InfoDesc.TextColor3 = Color3.fromRGB(150,150,150)
-InfoDesc.TextSize = 12
-InfoDesc.Font = Enum.Font.Gotham
-InfoDesc.TextXAlignment = Enum.TextXAlignment.Left
-InfoDesc.TextYAlignment = Enum.TextYAlignment.Top
-InfoDesc.TextWrapped = true
+-- Core Grab toggle (this is the "Grab Function Tool")
+local grabBtn = Instance.new("TextButton",info)
+grabBtn.Size=UDim2.new(1,-40,0,50); grabBtn.Position=UDim2.new(0,20,1,-130)
+grabBtn.BackgroundColor3=Color3.fromRGB(28,28,28); grabBtn.BorderSizePixel=0
+grabBtn.Text="Grab Function Tool: OFF"
+grabBtn.TextColor3=Color3.fromRGB(220,220,220); grabBtn.TextSize=14
+grabBtn.Font=Enum.Font.GothamBold; grabBtn.AutoButtonColor=false
+Instance.new("UICorner",grabBtn).CornerRadius=UDim.new(0,8)
+local grabStroke = Instance.new("UIStroke",grabBtn); grabStroke.Color=Color3.fromRGB(45,45,45)
 
--- Core Grab toggle (must be ON to use any grab tool)
-local CoreToggle = Instance.new("TextButton", InfoHolder)
-CoreToggle.Size = UDim2.new(1, -40, 0, 38)
-CoreToggle.Position = UDim2.new(0, 20, 1, -110)
-CoreToggle.BackgroundColor3 = Color3.fromRGB(28,28,28)
-CoreToggle.BorderSizePixel = 0
-CoreToggle.Text = "Grab: OFF"
-CoreToggle.TextColor3 = Color3.fromRGB(220,220,220)
-CoreToggle.TextSize = 13
-CoreToggle.Font = Enum.Font.GothamMedium
-CoreToggle.AutoButtonColor = false
-Instance.new("UICorner", CoreToggle).CornerRadius = UDim.new(0, 8)
-local CoreToggleStroke = Instance.new("UIStroke", CoreToggle)
-CoreToggleStroke.Color = Color3.fromRGB(45,45,45)
+-- Effects toggle
+local fxBtn = Instance.new("TextButton",info)
+fxBtn.Size=UDim2.new(1,-40,0,40); fxBtn.Position=UDim2.new(0,20,1,-70)
+fxBtn.BackgroundColor3=Color3.fromRGB(28,28,28); fxBtn.BorderSizePixel=0
+fxBtn.Text="Effects: ON"
+fxBtn.TextColor3=Color3.fromRGB(220,220,220); fxBtn.TextSize=13
+fxBtn.Font=Enum.Font.GothamMedium; fxBtn.AutoButtonColor=false
+Instance.new("UICorner",fxBtn).CornerRadius=UDim.new(0,8)
+local fxStroke = Instance.new("UIStroke",fxBtn); fxStroke.Color=Color3.fromRGB(81,194,58)
 
-local EffectsToggle = Instance.new("TextButton", InfoHolder)
-EffectsToggle.Size = UDim2.new(1, -40, 0, 38)
-EffectsToggle.Position = UDim2.new(0, 20, 1, -60)
-EffectsToggle.BackgroundColor3 = Color3.fromRGB(28,28,28)
-EffectsToggle.BorderSizePixel = 0
-EffectsToggle.Text = "Effects: ON"
-EffectsToggle.TextColor3 = Color3.fromRGB(220,220,220)
-EffectsToggle.TextSize = 13
-EffectsToggle.Font = Enum.Font.GothamMedium
-EffectsToggle.AutoButtonColor = false
-Instance.new("UICorner", EffectsToggle).CornerRadius = UDim.new(0, 8)
-local EffectsToggleStroke = Instance.new("UIStroke", EffectsToggle)
-EffectsToggleStroke.Color = Color3.fromRGB(45,45,45)
-
---============================================================
+--==========================================================
 -- Toggle button factory
---============================================================
-local toggleButtons = {}
-
+--==========================================================
 local function makeToggle(grabName, order)
-    local btn = Instance.new("TextButton", ListHolder)
-    btn.Size = UDim2.new(0, 196, 0, 36)
+    local btn = Instance.new("TextButton", list)
+    btn.Size = UDim2.new(0, 216, 0, 36)
     btn.BackgroundColor3 = Color3.fromRGB(28,28,28)
     btn.BorderSizePixel = 0
     btn.Text = "  "..grabName
@@ -912,23 +760,21 @@ local function makeToggle(grabName, order)
     btn.AutoButtonColor = false
     btn.LayoutOrder = order
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-
     local stroke = Instance.new("UIStroke", btn)
     stroke.Color = Color3.fromRGB(45,45,45)
 
     local dot = Instance.new("Frame", btn)
     dot.Size = UDim2.new(0, 10, 0, 10)
-    dot.Position = UDim2.new(1, -18, 0.5, -5)
+    dot.Position = UDim2.new(1, -18, .5, -5)
     dot.BackgroundColor3 = Color3.fromRGB(60,60,60)
     dot.BorderSizePixel = 0
-    Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(1,0)
 
     local state = false
-
     local function update()
-        TweenService:Create(dot, TweenInfo.new(0.25),
+        TweenSvc:Create(dot,TweenInfo.new(.25),
             {BackgroundColor3 = state and Color3.fromRGB(81,194,58) or Color3.fromRGB(60,60,60)}):Play()
-        TweenService:Create(btn, TweenInfo.new(0.25),
+        TweenSvc:Create(btn,TweenInfo.new(.25),
             {BackgroundColor3 = state and Color3.fromRGB(22,45,22) or Color3.fromRGB(28,28,28)}):Play()
     end
 
@@ -936,150 +782,95 @@ local function makeToggle(grabName, order)
         state = not state
         Settings.Grab[grabName] = state
         update()
-        -- fire the exact original tool function
-        if Tools[grabName] then
-            local ok, err = pcall(Tools[grabName])
-            if not ok then warn("[Legion] "..grabName.." error: "..tostring(err)) end
+        if T[grabName] then
+            local ok, err = pcall(T[grabName])
+            if not ok then warn("[Legion] "..grabName..": "..tostring(err)) end
         end
-        InfoTitle.Text = grabName..": "..(state and "ON" or "OFF")
+        iTitle.Text = grabName..": "..(state and "ON — tool added to Backpack" or "OFF — tool removed")
     end)
 
     btn.MouseEnter:Connect(function()
-        if not state then
-            TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(38,38,38)}):Play()
-        end
+        if not state then TweenSvc:Create(btn,TweenInfo.new(.2),{BackgroundColor3=Color3.fromRGB(38,38,38)}):Play() end
     end)
     btn.MouseLeave:Connect(function()
-        if not state then
-            TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(28,28,28)}):Play()
-        end
+        if not state then TweenSvc:Create(btn,TweenInfo.new(.2),{BackgroundColor3=Color3.fromRGB(28,28,28)}):Play() end
     end)
-
-    toggleButtons[grabName] = {button = btn, setState = function(v)
-        state = v
-        Settings.Grab[grabName] = v
-        update()
-    end}
-    return btn
 end
 
---============================================================
--- Build the toggle list (matches original Tools order)
---============================================================
-local grabOrder = {
-    "Time Stop",
-    "Hado 90",
-    "C Moon",
-    "Made In Heaven",
-    "Chezburger",
-    "Orbit",
-    "Get Over Here",
-    "Make Player Stand",
-    "Punch Back",
-    "Domain Expansion",
-    "Portal",
-    "Whirlwind Kick",
+local order = {
+    "Time Stop","Hado 90","C Moon","Made In Heaven","Chezburger","Orbit",
+    "Get Over Here","Make Player Stand","Punch Back","Domain Expansion",
+    "Portal","Whirlwind Kick",
 }
+for i, name in ipairs(order) do makeToggle(name, i) end
 
-for i, name in ipairs(grabOrder) do
-    makeToggle(name, i)
+--==========================================================
+-- CORE "Grab Function Tool" wiring
+--==========================================================
+local function hookGrab()
+    if Cache.Connections.Grab then Cache.Connections.Grab:Disconnect(); Cache.Connections.Grab=nil end
+    Cache.Connections.Grab = LP.Character.BodyEffects.Grabbed:GetPropertyChangedSignal("Value"):Connect(function()
+        if Cache.Loops.Grab then
+            for _, p in ipairs(Settings.Grab.GrabbedCharacter:GetDescendants()) do
+                if p:IsA("BodyVelocity") or p:IsA("BodyGyro") or p:IsA("BodyPosition") then p:Destroy() end
+            end
+            Settings.Grab.GrabbedCharacter = nil
+            Cache.Loops.Grab:Disconnect(); Cache.Loops.Grab=nil
+        end
+        if LP.Character.BodyEffects.Grabbed.Value ~= nil then
+            M.Grab(LP.Character.BodyEffects.Grabbed.Value, 3135389157)
+            M.CanCollide(LP.Character.BodyEffects.Grabbed.Value, false)
+            M.NoVelocity(LP.Character.BodyEffects.Grabbed.Value)
+            return
+        end
+        M.StopAnim(LP.Character, "3135389157")
+    end)
 end
 
---============================================================
--- Core toggle button wiring
---============================================================
-CoreToggle.MouseButton1Click:Connect(function()
+grabBtn.MouseButton1Click:Connect(function()
     Settings.Grab.Grab = not Settings.Grab.Grab
-    CoreToggle.Text = "Grab: "..(Settings.Grab.Grab and "ON" or "OFF")
-    CoreToggleStroke.Color = Settings.Grab.Grab and Color3.fromRGB(81,194,58) or Color3.fromRGB(45,45,45)
+    grabBtn.Text = "Grab Function Tool: "..(Settings.Grab.Grab and "ON" or "OFF")
+    grabStroke.Color = Settings.Grab.Grab and Color3.fromRGB(81,194,58) or Color3.fromRGB(45,45,45)
 
     if Settings.Grab.Grab then
-        -- connect the grab listener
-        Cache.Connections.Grab = LP.Character.BodyEffects.Grabbed:GetPropertyChangedSignal("Value"):Connect(function()
-            if Cache.Loops.Grab then
-                for _, part in ipairs(Settings.Grab.GrabbedCharacter:GetDescendants()) do
-                    if part:IsA("BodyVelocity") or part:IsA("BodyGyro") or part:IsA("BodyPosition") then
-                        part:Destroy()
-                    end
-                end
-                Settings.Grab.GrabbedCharacter = nil
-                Cache.Loops.Grab:Disconnect(); Cache.Loops.Grab = nil
-            end
-            if LP.Character.BodyEffects.Grabbed.Value ~= nil then
-                Modules.Grab(LP.Character.BodyEffects.Grabbed.Value, Animations.Grab)
-                Modules.CanCollide(LP.Character.BodyEffects.Grabbed.Value, false)
-                Modules.NoVelocity(LP.Character.BodyEffects.Grabbed.Value)
-                return
-            end
-            TweenService:Create(Workspace.CurrentCamera, TweenInfo.new(1), {FieldOfView = 70}):Play()
-            Modules.StopAnimation(LP.Character, "3135389157")
-        end)
+        hookGrab()
     else
         if Settings.Grab.GrabbedCharacter then
-            ReplicatedStorage.MainEvent:FireServer("Grabbing", false)
-            Modules.StopAnimation(LP.Character, "3135389157")
+            RS.MainEvent:FireServer("Grabbing", false)
+            M.StopAnim(LP.Character,"3135389157")
         end
         if Cache.Loops.Grab then
             Settings.Grab.GrabbedCharacter = nil
-            Cache.Loops.Grab:Disconnect(); Cache.Loops.Grab = nil
+            Cache.Loops.Grab:Disconnect(); Cache.Loops.Grab=nil
         end
         if Cache.Connections.Grab then
-            Cache.Connections.Grab:Disconnect(); Cache.Connections.Grab = nil
+            Cache.Connections.Grab:Disconnect(); Cache.Connections.Grab=nil
         end
     end
 end)
 
-EffectsToggle.MouseButton1Click:Connect(function()
+fxBtn.MouseButton1Click:Connect(function()
     Settings.Grab.Effects = not Settings.Grab.Effects
-    EffectsToggle.Text = "Effects: "..(Settings.Grab.Effects and "ON" or "OFF")
-    EffectsToggleStroke.Color = Settings.Grab.Effects and Color3.fromRGB(81,194,58) or Color3.fromRGB(45,45,45)
+    fxBtn.Text = "Effects: "..(Settings.Grab.Effects and "ON" or "OFF")
+    fxStroke.Color = Settings.Grab.Effects and Color3.fromRGB(81,194,58) or Color3.fromRGB(45,45,45)
 end)
 
--- initial visual
-CoreToggleStroke.Color = Color3.fromRGB(45,45,45)
-EffectsToggleStroke.Color = Color3.fromRGB(81,194,58)
-
---============================================================
--- Respawn handling (matches original)
---============================================================
+--==========================================================
+-- Respawn — re-hook grab and re-create enabled tools
+--==========================================================
 LP.CharacterAdded:Connect(function(char)
     repeat task.wait() until char:FindFirstChild("BodyEffects")
-    if Cache.Connections.Grab then Cache.Connections.Grab:Disconnect(); Cache.Connections.Grab = nil end
-    if Settings.Grab.Grab then
-        Cache.Connections.Grab = char.BodyEffects.Grabbed:GetPropertyChangedSignal("Value"):Connect(function()
-            if Cache.Loops.Grab then
-                for _, part in ipairs(Settings.Grab.GrabbedCharacter:GetDescendants()) do
-                    if part:IsA("BodyVelocity") or part:IsA("BodyGyro") or part:IsA("BodyPosition") then
-                        part:Destroy()
-                    end
-                end
-                Settings.Grab.GrabbedCharacter = nil
-                Cache.Loops.Grab:Disconnect(); Cache.Loops.Grab = nil
-            end
-            if char.BodyEffects.Grabbed.Value ~= nil then
-                Modules.Grab(char.BodyEffects.Grabbed.Value, Animations.Grab)
-                Modules.CanCollide(char.BodyEffects.Grabbed.Value, false)
-                Modules.NoVelocity(char.BodyEffects.Grabbed.Value)
-                return
-            end
-            Modules.StopAnimation(char, "3135389157")
-        end)
-    end
-
-    -- recreate enabled tools
-    for name, func in pairs(Tools) do
+    if Settings.Grab.Grab then hookGrab() end
+    for name, fn in pairs(T) do
         if Settings.Grab[name] then
-            local ok, err = pcall(func)
-            if not ok then warn("[Legion] Respawn recreate "..name.." failed: "..tostring(err)) end
+            local ok, err = pcall(fn)
+            if not ok then warn("[Legion] respawn recreate "..name..": "..tostring(err)) end
         end
     end
 end)
 
--- stop rip tool animation
 RunService.Heartbeat:Connect(function()
-    if LP.Character then
-        Modules.StopAnimation(LP.Character, "4798175381")
-    end
+    if LP.Character then M.StopAnim(LP.Character, "4798175381") end
 end)
 
-print("[Legion] Grabs GUI loaded – 12 toggles ready.")
+print("[Legion] Grab GUI loaded — 12 tools + core Grab Function Tool.")
