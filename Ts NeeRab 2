@@ -1647,7 +1647,6 @@ function ToolSSs()
             Humanoid.WalkSpeed = 16
         end
     end)
-end
 
 -- ==================== Tool 25: Shooter ====================
 if LocalPlayer2.Backpack:FindFirstChild("Shooter") then
@@ -1789,6 +1788,8 @@ ToolShooter.Activated:Connect(function()
         Humanoid.WalkSpeed = 16
     end
 end)
+
+end
 
 -- ============================================================
 -- Run
