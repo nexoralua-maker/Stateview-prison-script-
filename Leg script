@@ -2,6 +2,7 @@
 --// LEGION GRABS GUI — Full Rewrite
 --// - Tool-based grabs (toggle in GUI -> equip from backpack -> click)
 --// - Core "Grab Function Tool" that actually grips the victim
+--// - Grab tool: click to grab nearest player within 15 studs
 --// - Make Player Stand: Clone behind player, facing same way
 --// - Over me: Pins grabbed player at the bottom of your character
 --// - M.Chat uses TextChatService (with legacy fallback)
@@ -34,6 +35,7 @@ local Settings = {
         Grab = false,
         Effects = true,
         GrabbedCharacter = nil,
+        ["Grab tool"]       = false,
         ["Time Stop"]       = false,
         ["Hado 90"]         = false,
         ["C Moon"]          = false,
@@ -107,7 +109,8 @@ function M.CreateTool(name, func)
     Tool.Name = name
     Tool.RequiresHandle = false
     Cache.Tools[name] = Tool.Activated:Connect(function()
-        if Settings.Grab.GrabbedCharacter == nil then return end
+        -- Grab tool can fire even without an active grab
+        if name ~= "Grab tool" and Settings.Grab.GrabbedCharacter == nil then return end
         func()
     end)
     return Tool
@@ -204,7 +207,7 @@ function M.StopAudio()
 end
 
 --==========================================================
--- NEW CHAT FUNCTION (uses TextChatService, legacy fallback)
+-- CHAT FUNCTION (TextChatService, legacy fallback)
 --==========================================================
 function M.Chat(msg)
     if msg == nil or msg == "" or msg:gsub("%s", "") == "" then
@@ -319,6 +322,61 @@ end
 -- TOOLS
 --==========================================================
 local T = {}
+
+--==========================================================
+-- GRAB TOOL — Click to grab nearest player within 15 studs
+--==========================================================
+T["Grab tool"] = function()
+    if Settings.Grab["Grab tool"] then
+        M.CreateTool("Grab tool", function()
+            if Settings.Grab.GrabbedCharacter then
+                M.Chat("Already grabbing someone.")
+                return
+            end
+
+            local myRoot = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            if not myRoot then return end
+
+            local closest, closestDist = nil, math.huge
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LP and plr.Character then
+                    local root = plr.Character:FindFirstChild("HumanoidRootPart")
+                    local hum  = plr.Character:FindFirstChildOfClass("Humanoid")
+                    if root and hum and hum.Health > 0 then
+                        local dist = (root.Position - myRoot.Position).Magnitude
+                        if dist < closestDist and dist <= 15 then
+                            closest, closestDist = plr.Character, dist
+                        end
+                    end
+                end
+            end
+
+            if not closest then
+                M.Chat("No one close enough to grab.")
+                return
+            end
+
+            -- Fire the grab to the server
+            pcall(function()
+                RS.MainEvent:FireServer("Grabbing", true, closest)
+            end)
+
+            -- Fallback: force the grab client-side if the server didn't respond
+            task.wait(0.2)
+            if LP.Character
+            and LP.Character:FindFirstChild("BodyEffects")
+            and LP.Character.BodyEffects.Grabbed.Value == nil then
+                pcall(function()
+                    LP.Character.BodyEffects.Grabbed.Value = closest
+                end)
+            end
+
+            M.Chat("Got you.")
+        end)
+    else
+        M.DestroyTool("Grab tool")
+    end
+end
 
 T["Time Stop"] = function()
     if Settings.Grab["Time Stop"] then
@@ -444,7 +502,7 @@ T["C Moon"] = function()
 end
 
 T["Made In Heaven"] = function()
-    if Settings.Grab["Made In Heaven"] then
+      if Settings.Grab["Made In Heaven"] then
         M.CreateTool("Made In Heaven", function()
             if not Settings.Grab.GrabbedCharacter then return end
             local fov0, fog0, fogc0 = WS.CurrentCamera.FieldOfView, Lighting.FogEnd, Lighting.FogColor
@@ -485,7 +543,7 @@ T["Made In Heaven"] = function()
 end
 
 T["Chezburger"] = function()
-      if Settings.Grab["Chezburger"] then
+     if Settings.Grab["Chezburger"] then
         M.CreateTool("Mmm.. chezburger", function()
             if not Settings.Grab.GrabbedCharacter then return end
             M.Play("6647570"); M.Chat("Can i haz chezburger ples?")
@@ -563,7 +621,7 @@ T["Get Over Here"] = function()
 end
 
 --==========================================================
--- MAKE PLAYER STAND  — Clone goes BEHIND the player
+-- MAKE PLAYER STAND — Clone goes BEHIND the player
 --==========================================================
 T["Make Player Stand"] = function()
     if Settings.Grab["Make Player Stand"] then
@@ -770,7 +828,6 @@ T["Over me"] = function()
             M.StopAnim(LPChar, "3135389157")
             M.StopAnim(LPChar, "11075367458")
 
-            -- Clear existing constraints so we control the victim's position
             for _, p in ipairs(g:GetDescendants()) do
                 if p:IsA("BodyPosition") or p:IsA("BodyGyro") then
                     p:Destroy()
@@ -786,7 +843,6 @@ T["Over me"] = function()
             BG.MaxTorque = Vector3.new(10000, 10000, 10000)
             BG.CFrame = CFrame.new(g.UpperTorso.Position, LPChar.HumanoidRootPart.Position)
 
-            -- Keep the victim pinned under your feet
             if Cache.Loops.OverMe then Cache.Loops.OverMe:Disconnect() end
             Cache.Loops.OverMe = RunService.Heartbeat:Connect(function()
                 if not LPChar
@@ -814,7 +870,6 @@ T["Over me"] = function()
 
             task.wait(3)
 
-            -- Cleanup
             if Cache.Loops.OverMe then
                 Cache.Loops.OverMe:Disconnect()
                 Cache.Loops.OverMe = nil
@@ -922,6 +977,7 @@ iDesc.Text = "Step 1 — Turn ON Grab Function Tool below.\n"..
              "Step 3 — Equip it from your hotbar and click.\n\n"..
              "Tip: Crouch + CTRL+G on a torso to grab.\n\n"..
              "Tools added to the Backpack:\n"..
+             " • Grab tool\n"..
              " • Time Stop\n"..
              " • Hado 90\n"..
              " • C Moon\n"..
@@ -939,7 +995,24 @@ iDesc.TextColor3 = Color3.fromRGB(150,150,150); iDesc.TextSize = 11
 iDesc.Font = Enum.Font.Gotham; iDesc.TextXAlignment = Enum.TextXAlignment.Left
 iDesc.TextYAlignment = Enum.TextYAlignment.Top; iDesc.TextWrapped = true
 
--- Core toggles
+--==========================================================
+-- GRAB TOOL BUTTON (top, above Grab Function)
+--==========================================================
+local grabToolBtn = Instance.new("TextButton", info)
+grabToolBtn.Size = UDim2.new(1, -40, 0, 40)
+grabToolBtn.Position = UDim2.new(0, 20, 1, -150)
+grabToolBtn.BackgroundColor3 = Color3.fromRGB(28,28,28)
+grabToolBtn.BorderSizePixel = 0
+grabToolBtn.Text = "Grab tool: OFF"
+grabToolBtn.TextColor3 = Color3.fromRGB(220,220,220)
+grabToolBtn.TextSize = 13
+grabToolBtn.Font = Enum.Font.GothamBold
+grabToolBtn.AutoButtonColor = false
+Instance.new("UICorner", grabToolBtn).CornerRadius = UDim.new(0,8)
+local grabToolStroke = Instance.new("UIStroke", grabToolBtn)
+grabToolStroke.Color = Color3.fromRGB(45,45,45)
+
+-- Core Grab Function button
 local grabBtn = Instance.new("TextButton", info)
 grabBtn.Size = UDim2.new(1, -40, 0, 40); grabBtn.Position = UDim2.new(0, 20, 1, -100)
 grabBtn.BackgroundColor3 = Color3.fromRGB(28,28,28); grabBtn.BorderSizePixel = 0
@@ -949,6 +1022,7 @@ grabBtn.Font = Enum.Font.GothamBold; grabBtn.AutoButtonColor = false
 Instance.new("UICorner", grabBtn).CornerRadius = UDim.new(0,8)
 local grabStroke = Instance.new("UIStroke", grabBtn); grabStroke.Color = Color3.fromRGB(45,45,45)
 
+-- Effects button
 local fxBtn = Instance.new("TextButton", info)
 fxBtn.Size = UDim2.new(1, -40, 0, 35); fxBtn.Position = UDim2.new(0, 20, 1, -55)
 fxBtn.BackgroundColor3 = Color3.fromRGB(28,28,28); fxBtn.BorderSizePixel = 0
@@ -959,7 +1033,7 @@ Instance.new("UICorner", fxBtn).CornerRadius = UDim.new(0,8)
 local fxStroke = Instance.new("UIStroke", fxBtn); fxStroke.Color = Color3.fromRGB(81,194,58)
 
 --==========================================================
--- TOGGLE BUTTON FACTORY
+-- TOGGLE BUTTON FACTORY (for grab list)
 --==========================================================
 local function makeToggle(grabName, order)
     local btn = Instance.new("TextButton", list)
@@ -1048,6 +1122,22 @@ local function hookGrab()
     end)
 end
 
+-- Grab tool toggle handler
+grabToolBtn.MouseButton1Click:Connect(function()
+    local state = not Settings.Grab["Grab tool"]
+    Settings.Grab["Grab tool"] = state
+    grabToolBtn.Text = "Grab tool: "..(state and "ON" or "OFF")
+    grabToolStroke.Color = state and Color3.fromRGB(81,194,58) or Color3.fromRGB(45,45,45)
+
+    if T["Grab tool"] then
+        local ok, err = pcall(T["Grab tool"])
+        if not ok then warn("[Legion] Grab tool: "..tostring(err)) end
+    end
+
+    iTitle.Text = "Grab tool: "..(state and "ON — tool added to Backpack" or "OFF — tool removed")
+end)
+
+-- Grab Function toggle handler
 grabBtn.MouseButton1Click:Connect(function()
     Settings.Grab.Grab = not Settings.Grab.Grab
     grabBtn.Text = "Grab Function Tool: "..(Settings.Grab.Grab and "ON" or "OFF")
@@ -1070,6 +1160,7 @@ grabBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+-- Effects toggle handler
 fxBtn.MouseButton1Click:Connect(function()
     Settings.Grab.Effects = not Settings.Grab.Effects
     fxBtn.Text = "Effects: "..(Settings.Grab.Effects and "ON" or "OFF")
@@ -1098,4 +1189,4 @@ RunService.Heartbeat:Connect(function()
     if LP.Character then M.StopAnim(LP.Character, "4798175381") end
 end)
 
-print("[Legion] Grab GUI loaded — 13 grab tools + core Grab Function Tool.")
+print("[Legion] Grab GUI loaded — 14 tools (Grab tool + 13 grabs) + core Grab Function Tool.")
