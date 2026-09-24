@@ -213,16 +213,15 @@ leftPanel.BorderSizePixel = 0
 leftPanel.ZIndex = 2
 leftPanel.Parent = mainFrame
 
--- Main Tab Button
+-- ==========================================
+-- MAIN TAB BUTTON (Styled Crispy.Hub)
+-- ==========================================
 local mainTabBtn = Instance.new("TextButton")
 mainTabBtn.Size = UDim2.new(0, 130, 0, 38)
 mainTabBtn.Position = UDim2.new(0, 10, 0, 15)
 mainTabBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-mainTabBtn.Text = "" -- No default text, we use custom icon + label
-mainTabBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
-mainTabBtn.Font = Enum.Font.GothamBold
-mainTabBtn.TextSize = 15
-mainTabBtn.TextXAlignment = Enum.TextXAlignment.Left
+mainTabBtn.Text = ""
+mainTabBtn.AutoButtonColor = false
 mainTabBtn.ZIndex = 3
 mainTabBtn.Parent = leftPanel
 
@@ -236,30 +235,84 @@ tabCorner.Parent = mainTabBtn
 local homeIcon = Instance.new("ImageLabel")
 homeIcon.Name = "HomeIcon"
 homeIcon.Size = UDim2.new(0, 20, 0, 20)
-homeIcon.Position = UDim2.new(0, 12, 0.5, -10)
+homeIcon.Position = UDim2.new(0, 10, 0.5, -10)
 homeIcon.BackgroundTransparency = 1
-homeIcon.Image = "rbxassetid://6031075931" -- House icon
-homeIcon.ImageColor3 = Color3.fromRGB(20, 20, 20) -- Dark icon to match tab
+homeIcon.Image = "rbxassetid://6031075931"
+homeIcon.ImageColor3 = Color3.fromRGB(20, 20, 20)
 homeIcon.ZIndex = 4
 homeIcon.Parent = mainTabBtn
 
--- "Main" Text
-local mainLabel = Instance.new("TextLabel")
-mainLabel.Name = "MainLabel"
-mainLabel.Size = UDim2.new(1, -45, 1, 0)
-mainLabel.Position = UDim2.new(0, 40, 0, 0)
-mainLabel.BackgroundTransparency = 1
-mainLabel.Text = "Main"
-mainLabel.TextColor3 = Color3.fromRGB(20, 20, 20)
-mainLabel.Font = Enum.Font.GothamBold
-mainLabel.TextSize = 15
-mainLabel.TextXAlignment = Enum.TextXAlignment.Left
-mainLabel.ZIndex = 4
-mainLabel.Parent = mainTabBtn
+-- Text shadow for "Crispy"
+local crispyShadow = Instance.new("TextLabel")
+crispyShadow.Name = "CrispyShadow"
+crispyShadow.Size = UDim2.new(0, 55, 1, 0)
+crispyShadow.Position = UDim2.new(0, 35, 0, 1)
+crispyShadow.BackgroundTransparency = 1
+crispyShadow.Text = "Crispy"
+crispyShadow.TextColor3 = Color3.fromRGB(255, 255, 255)
+crispyShadow.TextTransparency = 0.75
+crispyShadow.Font = Enum.Font.GothamBlack
+crispyShadow.TextSize = 15
+crispyShadow.TextXAlignment = Enum.TextXAlignment.Left
+crispyShadow.ZIndex = 3
+crispyShadow.Parent = mainTabBtn
 
-local iconCorner = Instance.new("UICorner")
-iconCorner.CornerRadius = UDim.new(1, 0)
-iconCorner.Parent = tabIcon
+-- Text shadow for ".Hub"
+local hubShadow = Instance.new("TextLabel")
+hubShadow.Name = "HubShadow"
+hubShadow.Size = UDim2.new(0, 45, 1, 0)
+hubShadow.Position = UDim2.new(0, 83, 0, 2)
+hubShadow.BackgroundTransparency = 1
+hubShadow.Text = ".Hub"
+hubShadow.TextColor3 = Color3.fromRGB(255, 255, 255)
+hubShadow.TextTransparency = 0.75
+hubShadow.Font = Enum.Font.GothamBold
+hubShadow.TextSize = 14
+hubShadow.TextXAlignment = Enum.TextXAlignment.Left
+hubShadow.ZIndex = 3
+hubShadow.Parent = mainTabBtn
+
+-- "Crispy" Text
+local crispyLabel = Instance.new("TextLabel")
+crispyLabel.Name = "CrispyLabel"
+crispyLabel.Size = UDim2.new(0, 55, 1, 0)
+crispyLabel.Position = UDim2.new(0, 34, 0, 0)
+crispyLabel.BackgroundTransparency = 1
+crispyLabel.Text = "Crispy"
+crispyLabel.TextColor3 = Color3.fromRGB(20, 20, 20)
+crispyLabel.Font = Enum.Font.GothamBlack
+crispyLabel.TextSize = 15
+crispyLabel.TextXAlignment = Enum.TextXAlignment.Left
+crispyLabel.ZIndex = 4
+crispyLabel.Parent = mainTabBtn
+
+-- ".Hub" Text
+local hubLabel = Instance.new("TextLabel")
+hubLabel.Name = "HubLabel"
+hubLabel.Size = UDim2.new(0, 45, 1, 0)
+hubLabel.Position = UDim2.new(0, 82, 0, 1)
+hubLabel.BackgroundTransparency = 1
+hubLabel.Text = ".Hub"
+hubLabel.TextColor3 = Color3.fromRGB(20, 20, 20)
+hubLabel.Font = Enum.Font.GothamBold
+hubLabel.TextSize = 14
+hubLabel.TextXAlignment = Enum.TextXAlignment.Left
+hubLabel.ZIndex = 4
+hubLabel.Parent = mainTabBtn
+
+-- Yellow accent dot separator
+local accentDot = Instance.new("Frame")
+accentDot.Name = "AccentDot"
+accentDot.Size = UDim2.new(0, 4, 0, 4)
+accentDot.Position = UDim2.new(0, 78, 0.5, -2)
+accentDot.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+accentDot.BorderSizePixel = 0
+accentDot.ZIndex = 5
+accentDot.Parent = mainTabBtn
+
+local dotCorner = Instance.new("UICorner")
+dotCorner.CornerRadius = UDim.new(1, 0)
+dotCorner.Parent = accentDot
 
 -- ==========================================
 -- RIGHT COLUMN (Action List & Settings)
@@ -349,7 +402,7 @@ sectionDivider.ZIndex = 5
 sectionDivider.Parent = sectionHeader
 
 -- ==========================================
--- ACTION TOGGLES (Neckgrabs removed)
+-- ACTION TOGGLES
 -- ==========================================
 local actions = {"Control", "Rip In Half", "Hail", "Orbit", "Get Over Here", "Soft Sex", "Hard Sex", "Penis"}
 
@@ -368,7 +421,7 @@ for i, actionName in ipairs(actions) do
     btnCorner.CornerRadius = UDim.new(0, 4)
     btnCorner.Parent = btn
 
-    -- 2. Text Label (Left aligned)
+    -- 2. Text Label
     local textLabel = Instance.new("TextLabel")
     textLabel.Size = UDim2.new(1, -35, 1, 0)
     textLabel.Position = UDim2.new(0, 10, 0, 0)
@@ -381,7 +434,7 @@ for i, actionName in ipairs(actions) do
     textLabel.ZIndex = 5
     textLabel.Parent = btn
 
-    -- 3. Toggle Box (Right aligned)
+    -- 3. Toggle Box
     local toggleBox = Instance.new("Frame")
     toggleBox.Size = UDim2.new(0, 18, 0, 18)
     toggleBox.Position = UDim2.new(1, -25, 0.5, -9)
@@ -399,7 +452,7 @@ for i, actionName in ipairs(actions) do
     boxStroke.Thickness = 1
     boxStroke.Parent = toggleBox
 
-    -- 4. Inner Fill for Toggle Box
+    -- 4. Inner Fill
     local boxFill = Instance.new("Frame")
     boxFill.Size = UDim2.new(1, -4, 1, -4)
     boxFill.Position = UDim2.new(0, 2, 0, 2)
@@ -419,7 +472,7 @@ for i, actionName in ipairs(actions) do
     -- State
     local isToggled = false
 
-    -- 5. Click logic
+    -- Click logic
     btn.MouseButton1Click:Connect(function()
         isToggled = not isToggled
         if isToggled then
@@ -635,4 +688,4 @@ end
 
 -- Create the two sliders
 local vehicleFlySpeedSlider = createSlider(settingsFrame, "Vehicle Fly Speed")
-local controlSpeedSlider = createSlider(settingsFrame, "Control Speed") 
+local controlSpeedSlider = createSlider(settingsFrame, "Control Speed")
