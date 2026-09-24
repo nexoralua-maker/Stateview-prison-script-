@@ -274,6 +274,7 @@ actionListFrame.Name = "ActionListFrame"
 actionListFrame.Size = UDim2.new(0, 150, 1, 0)
 actionListFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 actionListFrame.BorderSizePixel = 0
+actionListFrame.ClipsDescendants = true
 actionListFrame.ZIndex = 3
 actionListFrame.Parent = rightPanel
 
@@ -281,17 +282,25 @@ local actionListCorner = Instance.new("UICorner")
 actionListCorner.CornerRadius = UDim.new(0, 6)
 actionListCorner.Parent = actionListFrame
 
--- Make the action list scrollable so all 24 buttons fit
+-- Scroll Frame that blends with the panel (transparent, no border, thin scrollbar)
 local actionListScroll = Instance.new("ScrollingFrame")
 actionListScroll.Name = "ActionListScroll"
 actionListScroll.Size = UDim2.new(1, 0, 1, 0)
 actionListScroll.BackgroundTransparency = 1
 actionListScroll.BorderSizePixel = 0
-actionListScroll.ScrollBarThickness = 4
+actionListScroll.ScrollBarThickness = 3
 actionListScroll.ScrollBarImageColor3 = Color3.fromRGB(255, 200, 0)
+actionListScroll.ScrollBarImageTransparency = 0.3
 actionListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+actionListScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+actionListScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 actionListScroll.ZIndex = 3
 actionListScroll.Parent = actionListFrame
+
+-- Round the scroll frame itself so it doesn't poke out of the rounded panel
+local scrollCorner = Instance.new("UICorner")
+scrollCorner.CornerRadius = UDim.new(0, 6)
+scrollCorner.Parent = actionListScroll
 
 local actionListLayout = Instance.new("UIListLayout")
 actionListLayout.Padding = UDim.new(0, 2)
@@ -311,10 +320,10 @@ actionListPadding.PaddingBottom = UDim.new(0, 10)
 actionListPadding.Parent = actionListScroll
 
 -- ==========================================
--- SECTION HEADER: "Moves"
+-- SECTION HEADER: "Neckgrabs"
 -- ==========================================
 local sectionHeader = Instance.new("Frame")
-sectionHeader.Name = "MovesSection"
+sectionHeader.Name = "NeckgrabsSection"
 sectionHeader.Size = UDim2.new(1, -12, 0, 26)
 sectionHeader.BackgroundTransparency = 1
 sectionHeader.LayoutOrder = 0
@@ -341,7 +350,7 @@ sectionTitle.Name = "SectionTitle"
 sectionTitle.Size = UDim2.new(1, -22, 1, 0)
 sectionTitle.Position = UDim2.new(0, 16, 0, 0)
 sectionTitle.BackgroundTransparency = 1
-sectionTitle.Text = "Moves"
+sectionTitle.Text = "Neckgrabs"
 sectionTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 sectionTitle.Font = Enum.Font.GothamBold
 sectionTitle.TextSize = 14
