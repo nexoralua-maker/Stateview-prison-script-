@@ -1,0 +1,790 @@
+--[[
+    C-Sync Standalone
+    Draggable GUI with C-Sync (Spoof local CFrame to server)
+]]
+
+-- ============================================================
+-- SERVICES
+-- ============================================================
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local CoreGui          = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera      = workspace.CurrentCamera
+
+-- ============================================================
+-- DRAWING LIBRARY
+-- ============================================================
+local Drawing = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/linemaster2/storage/main/Drawing.lua"
+))()
+
+-- ============================================================
+-- CONFIG
+-- ============================================================
+local config = {
+    enabled          = false,
+    keybind          = Enum.KeyCode.N,
+    type             = "Static Local",
+    staticX          = 5,
+    staticY          = 0,
+    staticZ          = 5,
+    randomization    = 5,
+    visualize        = false,
+    visualizeTracer  = true,
+    visualizeDot     = true,
+    visualizeChar    = false,
+    visualizeColor   = Color3.fromRGB(207, 227, 0),
+    dotSize          = 16,
+    originalPosition = CFrame.new(1, 1, 1),
+}
+
+-- ============================================================
+-- DRAWINGS
+-- ============================================================
+local cSyncTracer = Drawing.new("Line")
+cSyncTracer.Visible   = false
+cSyncTracer.Thickness = 2
+
+local cSyncDot = Drawing.new("Circle")
+cSyncDot.Visible = false
+cSyncDot.Filled  = true
+
+-- ============================================================
+-- UTILITIES
+-- ============================================================
+local function worldToScreen(position)
+    local pos, onScreen = Camera:WorldToViewportPoint(position)
+    return Vector2.new(pos.X, pos.Y), onScreen
+end
+
+local function randomVector3(amount)
+    return Vector3.new(
+        math.random(-amount * 100, amount * 100) / 100,
+        math.random(-amount * 100, amount * 100) / 100,
+        math.random(-amount * 100, amount * 100) / 100
+    )
+end
+
+local function cloneCharacter(player, transparency, color, material)
+    if not player.Character then return nil end
+    player.Character.Archivable = true
+    local clone = player.Character:Clone()
+    clone.Parent = workspace
+    player.Character.Archivable = false
+
+    for _, part in ipairs(clone:GetChildren()) do
+        if part:IsA("Accessory") then
+            part:Destroy()
+        elseif part:IsA("BasePart") then
+            part.Anchored   = true
+            part.CanCollide = false
+            if part:IsA("MeshPart") then
+                part.Color        = color
+                part.Material     = Enum.Material[material]
+                part.Transparency = transparency
+            end
+            if part.Name == "Head" then
+                local face = part:FindFirstChild("face")
+                if face then face:Destroy() end
+            end
+        end
+    end
+    return clone
+end
+
+-- ============================================================
+-- C-SYNC CHAMS
+-- ============================================================
+local cSyncChams = nil
+
+local function rebuildChams()
+    if cSyncChams then
+        cSyncChams:Destroy()
+    end
+    cSyncChams = cloneCharacter(LocalPlayer, 0.7, config.visualizeColor, "Neon")
+    if cSyncChams then
+        local hrp = cSyncChams:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            cSyncChams.PrimaryPart = hrp
+        end
+        cSyncChams.Parent = nil
+    end
+end
+
+if LocalPlayer.Character then
+    rebuildChams()
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    rebuildChams()
+end)
+
+local function updateChams(desyncedCFrame, color)
+    if not cSyncChams or not LocalPlayer.Character then return end
+    local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    for _, part in ipairs(cSyncChams:GetChildren()) do
+        local actualPart = LocalPlayer.Character:FindFirstChild(part.Name)
+        if actualPart and part:IsA("MeshPart") then
+            part.CFrame = actualPart.CFrame
+            part.Color  = color
+        end
+    end
+    cSyncChams:PivotTo(desyncedCFrame)
+end
+
+-- ============================================================
+-- GUI
+-- ============================================================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name           = "CSyncStandalone"
+screenGui.ResetOnSpawn   = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent         = CoreGui
+
+local main = Instance.new("Frame")
+main.Size             = UDim2.new(0, 320, 0, 460)
+main.Position         = UDim2.new(0.5, -160, 0.5, -230)
+main.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+main.BorderSizePixel  = 0
+main.Active           = true
+main.Parent           = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 8)
+mainCorner.Parent = main
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(45, 45, 45)
+mainStroke.Parent = main
+
+-- Title bar
+local titleBar = Instance.new("Frame")
+titleBar.Size             = UDim2.new(1, 0, 0, 34)
+titleBar.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+titleBar.BorderSizePixel  = 0
+titleBar.Parent           = main
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 8)
+titleCorner.Parent = titleBar
+
+local titleAccent = Instance.new("Frame")
+titleAccent.Size             = UDim2.new(0, 4, 1, -12)
+titleAccent.Position         = UDim2.new(0, 10, 0, 6)
+titleAccent.BackgroundColor3 = Color3.fromRGB(207, 227, 0)
+titleAccent.BorderSizePixel  = 0
+titleAccent.Parent           = titleBar
+
+local accentCorner = Instance.new("UICorner")
+accentCorner.CornerRadius = UDim.new(1, 0)
+accentCorner.Parent = titleAccent
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size              = UDim2.new(1, -30, 1, 0)
+titleLabel.Position          = UDim2.new(0, 22, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text              = "C-Sync  |  Standalone"
+titleLabel.TextColor3        = Color3.fromRGB(220, 220, 220)
+titleLabel.Font              = Enum.Font.GothamBold
+titleLabel.TextSize          = 14
+titleLabel.TextXAlignment    = Enum.TextXAlignment.Left
+titleLabel.Parent            = titleBar
+
+-- ============================================================
+-- DRAGGING (custom, reliable)
+-- ============================================================
+local dragging, dragStart, startPos = false, nil, nil
+
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging  = true
+        dragStart = input.Position
+        startPos  = main.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if not dragging then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- Content
+local content = Instance.new("ScrollingFrame")
+content.Size                   = UDim2.new(1, -20, 1, -44)
+content.Position               = UDim2.new(0, 10, 0, 40)
+content.BackgroundTransparency = 1
+content.BorderSizePixel        = 0
+content.ScrollBarThickness     = 3
+content.ScrollBarImageColor3   = Color3.fromRGB(207, 227, 0)
+content.CanvasSize             = UDim2.new(0, 0, 0, 0)
+content.AutomaticCanvasSize    = Enum.AutomaticSize.Y
+content.Parent                 = main
+
+local layout = Instance.new("UIListLayout")
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Padding   = UDim.new(0, 6)
+layout.Parent    = content
+
+-- ============================================================
+-- UI HELPERS
+-- ============================================================
+local function addCorner(inst, rad)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, rad or 5)
+    c.Parent = inst
+    return c
+end
+
+local function createLabel(text)
+    local l = Instance.new("TextLabel")
+    l.Size                   = UDim2.new(1, 0, 0, 18)
+    l.BackgroundTransparency = 1
+    l.Text                   = text
+    l.TextColor3             = Color3.fromRGB(120, 120, 120)
+    l.Font                   = Enum.Font.GothamBold
+    l.TextSize               = 11
+    l.TextXAlignment         = Enum.TextXAlignment.Left
+    l.Parent                 = content
+    return l
+end
+
+local function createToggle(text, default, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size             = UDim2.new(1, 0, 0, 28)
+    btn.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+    btn.BorderSizePixel  = 0
+    btn.Text             = ""
+    btn.AutoButtonColor  = false
+    btn.Parent           = content
+    addCorner(btn)
+
+    local label = Instance.new("TextLabel")
+    label.Size                   = UDim2.new(1, -50, 1, 0)
+    label.Position               = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text                   = text
+    label.TextColor3             = Color3.fromRGB(200, 200, 200)
+    label.Font                   = Enum.Font.Gotham
+    label.TextSize               = 13
+    label.TextXAlignment         = Enum.TextXAlignment.Left
+    label.Parent                 = btn
+
+    local indicator = Instance.new("Frame")
+    indicator.Size             = UDim2.new(0, 36, 0, 18)
+    indicator.Position         = UDim2.new(1, -46, 0.5, -9)
+    indicator.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    indicator.BorderSizePixel  = 0
+    indicator.Parent           = btn
+    addCorner(indicator, 99)
+
+    local knob = Instance.new("Frame")
+    knob.Size             = UDim2.new(0, 14, 0, 14)
+    knob.Position         = UDim2.new(0, 2, 0.5, -7)
+    knob.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+    knob.BorderSizePixel  = 0
+    knob.Parent           = indicator
+    addCorner(knob, 99)
+
+    local state = default
+
+    local function render()
+        if state then
+            indicator.BackgroundColor3 = Color3.fromRGB(207, 227, 0)
+            TweenService:Create(knob, TweenInfo.new(0.15), {Position = UDim2.new(0, 20, 0.5, -7)}):Play()
+        else
+            indicator.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            TweenService:Create(knob, TweenInfo.new(0.15), {Position = UDim2.new(0, 2, 0.5, -7)}):Play()
+        end
+    end
+    render()
+
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        render()
+        callback(state)
+    end)
+
+    return {
+        Set = function(v)
+            state = v
+            render()
+        end,
+        Get = function() return state end,
+    }
+end
+
+local function createSlider(text, min, max, default, decimals, callback)
+    local holder = Instance.new("Frame")
+    holder.Size             = UDim2.new(1, 0, 0, 42)
+    holder.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+    holder.BorderSizePixel  = 0
+    holder.Parent           = content
+    addCorner(holder)
+
+    local label = Instance.new("TextLabel")
+    label.Size                   = UDim2.new(1, -20, 0, 18)
+    label.Position               = UDim2.new(0, 10, 0, 4)
+    label.BackgroundTransparency = 1
+    label.Text                   = text
+    label.TextColor3             = Color3.fromRGB(200, 200, 200)
+    label.Font                   = Enum.Font.Gotham
+    label.TextSize               = 13
+    label.TextXAlignment         = Enum.TextXAlignment.Left
+    label.Parent                 = holder
+
+    local valueLabel = Instance.new("TextLabel")
+    valueLabel.Size                   = UDim2.new(1, -20, 0, 18)
+    valueLabel.Position               = UDim2.new(0, 10, 0, 4)
+    valueLabel.BackgroundTransparency = 1
+    valueLabel.Text                   = tostring(default)
+    valueLabel.TextColor3             = Color3.fromRGB(207, 227, 0)
+    valueLabel.Font                   = Enum.Font.Gotham
+    valueLabel.TextSize               = 13
+    valueLabel.TextXAlignment         = Enum.TextXAlignment.Right
+    valueLabel.Parent                 = holder
+
+    local bar = Instance.new("Frame")
+    bar.Size             = UDim2.new(1, -20, 0, 6)
+    bar.Position         = UDim2.new(0, 10, 1, -14)
+    bar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    bar.BorderSizePixel  = 0
+    bar.Parent           = holder
+    addCorner(bar, 99)
+
+    local fill = Instance.new("Frame")
+    fill.Size             = UDim2.new(0, 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(207, 227, 0)
+    fill.BorderSizePixel  = 0
+    fill.Parent           = bar
+    addCorner(fill, 99)
+
+    local value    = default
+    local sliding  = false
+
+    local function render()
+        local alpha = (value - min) / (max - min)
+        fill.Size       = UDim2.new(math.clamp(alpha, 0, 1), 0, 1, 0)
+        valueLabel.Text = string.format("%." .. decimals .. "f", value)
+    end
+
+    local function setFromInput(input)
+        local alpha = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+        value = min + (max - min) * alpha
+        if decimals == 0 then
+            value = math.floor(value + 0.5)
+        else
+            local m = 10 ^ decimals
+            value = math.floor(value * m + 0.5) / m
+        end
+        render()
+        callback(value)
+    end
+
+    holder.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            sliding = true
+            setFromInput(input)
+        end
+    end)
+    holder.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            sliding = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if sliding and input.UserInputType == Enum.UserInputType.MouseMovement then
+            setFromInput(input)
+        end
+    end)
+
+    render()
+    return { Set = function(v) value = v; render(); callback(v) end }
+end
+
+local function createDropdown(text, options, default, callback)
+    local holder = Instance.new("Frame")
+    holder.Size              = UDim2.new(1, 0, 0, 28)
+    holder.BackgroundColor3  = Color3.fromRGB(28, 28, 28)
+    holder.BorderSizePixel   = 0
+    holder.ClipsDescendants  = true
+    holder.Parent            = content
+    addCorner(holder)
+
+    local btn = Instance.new("TextButton")
+    btn.Size                = UDim2.new(1, 0, 0, 28)
+    btn.BackgroundTransparency = 1
+    btn.Text                = ""
+    btn.Parent              = holder
+
+    local label = Instance.new("TextLabel")
+    label.Size                   = UDim2.new(1, -30, 0, 28)
+    label.Position               = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text                   = text .. ": " .. default
+    label.TextColor3             = Color3.fromRGB(200, 200, 200)
+    label.Font                   = Enum.Font.Gotham
+    label.TextSize               = 13
+    label.TextXAlignment         = Enum.TextXAlignment.Left
+    label.Parent                 = holder
+
+    local arrow = Instance.new("TextLabel")
+    arrow.Size                   = UDim2.new(0, 20, 0, 28)
+    arrow.Position               = UDim2.new(1, -25, 0, 0)
+    arrow.BackgroundTransparency = 1
+    arrow.Text                   = "v"
+    arrow.TextColor3             = Color3.fromRGB(150, 150, 150)
+    arrow.Font                   = Enum.Font.GothamBold
+    arrow.TextSize               = 11
+    arrow.Parent                 = holder
+
+    local optionsFrame = Instance.new("Frame")
+    optionsFrame.Size                = UDim2.new(1, -16, 0, #options * 24)
+    optionsFrame.Position            = UDim2.new(0, 8, 0, 30)
+    optionsFrame.BackgroundTransparency = 1
+    optionsFrame.Parent              = holder
+
+    local optLayout = Instance.new("UIListLayout")
+    optLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    optLayout.Padding   = UDim.new(0, 2)
+    optLayout.Parent    = optionsFrame
+
+    local selected = default
+    local open     = false
+
+    local function toggleOpen()
+        open          = not open
+        holder.Size   = open and UDim2.new(1, 0, 0, 34 + #options * 24) or UDim2.new(1, 0, 0, 28)
+        arrow.Text    = open and "^" or "v"
+    end
+
+    btn.MouseButton1Click:Connect(toggleOpen)
+
+    for _, opt in ipairs(options) do
+        local optBtn = Instance.new("TextButton")
+        optBtn.Size             = UDim2.new(1, 0, 0, 22)
+        optBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        optBtn.BorderSizePixel  = 0
+        optBtn.Text             = opt
+        optBtn.TextColor3       = Color3.fromRGB(200, 200, 200)
+        optBtn.Font             = Enum.Font.Gotham
+        optBtn.TextSize         = 12
+        optBtn.AutoButtonColor  = false
+        optBtn.Parent           = optionsFrame
+        addCorner(optBtn, 4)
+
+        optBtn.MouseEnter:Connect(function()
+            optBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+        end)
+        optBtn.MouseLeave:Connect(function()
+            optBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        end)
+
+        optBtn.MouseButton1Click:Connect(function()
+            selected      = opt
+            label.Text    = text .. ": " .. opt
+            toggleOpen()
+            callback(opt)
+        end)
+    end
+
+    return { Get = function() return selected end }
+end
+
+local function createKeybind(text, default, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size             = UDim2.new(1, 0, 0, 28)
+    btn.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+    btn.BorderSizePixel  = 0
+    btn.Text             = ""
+    btn.AutoButtonColor  = false
+    btn.Parent           = content
+    addCorner(btn)
+
+    local label = Instance.new("TextLabel")
+    label.Size                   = UDim2.new(1, -80, 1, 0)
+    label.Position               = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text                   = text
+    label.TextColor3             = Color3.fromRGB(200, 200, 200)
+    label.Font                   = Enum.Font.Gotham
+    label.TextSize               = 13
+    label.TextXAlignment         = Enum.TextXAlignment.Left
+    label.Parent                 = btn
+
+    local keyLabel = Instance.new("TextLabel")
+    keyLabel.Size                   = UDim2.new(0, 70, 1, 0)
+    keyLabel.Position               = UDim2.new(1, -80, 0, 0)
+    keyLabel.BackgroundTransparency = 1
+    keyLabel.Text                   = default.Name
+    keyLabel.TextColor3             = Color3.fromRGB(207, 227, 0)
+    keyLabel.Font                   = Enum.Font.GothamBold
+    keyLabel.TextSize               = 13
+    keyLabel.TextXAlignment         = Enum.TextXAlignment.Right
+    keyLabel.Parent                 = btn
+
+    local binding    = false
+    local currentKey = default
+
+    btn.MouseButton1Click:Connect(function()
+        if binding then return end
+        binding       = true
+        keyLabel.Text = "..."
+
+        local conn
+        conn = UserInputService.InputBegan:Connect(function(input, gpe)
+            if gpe then return end
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                currentKey    = input.KeyCode
+                keyLabel.Text = currentKey.Name
+                binding       = false
+                conn:Disconnect()
+                callback(currentKey)
+            end
+        end)
+    end)
+
+    return { Get = function() return currentKey end }
+end
+
+local function createColorPicker(text, default, callback)
+    local holder = Instance.new("Frame")
+    holder.Size             = UDim2.new(1, 0, 0, 28)
+    holder.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+    holder.BorderSizePixel  = 0
+    holder.Parent           = content
+    addCorner(holder)
+
+    local label = Instance.new("TextLabel")
+    label.Size                   = UDim2.new(1, -50, 1, 0)
+    label.Position               = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text                   = text
+    label.TextColor3             = Color3.fromRGB(200, 200, 200)
+    label.Font                   = Enum.Font.Gotham
+    label.TextSize               = 13
+    label.TextXAlignment         = Enum.TextXAlignment.Left
+    label.Parent                 = holder
+
+    local swatch = Instance.new("TextButton")
+    swatch.Size             = UDim2.new(0, 30, 0, 20)
+    swatch.Position         = UDim2.new(1, -40, 0.5, -10)
+    swatch.BackgroundColor3 = default
+    swatch.BorderSizePixel  = 0
+    swatch.Text             = ""
+    swatch.AutoButtonColor  = false
+    swatch.Parent           = holder
+    addCorner(swatch, 4)
+
+    swatch.MouseButton1Click:Connect(function()
+        local presets = {
+            Color3.fromRGB(207, 227, 0),
+            Color3.fromRGB(255, 60,  60),
+            Color3.fromRGB(60,  140, 255),
+            Color3.fromRGB(60,  255, 140),
+            Color3.fromRGB(255, 60,  255),
+            Color3.fromRGB(255, 140, 60),
+            Color3.fromRGB(255, 255, 255),
+        }
+        local idx = 1
+        for i, c in ipairs(presets) do
+            if c == swatch.BackgroundColor3 then idx = i + 1 end
+        end
+        if idx > #presets then idx = 1 end
+        swatch.BackgroundColor3 = presets[idx]
+        callback(presets[idx])
+    end)
+
+    return swatch
+end
+
+-- ============================================================
+-- BUILD UI
+-- ============================================================
+local toggleEnabled   -- forward declarations for keybind sync
+local toggleVisualize
+
+createLabel("C-SYNC")
+
+toggleEnabled = createToggle("Enabled", config.enabled, function(v)
+    config.enabled = v
+end)
+
+createKeybind("Keybind", config.keybind, function(k)
+    config.keybind = k
+end)
+
+createDropdown("Type",
+    { "Static Local", "Static Target", "Local Random", "Target Random" },
+    config.type,
+    function(v) config.type = v end
+)
+
+createLabel("STATIC OFFSETS")
+createSlider("Static X", -50, 50, config.staticX, 1, function(v) config.staticX = v end)
+createSlider("Static Y", -50, 50, config.staticY, 1, function(v) config.staticY = v end)
+createSlider("Static Z", -50, 50, config.staticZ, 1, function(v) config.staticZ = v end)
+
+createLabel("RANDOMIZATION")
+createSlider("Amount", 1, 100, config.randomization, 1, function(v) config.randomization = v end)
+
+createLabel("VISUALIZATION")
+
+toggleVisualize = createToggle("Visualize", config.visualize, function(v)
+    config.visualize = v
+end)
+
+createColorPicker("Color", config.visualizeColor, function(c)
+    config.visualizeColor = c
+    if cSyncChams then
+        for _, part in ipairs(cSyncChams:GetChildren()) do
+            if part:IsA("MeshPart") then
+                part.Color = c
+            end
+        end
+    end
+end)
+
+createSlider("Dot Size", 1, 40, config.dotSize, 0, function(v) config.dotSize = v end)
+createToggle("Show Tracer",    config.visualizeTracer, function(v) config.visualizeTracer = v end)
+createToggle("Show Dot",       config.visualizeDot,    function(v) config.visualizeDot    = v end)
+createToggle("Show Character", config.visualizeChar,   function(v) config.visualizeChar   = v end)
+
+-- ============================================================
+-- KEYBIND TOGGLE
+-- ============================================================
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == config.keybind then
+        config.enabled = not config.enabled
+        if toggleEnabled then toggleEnabled.Set(config.enabled) end
+    end
+end)
+
+-- ============================================================
+-- MAIN C-SYNC LOOP
+-- ============================================================
+RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        cSyncTracer.Visible = false
+        cSyncDot.Visible = false
+        if cSyncChams then cSyncChams.Parent = nil end
+        return
+    end
+
+    if not config.enabled then
+        cSyncTracer.Visible = false
+        cSyncDot.Visible = false
+        if cSyncChams then cSyncChams.Parent = nil end
+        return
+    end
+
+    local desyncCFrame
+    local t = config.type
+
+    if t == "Static Local" or t == "Static Target" then
+        -- Standalone: no target system -> Static Target falls back to local
+        desyncCFrame = hrp.CFrame + Vector3.new(config.staticX, config.staticY, config.staticZ)
+    elseif t == "Local Random" or t == "Target Random" then
+        desyncCFrame = hrp.CFrame + randomVector3(config.randomization)
+    else
+        desyncCFrame = hrp.CFrame
+    end
+
+    config.originalPosition = hrp.CFrame
+
+    -- Visualization
+    if config.visualize then
+        if config.visualizeTracer then
+            local from, fromOn = worldToScreen(hrp.Position)
+            local to, toOn     = worldToScreen(desyncCFrame.Position)
+            cSyncTracer.Visible = (fromOn or toOn)
+            cSyncTracer.From    = from
+            cSyncTracer.To      = to
+            cSyncTracer.Color   = config.visualizeColor
+        else
+            cSyncTracer.Visible = false
+        end
+
+        if config.visualizeDot then
+            local pos, on = worldToScreen(desyncCFrame.Position)
+            cSyncDot.Visible = on
+            cSyncDot.Position = pos
+            cSyncDot.Radius   = config.dotSize
+            cSyncDot.Color    = config.visualizeColor
+        else
+            cSyncDot.Visible = false
+        end
+
+        if config.visualizeChar and cSyncChams then
+            cSyncChams.Parent = workspace
+            updateChams(desyncCFrame, config.visualizeColor)
+        else
+            if cSyncChams then cSyncChams.Parent = nil end
+        end
+    else
+        cSyncTracer.Visible = false
+        cSyncDot.Visible = false
+        if cSyncChams then cSyncChams.Parent = nil end
+    end
+
+    -- Apply desync
+    hrp.CFrame = desyncCFrame
+    RunService.RenderStepped:Wait()
+    hrp.CFrame = config.originalPosition
+end)
+
+-- ============================================================
+-- METAMETHOD HOOK (hide real CFrame from server)
+-- ============================================================
+if getrawmetatable and setreadonly and checkcaller then
+    local mt = getrawmetatable(game)
+    if mt then
+        local oldIndex = mt.__index
+        setreadonly(mt, false)
+
+        local newIndex = function(self, key)
+            if not checkcaller()
+                and config.enabled
+                and key == "CFrame"
+                and LocalPlayer.Character
+                and self == LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            then
+                return config.originalPosition
+            end
+            return oldIndex(self, key)
+        end
+
+        if newcclosure then
+            mt.__index = newcclosure(newIndex)
+        else
+            mt.__index = newIndex
+        end
+
+        setreadonly(mt, true)
+    end
+end
+
+print("[C-Sync Standalone] Loaded.")
