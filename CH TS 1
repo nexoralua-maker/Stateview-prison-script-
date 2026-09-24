@@ -1,24 +1,24 @@
 -- ============================================================
--- CrispyHub TARGET TAB — Standalone Draggable GUI
+-- CrispyHub TARGET TAB + C-Sync Dropdown (Standalone Draggable)
 -- ============================================================
 
 local Players            = game:GetService("Players")
 local TweenService       = game:GetService("TweenService")
 local UserInputService   = game:GetService("UserInputService")
 local RunService         = game:GetService("RunService")
-local workspace          = game:GetService("Workspace")
+local Workspace          = game:GetService("Workspace")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
-local camera    = workspace.CurrentCamera
+local camera    = Workspace.CurrentCamera
 
 -- ============================================================
 -- ARMOR MODULE
 -- ============================================================
 local ArmorModule = {}
-local ARMOR_ATTRIBUTES      = {"Armor", "ArmorPercent", "ArmorPercentage", "ArmorValue", "Shield"}
-local ARMOR_MAX_ATTRIBUTES  = {"MaxArmor", "ArmorMax", "MaxShield"}
-local ARMOR_VALUES          = {"Armor", "ArmorValue", "Shield"}
+local ARMOR_ATTRIBUTES      = {"Armor","ArmorPercent","ArmorPercentage","ArmorValue","Shield"}
+local ARMOR_MAX_ATTRIBUTES  = {"MaxArmor","ArmorMax","MaxShield"}
+local ARMOR_VALUES          = {"Armor","ArmorValue","Shield"}
 local DEFAULT_MAX_ARMOR     = 100
 
 local function findAttribute(container, names)
@@ -29,7 +29,6 @@ local function findAttribute(container, names)
     end
     return nil
 end
-
 local function findValueObject(container, names)
     if not container then return nil end
     for _, n in ipairs(names) do
@@ -47,36 +46,32 @@ function ArmorModule.get(targetPlayer)
     if not character then return nil end
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if not humanoid then return nil end
-
     local armor = findAttribute(humanoid, ARMOR_ATTRIBUTES)
     if armor ~= nil then
         local maxArmor = findAttribute(humanoid, ARMOR_MAX_ATTRIBUTES) or DEFAULT_MAX_ARMOR
-        return { percent = math.clamp((armor / maxArmor) * 100, 0, 100), current = armor, max = maxArmor }
+        return {percent = math.clamp((armor/maxArmor)*100,0,100), current = armor, max = maxArmor}
     end
-
     armor = findAttribute(character, ARMOR_ATTRIBUTES)
     if armor ~= nil then
         local maxArmor = findAttribute(character, ARMOR_MAX_ATTRIBUTES) or DEFAULT_MAX_ARMOR
-        return { percent = math.clamp((armor / maxArmor) * 100, 0, 100), current = armor, max = maxArmor }
+        return {percent = math.clamp((armor/maxArmor)*100,0,100), current = armor, max = maxArmor}
     end
-
     for _, container in ipairs({humanoid, character}) do
         local value = findValueObject(container, ARMOR_VALUES)
         if value ~= nil then
             local maxValue = findValueObject(container, ARMOR_MAX_ATTRIBUTES)
             local max = maxValue or DEFAULT_MAX_ARMOR
-            return { percent = math.clamp((value / max) * 100, 0, 100), current = value, max = max }
+            return {percent = math.clamp((value/max)*100,0,100), current = value, max = max}
         end
     end
-
-    return { percent = 0, current = 0, max = DEFAULT_MAX_ARMOR }
+    return {percent = 0, current = 0, max = DEFAULT_MAX_ARMOR}
 end
 
 function ArmorModule.getColor(percent)
-    if percent >= 75 then return Color3.fromRGB(90, 170, 255)
-    elseif percent >= 50 then return Color3.fromRGB(60, 130, 230)
-    elseif percent >= 25 then return Color3.fromRGB(45, 95, 200)
-    else return Color3.fromRGB(30, 60, 160) end
+    if percent >= 75 then return Color3.fromRGB(90,170,255)
+    elseif percent >= 50 then return Color3.fromRGB(60,130,230)
+    elseif percent >= 25 then return Color3.fromRGB(45,95,200)
+    else return Color3.fromRGB(30,60,160) end
 end
 
 -- ============================================================
@@ -90,23 +85,246 @@ function HealthModule.get(targetPlayer)
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if not humanoid then return nil end
     local max = humanoid.MaxHealth
-    if max <= 0 then return { percent = 0, current = 0, max = 100 } end
-    return {
-        percent = math.clamp((humanoid.Health / max) * 100, 0, 100),
-        current = humanoid.Health,
-        max = max
-    }
+    if max <= 0 then return {percent = 0, current = 0, max = 100} end
+    return {percent = math.clamp((humanoid.Health/max)*100,0,100), current = humanoid.Health, max = max}
 end
-
 function HealthModule.getColor(percent)
-    if percent >= 75 then return Color3.fromRGB(60, 220, 100)
-    elseif percent >= 50 then return Color3.fromRGB(255, 210, 70)
-    elseif percent >= 25 then return Color3.fromRGB(255, 140, 50)
-    else return Color3.fromRGB(230, 70, 70) end
+    if percent >= 75 then return Color3.fromRGB(60,220,100)
+    elseif percent >= 50 then return Color3.fromRGB(255,210,70)
+    elseif percent >= 25 then return Color3.fromRGB(255,140,50)
+    else return Color3.fromRGB(230,70,70) end
 end
 
 -- ============================================================
--- BUILD DRAGGABLE WINDOW
+-- C-SYNC MODULE  (encapsulated, driven by dropdown controls)
+-- ============================================================
+local CSync = (function()
+    local M = {
+        config = {
+            enabled          = false,
+            keybind          = Enum.KeyCode.N,
+            type             = "Static Local",
+            staticX          = 5,
+            staticY          = 0,
+            staticZ          = 5,
+            randomization    = 5,
+            visualize        = false,
+            visualizeTracer  = true,
+            visualizeDot     = true,
+            visualizeChar    = false,
+            visualizeColor   = Color3.fromRGB(207, 227, 0),
+            dotSize          = 16,
+            originalPosition = CFrame.new(1, 1, 1),
+        }
+    }
+
+    -- ---- Drawing library ----
+    local Drawing
+    do
+        local ok, res = pcall(function()
+            return loadstring(game:HttpGet(
+                "https://raw.githubusercontent.com/linemaster2/storage/main/Drawing.lua"
+            ))()
+        end)
+        if ok then Drawing = res else warn("[C-Sync] Failed to load Drawing library") end
+    end
+
+    local tracer, dot
+    if Drawing then
+        tracer = Drawing.new("Line")
+        tracer.Visible = false
+        tracer.Thickness = 2
+
+        dot = Drawing.new("Circle")
+        dot.Visible = false
+        dot.Filled = true
+    end
+
+    -- ---- Helpers ----
+    local function worldToScreen(position)
+        local pos, onScreen = camera:WorldToViewportPoint(position)
+        return Vector2.new(pos.X, pos.Y), onScreen
+    end
+    local function randomVector3(amount)
+        return Vector3.new(
+            math.random(-amount * 100, amount * 100) / 100,
+            math.random(-amount * 100, amount * 100) / 100,
+            math.random(-amount * 100, amount * 100) / 100
+        )
+    end
+    local function cloneCharacter(plr, transparency, color, material)
+        if not plr.Character then return nil end
+        plr.Character.Archivable = true
+        local clone = plr.Character:Clone()
+        clone.Parent = Workspace
+        plr.Character.Archivable = false
+
+        for _, part in ipairs(clone:GetChildren()) do
+            if part:IsA("Accessory") then
+                part:Destroy()
+            elseif part:IsA("BasePart") then
+                part.Anchored   = true
+                part.CanCollide = false
+                if part:IsA("MeshPart") then
+                    part.Color        = color
+                    part.Material     = Enum.Material[material]
+                    part.Transparency = transparency
+                end
+                if part.Name == "Head" then
+                    local face = part:FindFirstChild("face")
+                    if face then face:Destroy() end
+                end
+            end
+        end
+        return clone
+    end
+
+    -- ---- Chams ----
+    local chams
+    local function rebuildChams()
+        if chams then chams:Destroy() end
+        chams = cloneCharacter(player, 0.7, M.config.visualizeColor, "Neon")
+        if chams then
+            local hrp = chams:FindFirstChild("HumanoidRootPart")
+            if hrp then chams.PrimaryPart = hrp end
+            chams.Parent = nil
+        end
+    end
+    if player.Character then rebuildChams() end
+    player.CharacterAdded:Connect(function() task.wait(1) rebuildChams() end)
+
+    local function updateChams(desyncedCFrame, color)
+        if not chams or not player.Character then return end
+        local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        for _, part in ipairs(chams:GetChildren()) do
+            local actualPart = player.Character:FindFirstChild(part.Name)
+            if actualPart and part:IsA("MeshPart") then
+                part.CFrame = actualPart.CFrame
+                part.Color  = color
+            end
+        end
+        chams:PivotTo(desyncedCFrame)
+    end
+
+    -- ---- Main loop ----
+    RunService.Heartbeat:Connect(function()
+        local char = player.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+
+        if not hrp or not M.config.enabled then
+            if tracer then tracer.Visible = false end
+            if dot    then dot.Visible    = false end
+            if chams  then chams.Parent   = nil    end
+            return
+        end
+
+        local desyncCFrame
+        local t = M.config.type
+        if t == "Static Local" or t == "Static Target" then
+            desyncCFrame = hrp.CFrame + Vector3.new(M.config.staticX, M.config.staticY, M.config.staticZ)
+        elseif t == "Local Random" or t == "Target Random" then
+            desyncCFrame = hrp.CFrame + randomVector3(M.config.randomization)
+        else
+            desyncCFrame = hrp.CFrame
+        end
+
+        M.config.originalPosition = hrp.CFrame
+
+        -- Visualization
+        if M.config.visualize and Drawing then
+            if M.config.visualizeTracer then
+                local from, fromOn = worldToScreen(hrp.Position)
+                local to, toOn     = worldToScreen(desyncCFrame.Position)
+                tracer.Visible = (fromOn or toOn)
+                tracer.From    = from
+                tracer.To      = to
+                tracer.Color   = M.config.visualizeColor
+            else
+                tracer.Visible = false
+            end
+
+            if M.config.visualizeDot then
+                local pos, on = worldToScreen(desyncCFrame.Position)
+                dot.Visible  = on
+                dot.Position = pos
+                dot.Radius   = M.config.dotSize
+                dot.Color    = M.config.visualizeColor
+            else
+                dot.Visible = false
+            end
+
+            if M.config.visualizeChar and chams then
+                chams.Parent = Workspace
+                updateChams(desyncCFrame, M.config.visualizeColor)
+            else
+                if chams then chams.Parent = nil end
+            end
+        else
+            if tracer then tracer.Visible = false end
+            if dot    then dot.Visible    = false end
+            if chams  then chams.Parent   = nil    end
+        end
+
+        -- Apply desync
+        hrp.CFrame = desyncCFrame
+        RunService.RenderStepped:Wait()
+        hrp.CFrame = M.config.originalPosition
+    end)
+
+    -- ---- Metamethod hook (hide real CFrame from server) ----
+    pcall(function()
+        if getrawmetatable and setreadonly and checkcaller then
+            local mt = getrawmetatable(game)
+            if mt then
+                local oldIndex = mt.__index
+                setreadonly(mt, false)
+                local newIndex = function(self, key)
+                    if not checkcaller()
+                        and M.config.enabled
+                        and key == "CFrame"
+                        and player.Character
+                        and self == player.Character:FindFirstChild("HumanoidRootPart")
+                    then
+                        return M.config.originalPosition
+                    end
+                    return oldIndex(self, key)
+                end
+                mt.__index = newcclosure and newcclosure(newIndex) or newIndex
+                setreadonly(mt, true)
+            end
+        end
+    end)
+
+    -- ---- Public setters ----
+    function M.setEnabled(v)  M.config.enabled = v and true or false end
+    function M.setType(v)     M.config.type = v end
+    function M.setStatic(axis, v)
+        if axis == "X" then M.config.staticX = v
+        elseif axis == "Y" then M.config.staticY = v
+        elseif axis == "Z" then M.config.staticZ = v end
+    end
+    function M.setRandom(v)   M.config.randomization = v end
+    function M.setVisualize(v) M.config.visualize = v and true or false end
+    function M.setColor(c)
+        M.config.visualizeColor = c
+        if chams then
+            for _, part in ipairs(chams:GetChildren()) do
+                if part:IsA("MeshPart") then part.Color = c end
+            end
+        end
+    end
+    function M.setDotSize(v)  M.config.dotSize = v end
+    function M.setTracer(v)   M.config.visualizeTracer = v and true or false end
+    function M.setDot(v)      M.config.visualizeDot    = v and true or false end
+    function M.setChar(v)     M.config.visualizeChar   = v and true or false end
+    function M.setKeybind(k)  M.config.keybind = k end
+
+    return M
+end)()
+
+-- ============================================================
+-- WINDOW
 -- ============================================================
 if playerGui:FindFirstChild("CrispyTargetHub") then
     playerGui.CrispyTargetHub:Destroy()
@@ -119,8 +337,8 @@ screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
 local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 400, 0, 480)
-main.Position = UDim2.new(0.5, -200, 0.5, -240)
+main.Size = UDim2.new(0, 400, 0, 520)
+main.Position = UDim2.new(0.5, -200, 0.5, -260)
 main.BackgroundColor3 = Color3.fromRGB(255, 210, 60)
 main.BorderSizePixel = 0
 main.Active = true
@@ -148,7 +366,6 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 22
 title.Parent = main
 
--- Close button
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 30, 0, 30)
 closeBtn.Position = UDim2.new(1, -36, 0, 5)
@@ -164,14 +381,11 @@ local cc = Instance.new("UICorner")
 cc.CornerRadius = UDim.new(0, 8)
 cc.Parent = closeBtn
 
--- ============================================================
--- DRAGGING
--- ============================================================
-local dragging = false
-local dragStart, startPos, dragInput
-
+-- ---- Dragging ----
+local dragging, dragStart, startPos, dragInput = false, nil, nil, nil
 title.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = main.Position
@@ -180,13 +394,12 @@ title.InputBegan:Connect(function(input)
         end)
     end
 end)
-
 title.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
 end)
-
 UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
         local delta = input.Position - dragStart
@@ -235,34 +448,26 @@ local function getThumb(p)
     end)
     return ok and t or ""
 end
-
 local function getPlayersList()
     local list = {}
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= player then
-            table.insert(list, p)
-        end
+        if p ~= player then table.insert(list, p) end
     end
     table.sort(list, function(a, b)
         return (a.DisplayName or a.Name):lower() < (b.DisplayName or b.Name):lower()
     end)
     return list
 end
-
 local function getRealTargetPosition(tgtRoot)
     local now = tick()
     local currentPos = tgtRoot.Position
     table.insert(targetHistory, {pos = currentPos, time = now})
-    if #targetHistory > HISTORY_SIZE then
-        table.remove(targetHistory, 1)
-    end
+    if #targetHistory > HISTORY_SIZE then table.remove(targetHistory, 1) end
     if #targetHistory >= 2 then
         local prev = targetHistory[#targetHistory - 1]
         local jump = (currentPos - prev.pos).Magnitude
         local dt = now - prev.time
-        if jump > 30 and dt < 0.2 then
-            return prev.pos
-        end
+        if jump > 30 and dt < 0.2 then return prev.pos end
     end
     local velocity = tgtRoot.AssemblyLinearVelocity
     if velocity.Magnitude > 1 then
@@ -284,7 +489,6 @@ local function pd_getHumanoid()
     local char = player.Character
     return char and char:FindFirstChildOfClass("Humanoid")
 end
-
 local function pd_findTool()
     local char = player.Character
     local backpack = player:FindFirstChild("Backpack")
@@ -294,7 +498,6 @@ local function pd_findTool()
     end
     return nil
 end
-
 local function pd_getEquippedTool()
     local char = player.Character
     if not char then return nil end
@@ -304,16 +507,13 @@ local function pd_getEquippedTool()
     end
     return nil
 end
-
 local function pd_startClicking()
     if pd_running then return end
     pd_running = true
     task.spawn(function()
         while pd_running and autoKillEnabled do
             local hum = pd_getHumanoid()
-            if hum and hum.Health >= PD_MAX_HEALTH then
-                pd_running = false break
-            end
+            if hum and hum.Health >= PD_MAX_HEALTH then pd_running = false break end
             local tool = pd_getEquippedTool()
             if not tool then
                 local found = pd_findTool()
@@ -326,23 +526,19 @@ local function pd_startClicking()
         pd_running = false
     end)
 end
-
 local function pd_stopClicking() pd_running = false end
-
 local function pd_unequipTools()
     local hum = pd_getHumanoid()
     if not hum then return end
     local char = player.Character
     if not char then return end
     for _, name in ipairs(PD_TOOL_NAMES) do
-        local tool = char:FindFirstChild(name)
-        if tool then
+        if char:FindFirstChild(name) then
             pcall(function() hum:UnequipTools() end)
             break
         end
     end
 end
-
 local function pd_equipAndClick()
     local tool = pd_findTool()
     if not tool then pd_stopClicking() return end
@@ -350,7 +546,6 @@ local function pd_equipAndClick()
     if hum and tool.Parent ~= player.Character then hum:EquipTool(tool) end
     pd_startClicking()
 end
-
 local pd_healthConn = nil
 local function pd_watchHealth()
     if pd_healthConn then pd_healthConn:Disconnect() pd_healthConn = nil end
@@ -365,7 +560,6 @@ local function pd_watchHealth()
         end
     end)
 end
-
 local pd_safetyTask = nil
 local function pd_start()
     pd_watchHealth()
@@ -387,19 +581,14 @@ local function pd_start()
         end
     end)
 end
-
 local function pd_stop()
-    pd_stopClicking()
-    pd_unequipTools()
+    pd_stopClicking() pd_unequipTools()
     if pd_healthConn then pd_healthConn:Disconnect() pd_healthConn = nil end
     if pd_safetyTask then task.cancel(pd_safetyTask) pd_safetyTask = nil end
 end
 
 player.CharacterAdded:Connect(function()
-    if autoKillEnabled then
-        task.wait(0.5)
-        pd_watchHealth()
-    end
+    if autoKillEnabled then task.wait(0.5) pd_watchHealth() end
 end)
 
 -- ============================================================
@@ -407,7 +596,7 @@ end)
 -- ============================================================
 local flingActive = false
 local flingRunning = false
-local savedFlingFallenHeight = workspace.FallenPartsDestroyHeight
+local savedFlingFallenHeight = Workspace.FallenPartsDestroyHeight
 
 local function doSkidFling(TargetPlayer)
     local character = player.Character
@@ -423,7 +612,6 @@ local function doSkidFling(TargetPlayer)
     local handle    = accessory and accessory:FindFirstChild("Handle")
 
     if not (character and humanoid and rootPart) then return end
-
     local oldPos
     if rootPart.Velocity.Magnitude < 50 then oldPos = rootPart.CFrame end
     if tHumanoid and tHumanoid.Sit then return end
@@ -449,44 +637,33 @@ local function doSkidFling(TargetPlayer)
             if rootPart and tHumanoid and flingActive then
                 if basePart.Velocity.Magnitude < 50 then
                     angle = angle + 100
-                    FPos(basePart, CFrame.new(0, 1.5, 0) + tHumanoid.MoveDirection * basePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(angle), 0, 0))
-                    task.wait()
-                    FPos(basePart, CFrame.new(0, -1.5, 0) + tHumanoid.MoveDirection * basePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(angle), 0, 0))
-                    task.wait()
-                    FPos(basePart, CFrame.new(0, 1.5, 0) + tHumanoid.MoveDirection, CFrame.Angles(math.rad(angle), 0, 0))
-                    task.wait()
-                    FPos(basePart, CFrame.new(0, -1.5, 0) + tHumanoid.MoveDirection, CFrame.Angles(math.rad(angle), 0, 0))
-                    task.wait()
+                    FPos(basePart, CFrame.new(0, 1.5, 0) + tHumanoid.MoveDirection * basePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(angle), 0, 0)) task.wait()
+                    FPos(basePart, CFrame.new(0, -1.5, 0) + tHumanoid.MoveDirection * basePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(angle), 0, 0)) task.wait()
+                    FPos(basePart, CFrame.new(0, 1.5, 0) + tHumanoid.MoveDirection, CFrame.Angles(math.rad(angle), 0, 0)) task.wait()
+                    FPos(basePart, CFrame.new(0, -1.5, 0) + tHumanoid.MoveDirection, CFrame.Angles(math.rad(angle), 0, 0)) task.wait()
                 else
-                    FPos(basePart, CFrame.new(0, 1.5, tHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-                    task.wait()
-                    FPos(basePart, CFrame.new(0, -1.5, -tHumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
-                    task.wait()
-                    FPos(basePart, CFrame.new(0, 1.5, tHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-                    task.wait()
-                    FPos(basePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-                    task.wait()
+                    FPos(basePart, CFrame.new(0, 1.5, tHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0)) task.wait()
+                    FPos(basePart, CFrame.new(0, -1.5, -tHumanoid.WalkSpeed), CFrame.Angles(0, 0, 0)) task.wait()
+                    FPos(basePart, CFrame.new(0, 1.5, tHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0)) task.wait()
+                    FPos(basePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0)) task.wait()
                 end
             end
         until startTime + timeToWait < tick() or not flingActive
 
-        pcall(function() workspace.FallenPartsDestroyHeight = 0/0 end)
+        pcall(function() Workspace.FallenPartsDestroyHeight = 0/0 end)
         local bv = Instance.new("BodyVelocity")
         bv.Parent   = rootPart
         bv.Velocity = Vector3.new(0, 0, 0)
         bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
-
         if flingActive then
             if tRootPart then SFBasePart(tRootPart)
             elseif tHead then SFBasePart(tHead)
             elseif handle then SFBasePart(handle) end
         end
-
         bv:Destroy()
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
         camera.CameraSubject = humanoid
-
         if oldPos then
             local startT = tick()
             repeat
@@ -500,7 +677,7 @@ local function doSkidFling(TargetPlayer)
                 end
                 task.wait()
             until (rootPart.Position - oldPos.p).Magnitude < 25 or tick() - startT > 1
-            pcall(function() workspace.FallenPartsDestroyHeight = savedFlingFallenHeight end)
+            pcall(function() Workspace.FallenPartsDestroyHeight = savedFlingFallenHeight end)
         end
     end
 
@@ -523,7 +700,6 @@ local function startFling()
         flingRunning = false
     end)
 end
-
 local function stopFling() flingActive = false end
 
 -- ============================================================
@@ -534,10 +710,7 @@ local function playKillAnim()
     if not char then return end
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not humanoid then return end
-    if killAnimTrack then
-        pcall(function() killAnimTrack:Stop() end)
-        killAnimTrack = nil
-    end
+    if killAnimTrack then pcall(function() killAnimTrack:Stop() end) killAnimTrack = nil end
     local ok, anim = pcall(function()
         local a = Instance.new("Animation")
         a.AnimationId = killAnimId
@@ -548,28 +721,19 @@ local function playKillAnim()
     killAnimTrack.Looped = true
     pcall(function() killAnimTrack:Play() end)
 end
-
 local function stopKillAnim()
-    if killAnimTrack then
-        pcall(function() killAnimTrack:Stop() end)
-        killAnimTrack = nil
-    end
+    if killAnimTrack then pcall(function() killAnimTrack:Stop() end) killAnimTrack = nil end
 end
-
 player.CharacterAdded:Connect(function()
-    if autoKillEnabled then
-        task.wait(0.5)
-        playKillAnim()
-    end
+    if autoKillEnabled then task.wait(0.5) playKillAnim() end
 end)
 
 -- ============================================================
--- UI
+-- TARGET TAB UI
 -- ============================================================
 local mainScroll = Instance.new("ScrollingFrame")
 mainScroll.Name = "TargetScroll"
 mainScroll.Size = UDim2.new(1, 0, 1, 0)
-mainScroll.Position = UDim2.new(0, 0, 0, 0)
 mainScroll.BackgroundTransparency = 1
 mainScroll.BorderSizePixel = 0
 mainScroll.ScrollBarThickness = 5
@@ -589,6 +753,7 @@ holderLayout.Padding = UDim.new(0, 6)
 holderLayout.SortOrder = Enum.SortOrder.LayoutOrder
 holderLayout.Parent = holder
 
+-- Top box (avatar + name)
 local topBox = Instance.new("Frame")
 topBox.Size = UDim2.new(1, 0, 0, 92)
 topBox.BackgroundTransparency = 1
@@ -618,6 +783,7 @@ targetName.Font = Enum.Font.GothamBold
 targetName.TextSize = 13
 targetName.Parent = topBox
 
+-- Player list
 local listFrame = Instance.new("Frame")
 listFrame.Size = UDim2.new(0.9, 0, 0, 110)
 listFrame.Position = UDim2.new(0.05, 0, 0, 0)
@@ -698,13 +864,11 @@ local function refreshList()
     for _, c in ipairs(scroll:GetChildren()) do
         if c:IsA("TextButton") then c:Destroy() end
     end
-    for i, p in ipairs(getPlayersList()) do
-        makeRow(p, i)
-    end
+    for i, p in ipairs(getPlayersList()) do makeRow(p, i) end
 end
-
 refreshList()
 
+-- Health bar
 local healthBg = Instance.new("Frame")
 healthBg.Size = UDim2.new(0.9, 0, 0, 20)
 healthBg.Position = UDim2.new(0.05, 0, 0, 0)
@@ -737,6 +901,7 @@ healthText.TextSize = 12
 healthText.ZIndex = 2
 healthText.Parent = healthBg
 
+-- Armor bar
 local armorBg = Instance.new("Frame")
 armorBg.Size = UDim2.new(0.9, 0, 0, 20)
 armorBg.Position = UDim2.new(0.05, 0, 0, 0)
@@ -769,7 +934,7 @@ armorText.TextSize = 12
 armorText.ZIndex = 2
 armorText.Parent = armorBg
 
--- ---- Spectate button ----
+-- Spectate
 local spectateBtn = Instance.new("TextButton")
 spectateBtn.Size = UDim2.new(0.9, 0, 0, 24)
 spectateBtn.Position = UDim2.new(0.05, 0, 0, 0)
@@ -796,7 +961,6 @@ local function stopSpectate()
     camera.CameraSubject = char and char:FindFirstChildOfClass("Humanoid") or nil
     camera.CameraType = Enum.CameraType.Custom
 end
-
 local function startSpectate()
     spectating = true
     spectateBtn.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
@@ -811,12 +975,11 @@ local function startSpectate()
         if hum then camera.CameraSubject = hum end
     end)
 end
-
 spectateBtn.MouseButton1Click:Connect(function()
     if spectating then stopSpectate() else startSpectate() end
 end)
 
--- ---- TP button ----
+-- TP button
 local tpBtn = Instance.new("TextButton")
 tpBtn.Size = UDim2.new(0.9, 0, 0, 24)
 tpBtn.Position = UDim2.new(0.05, 0, 0, 0)
@@ -839,7 +1002,6 @@ local function flashBtn(btn, fromColor, toColor)
     task.wait(0.15)
     TweenService:Create(btn, TweenInfo.new(0.3), {BackgroundColor3 = fromColor}):Play()
 end
-
 tpBtn.MouseButton1Click:Connect(function()
     local t = selectedTarget
     flashBtn(tpBtn, Color3.fromRGB(255, 140, 40), Color3.fromRGB(255, 220, 100))
@@ -853,10 +1015,25 @@ tpBtn.MouseButton1Click:Connect(function()
     myRoot.CFrame = tgtRoot.CFrame * CFrame.new(0, 0, 3)
 end)
 
--- ---- Auto Kill button ----
+-- ============================================================
+-- AUTO KILL + C-SYNC DROPDOWN  (combined row)
+-- ============================================================
+local autoKillRow = Instance.new("Frame")
+autoKillRow.Size = UDim2.new(0.9, 0, 0, 24)
+autoKillRow.Position = UDim2.new(0.05, 0, 0, 0)
+autoKillRow.BackgroundTransparency = 1
+autoKillRow.LayoutOrder = 7
+autoKillRow.Parent = holder
+
+local akLayout = Instance.new("UIListLayout")
+akLayout.FillDirection = Enum.FillDirection.Horizontal
+akLayout.Padding = UDim.new(0, 4)
+akLayout.SortOrder = Enum.SortOrder.LayoutOrder
+akLayout.Parent = autoKillRow
+
 local autoKillBtn = Instance.new("TextButton")
-autoKillBtn.Size = UDim2.new(0.9, 0, 0, 24)
-autoKillBtn.Position = UDim2.new(0.05, 0, 0, 0)
+autoKillBtn.Size = UDim2.new(0.82, 0, 1, 0)
+autoKillBtn.LayoutOrder = 1
 autoKillBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
 autoKillBtn.BorderSizePixel = 0
 autoKillBtn.Text = "Auto Kill: OFF"
@@ -864,13 +1041,29 @@ autoKillBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 autoKillBtn.Font = Enum.Font.GothamBold
 autoKillBtn.TextSize = 12
 autoKillBtn.AutoButtonColor = false
-autoKillBtn.LayoutOrder = 7
-autoKillBtn.Parent = holder
+autoKillBtn.Parent = autoKillRow
 
 local akCorner = Instance.new("UICorner")
 akCorner.CornerRadius = UDim.new(0, 6)
 akCorner.Parent = autoKillBtn
 
+local cSyncArrowBtn = Instance.new("TextButton")
+cSyncArrowBtn.Size = UDim2.new(0.18, -4, 1, 0)
+cSyncArrowBtn.LayoutOrder = 2
+cSyncArrowBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+cSyncArrowBtn.BorderSizePixel = 0
+cSyncArrowBtn.Text = "▼"
+cSyncArrowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+cSyncArrowBtn.Font = Enum.Font.GothamBold
+cSyncArrowBtn.TextSize = 12
+cSyncArrowBtn.AutoButtonColor = false
+cSyncArrowBtn.Parent = autoKillRow
+
+local csCorner = Instance.new("UICorner")
+csCorner.CornerRadius = UDim.new(0, 6)
+csCorner.Parent = cSyncArrowBtn
+
+-- ---- Auto Kill logic (unchanged) ----
 local function equipTool(toolName)
     local char = player.Character
     if not char then return false end
@@ -888,7 +1081,6 @@ local function equipTool(toolName)
     end
     return false
 end
-
 local function tryAutoShoot()
     local char = player.Character
     if not char then return end
@@ -905,7 +1097,6 @@ local function tryAutoShoot()
     lastShot = tick()
     pcall(function() tool:Activate() end)
 end
-
 local function runAutoKillTick()
     local t = selectedTarget
     if not t or not t.Parent or t == player then return end
@@ -925,35 +1116,25 @@ local function runAutoKillTick()
     humanoid.JumpHeight = 0
 
     local realTargetPos = getRealTargetPosition(tgtRoot)
-
     local radius = 15
     local theta = math.random() * math.pi * 2
     local phi = math.acos(2 * math.random() - 1)
     local offX = radius * math.sin(phi) * math.cos(theta)
     local offY = math.max(0, radius * math.cos(phi))
     local offZ = radius * math.sin(phi) * math.sin(theta)
-
     local newPos = Vector3.new(
-        realTargetPos.X + offX,
-        realTargetPos.Y + offY,
-        realTargetPos.Z + offZ
+        realTargetPos.X + offX, realTargetPos.Y + offY, realTargetPos.Z + offZ
     )
-
     local diff = realTargetPos - newPos
     local yRot = math.atan2(diff.X, diff.Z)
-
     myRoot.CFrame = CFrame.new(newPos) * CFrame.Angles(0, yRot, 0)
     myRoot.AssemblyLinearVelocity = Vector3.zero
     myRoot.AssemblyAngularVelocity = Vector3.zero
 
     tryAutoShoot()
-
     local equipped = myChar:FindFirstChildWhichIsA("Tool")
-    if not equipped then
-        pcall(function() equipTool("Katana") end)
-    end
+    if not equipped then pcall(function() equipTool("Katana") end) end
 end
-
 local function stopAutoKill()
     autoKillEnabled = false
     autoKillBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
@@ -977,7 +1158,6 @@ local function stopAutoKill()
         end
     end
 end
-
 local function startAutoKill()
     autoKillEnabled = true
     pauseTp = false
@@ -985,17 +1165,14 @@ local function startAutoKill()
     targetHistory = {}
     autoKillBtn.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
     autoKillBtn.Text = "Auto Kill: ON"
-
     playKillAnim()
     pd_start()
-
     autoKillTask = task.spawn(function()
         while autoKillEnabled do
             if not pauseTp then pcall(runAutoKillTick) end
             task.wait(0.1)
         end
     end)
-
     pauseTask = task.spawn(function()
         while autoKillEnabled do
             task.wait(1)
@@ -1014,12 +1191,477 @@ local function startAutoKill()
         end
     end)
 end
-
 autoKillBtn.MouseButton1Click:Connect(function()
     if autoKillEnabled then stopAutoKill() else startAutoKill() end
 end)
 
--- ---- Fling button ----
+-- ============================================================
+-- C-SYNC DROPDOWN (collapsed by default)
+-- ============================================================
+local csDropdown = Instance.new("Frame")
+csDropdown.Name = "CSyncDropdown"
+csDropdown.Size = UDim2.new(0.9, 0, 0, 0)
+csDropdown.Position = UDim2.new(0.05, 0, 0, 0)
+csDropdown.BackgroundColor3 = Color3.fromRGB(50, 38, 18)
+csDropdown.BackgroundTransparency = 0.25
+csDropdown.BorderSizePixel = 0
+csDropdown.ClipsDescendants = true
+csDropdown.LayoutOrder = 7.5
+csDropdown.Parent = holder
+
+local csdCorner = Instance.new("UICorner")
+csdCorner.CornerRadius = UDim.new(0, 6)
+csdCorner.Parent = csDropdown
+
+local csdLayout = Instance.new("UIListLayout")
+csdLayout.Padding = UDim.new(0, 4)
+csdLayout.SortOrder = Enum.SortOrder.LayoutOrder
+csdLayout.Parent = csDropdown
+
+local csdPad = Instance.new("UIPadding")
+csdPad.PaddingTop    = UDim.new(0, 6)
+csdPad.PaddingBottom = UDim.new(0, 6)
+csdPad.PaddingLeft   = UDim.new(0, 6)
+csdPad.PaddingRight  = UDim.new(0, 6)
+csdPad.Parent = csDropdown
+
+-- ---- Compact UI helpers scoped to csDropdown ----
+local CS_ACCENT = Color3.fromRGB(207, 227, 0)
+local CS_BG     = Color3.fromRGB(28, 28, 28)
+local CS_TEXT   = Color3.fromRGB(220, 220, 220)
+local CS_SUB    = Color3.fromRGB(140, 140, 140)
+
+local function csCorner(inst, rad)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, rad or 5)
+    c.Parent = inst
+    return c
+end
+
+local function csLabel(text, order)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(1, 0, 0, 14)
+    l.BackgroundTransparency = 1
+    l.Text = text
+    l.TextColor3 = CS_SUB
+    l.Font = Enum.Font.GothamBold
+    l.TextSize = 10
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.LayoutOrder = order
+    l.Parent = csDropdown
+    return l
+end
+
+local function csToggle(text, default, order, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 24)
+    btn.BackgroundColor3 = CS_BG
+    btn.BorderSizePixel = 0
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.LayoutOrder = order
+    btn.Parent = csDropdown
+    csCorner(btn)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -50, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = CS_TEXT
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 12
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = btn
+
+    local indicator = Instance.new("Frame")
+    indicator.Size = UDim2.new(0, 32, 0, 16)
+    indicator.Position = UDim2.new(1, -40, 0.5, -8)
+    indicator.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    indicator.BorderSizePixel = 0
+    indicator.Parent = btn
+    csCorner(indicator, 99)
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 12, 0, 12)
+    knob.Position = UDim2.new(0, 2, 0.5, -6)
+    knob.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+    knob.BorderSizePixel = 0
+    knob.Parent = indicator
+    csCorner(knob, 99)
+
+    local state = default
+    local function render()
+        if state then
+            indicator.BackgroundColor3 = CS_ACCENT
+            TweenService:Create(knob, TweenInfo.new(0.15), {Position = UDim2.new(0, 18, 0.5, -6)}):Play()
+        else
+            indicator.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            TweenService:Create(knob, TweenInfo.new(0.15), {Position = UDim2.new(0, 2, 0.5, -6)}):Play()
+        end
+    end
+    render()
+
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        render()
+        callback(state)
+    end)
+
+    return {
+        Set = function(v) state = v render() end,
+        Get = function() return state end,
+    }
+end
+
+local function csSlider(text, min, max, default, decimals, order, callback)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 0, 36)
+    container.BackgroundColor3 = CS_BG
+    container.BorderSizePixel = 0
+    container.LayoutOrder = order
+    container.Parent = csDropdown
+    csCorner(container)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -20, 0, 16)
+    label.Position = UDim2.new(0, 10, 0, 3)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = CS_TEXT
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 12
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = container
+
+    local valueLabel = Instance.new("TextLabel")
+    valueLabel.Size = UDim2.new(1, -20, 0, 16)
+    valueLabel.Position = UDim2.new(0, 10, 0, 3)
+    valueLabel.BackgroundTransparency = 1
+    valueLabel.Text = tostring(default)
+    valueLabel.TextColor3 = CS_ACCENT
+    valueLabel.Font = Enum.Font.GothamBold
+    valueLabel.TextSize = 12
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    valueLabel.Parent = container
+
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(1, -20, 0, 5)
+    bar.Position = UDim2.new(0, 10, 1, -12)
+    bar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    bar.BorderSizePixel = 0
+    bar.Active = true
+    bar.Parent = container
+    csCorner(bar, 99)
+
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(0, 0, 1, 0)
+    fill.BackgroundColor3 = CS_ACCENT
+    fill.BorderSizePixel = 0
+    fill.Parent = bar
+    csCorner(fill, 99)
+
+    local value = default
+    local sliding = false
+
+    local function render()
+        local alpha = (value - min) / (max - min)
+        fill.Size = UDim2.new(math.clamp(alpha, 0, 1), 0, 1, 0)
+        valueLabel.Text = string.format("%." .. decimals .. "f", value)
+    end
+
+    local function setFromInput(input)
+        local alpha = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+        value = min + (max - min) * alpha
+        if decimals == 0 then
+            value = math.floor(value + 0.5)
+        else
+            local m = 10 ^ decimals
+            value = math.floor(value * m + 0.5) / m
+        end
+        render()
+        callback(value)
+    end
+
+    bar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            sliding = true
+            setFromInput(input)
+        end
+    end)
+    bar.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            sliding = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            setFromInput(input)
+        end
+    end)
+
+    render()
+    return { Set = function(v) value = v render() callback(v) end }
+end
+
+local function csDropdownMaker(text, options, default, order, callback)
+    local holder2 = Instance.new("Frame")
+    holder2.Size = UDim2.new(1, 0, 0, 24)
+    holder2.BackgroundColor3 = CS_BG
+    holder2.BorderSizePixel = 0
+    holder2.ClipsDescendants = true
+    holder2.LayoutOrder = order
+    holder2.Parent = csDropdown
+    csCorner(holder2)
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 24)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.Parent = holder2
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -30, 0, 24)
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text .. ": " .. default
+    label.TextColor3 = CS_TEXT
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 12
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = holder2
+
+    local arrow = Instance.new("TextLabel")
+    arrow.Size = UDim2.new(0, 20, 0, 24)
+    arrow.Position = UDim2.new(1, -25, 0, 0)
+    arrow.BackgroundTransparency = 1
+    arrow.Text = "v"
+    arrow.TextColor3 = Color3.fromRGB(150, 150, 150)
+    arrow.Font = Enum.Font.GothamBold
+    arrow.TextSize = 10
+    arrow.Parent = holder2
+
+    local optionsFrame = Instance.new("Frame")
+    optionsFrame.Size = UDim2.new(1, -16, 0, #options * 22)
+    optionsFrame.Position = UDim2.new(0, 8, 0, 26)
+    optionsFrame.BackgroundTransparency = 1
+    optionsFrame.Parent = holder2
+
+    local optLayout = Instance.new("UIListLayout")
+    optLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    optLayout.Padding = UDim.new(0, 2)
+    optLayout.Parent = optionsFrame
+
+    local selected = default
+    local open = false
+
+    local function toggleOpen()
+        open = not open
+        holder2.Size = open and UDim2.new(1, 0, 0, 30 + #options * 22) or UDim2.new(1, 0, 0, 24)
+        arrow.Text = open and "^" or "v"
+    end
+
+    btn.MouseButton1Click:Connect(toggleOpen)
+
+    for i, opt in ipairs(options) do
+        local optBtn = Instance.new("TextButton")
+        optBtn.Size = UDim2.new(1, 0, 0, 20)
+        optBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        optBtn.BorderSizePixel = 0
+        optBtn.Text = opt
+        optBtn.TextColor3 = CS_TEXT
+        optBtn.Font = Enum.Font.Gotham
+        optBtn.TextSize = 11
+        optBtn.AutoButtonColor = false
+        optBtn.LayoutOrder = i
+        optBtn.Parent = optionsFrame
+        csCorner(optBtn, 4)
+
+        optBtn.MouseEnter:Connect(function() optBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 55) end)
+        optBtn.MouseLeave:Connect(function() optBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40) end)
+        optBtn.MouseButton1Click:Connect(function()
+            selected = opt
+            label.Text = text .. ": " .. opt
+            toggleOpen()
+            callback(opt)
+        end)
+    end
+
+    return { Get = function() return selected end }
+end
+
+local function csKeybind(text, default, order, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 24)
+    btn.BackgroundColor3 = CS_BG
+    btn.BorderSizePixel = 0
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.LayoutOrder = order
+    btn.Parent = csDropdown
+    csCorner(btn)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -80, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = CS_TEXT
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 12
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = btn
+
+    local keyLabel = Instance.new("TextLabel")
+    keyLabel.Size = UDim2.new(0, 70, 1, 0)
+    keyLabel.Position = UDim2.new(1, -80, 0, 0)
+    keyLabel.BackgroundTransparency = 1
+    keyLabel.Text = default.Name
+    keyLabel.TextColor3 = CS_ACCENT
+    keyLabel.Font = Enum.Font.GothamBold
+    keyLabel.TextSize = 12
+    keyLabel.TextXAlignment = Enum.TextXAlignment.Right
+    keyLabel.Parent = btn
+
+    local binding = false
+    local currentKey = default
+
+    btn.MouseButton1Click:Connect(function()
+        if binding then return end
+        binding = true
+        keyLabel.Text = "..."
+        local conn
+        conn = UserInputService.InputBegan:Connect(function(input, gpe)
+            if gpe then return end
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                currentKey = input.KeyCode
+                keyLabel.Text = currentKey.Name
+                binding = false
+                conn:Disconnect()
+                callback(currentKey)
+            end
+        end)
+    end)
+
+    return { Get = function() return currentKey end }
+end
+
+local function csColorPicker(text, default, order, callback)
+    local holder2 = Instance.new("Frame")
+    holder2.Size = UDim2.new(1, 0, 0, 24)
+    holder2.BackgroundColor3 = CS_BG
+    holder2.BorderSizePixel = 0
+    holder2.LayoutOrder = order
+    holder2.Parent = csDropdown
+    csCorner(holder2)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -50, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = CS_TEXT
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 12
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = holder2
+
+    local swatch = Instance.new("TextButton")
+    swatch.Size = UDim2.new(0, 28, 0, 18)
+    swatch.Position = UDim2.new(1, -38, 0.5, -9)
+    swatch.BackgroundColor3 = default
+    swatch.BorderSizePixel = 0
+    swatch.Text = ""
+    swatch.AutoButtonColor = false
+    swatch.Parent = holder2
+    csCorner(swatch, 4)
+
+    local presets = {
+        Color3.fromRGB(207, 227, 0),
+        Color3.fromRGB(255, 60, 60),
+        Color3.fromRGB(60, 140, 255),
+        Color3.fromRGB(60, 255, 140),
+        Color3.fromRGB(255, 60, 255),
+        Color3.fromRGB(255, 140, 60),
+        Color3.fromRGB(255, 255, 255),
+    }
+
+    swatch.MouseButton1Click:Connect(function()
+        local idx = 1
+        for i, c in ipairs(presets) do
+            if c == swatch.BackgroundColor3 then idx = i + 1 end
+        end
+        if idx > #presets then idx = 1 end
+        swatch.BackgroundColor3 = presets[idx]
+        callback(presets[idx])
+    end)
+
+    return swatch
+end
+
+-- ============================================================
+-- POPULATE DROPDOWN (order matters!)
+-- ============================================================
+csLabel("C-SYNC", 1)
+
+csToggle("Enabled", false, 2, function(v) CSync.setEnabled(v) end)
+csKeybind("Keybind", CSync.config.keybind, 3, function(k) CSync.setKeybind(k) end)
+csDropdownMaker("Type",
+    { "Static Local", "Static Target", "Local Random", "Target Random" },
+    CSync.config.type, 4, function(v) CSync.setType(v) end)
+
+csLabel("STATIC OFFSETS", 5)
+csSlider("Static X", -50, 50, CSync.config.staticX, 1, 6, function(v) CSync.setStatic("X", v) end)
+csSlider("Static Y", -50, 50, CSync.config.staticY, 1, 7, function(v) CSync.setStatic("Y", v) end)
+csSlider("Static Z", -50, 50, CSync.config.staticZ, 1, 8, function(v) CSync.setStatic("Z", v) end)
+
+csLabel("RANDOMIZATION", 9)
+csSlider("Amount", 1, 100, CSync.config.randomization, 1, 10, function(v) CSync.setRandom(v) end)
+
+csLabel("VISUALIZATION", 11)
+csToggle("Visualize", false, 12, function(v) CSync.setVisualize(v) end)
+csColorPicker("Color", CSync.config.visualizeColor, 13, function(c) CSync.setColor(c) end)
+csSlider("Dot Size", 1, 40, CSync.config.dotSize, 0, 14, function(v) CSync.setDotSize(v) end)
+csToggle("Show Tracer", true, 15, function(v) CSync.setTracer(v) end)
+csToggle("Show Dot", true, 16, function(v) CSync.setDot(v) end)
+csToggle("Show Character", false, 17, function(v) CSync.setChar(v) end)
+
+-- ---- Compute expanded height dynamically ----
+local function computeDropdownHeight()
+    local total = 12 -- top/bottom padding
+    for _, child in ipairs(csDropdown:GetChildren()) do
+        if child:IsA("GuiObject") and child:IsA("Frame")
+            or child:IsA("TextLabel")
+            or child:IsA("TextButton") then
+            total = total + child.AbsoluteSize.Y + 4
+        end
+    end
+    return total
+end
+
+-- ---- Dropdown toggle ----
+local csOpen = false
+cSyncArrowBtn.MouseButton1Click:Connect(function()
+    csOpen = not csOpen
+    cSyncArrowBtn.Text = csOpen and "▲" or "▼"
+    cSyncArrowBtn.BackgroundColor3 = csOpen and Color3.fromRGB(80, 220, 120)
+        or Color3.fromRGB(80, 60, 20)
+
+    if csOpen then
+        -- Wait a frame so AbsoluteSize is populated
+        task.wait()
+        csDropdown.Size = UDim2.new(0.9, 0, 0, computeDropdownHeight())
+    else
+        csDropdown.Size = UDim2.new(0.9, 0, 0, 0)
+    end
+end)
+
+-- ============================================================
+-- FLING ROW
+-- ============================================================
 local flingBtn = Instance.new("TextButton")
 flingBtn.Size = UDim2.new(0.9, 0, 0, 24)
 flingBtn.Position = UDim2.new(0.05, 0, 0, 0)
@@ -1049,14 +1691,17 @@ flingBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ---- Health / Armor live update loop ----
+-- ============================================================
+-- LIVE HEALTH / ARMOR BAR UPDATES
+-- ============================================================
 task.spawn(function()
     while targetFrame.Parent do
         local t = selectedTarget or player
         local hInfo = HealthModule.get(t)
         if hInfo then
             local pct = hInfo.percent
-            healthText.Text = string.format("Health  %d / %d", math.floor(hInfo.current), math.floor(hInfo.max))
+            healthText.Text = string.format("Health  %d / %d",
+                math.floor(hInfo.current), math.floor(hInfo.max))
             TweenService:Create(healthFill, TweenInfo.new(0.15), {
                 Size = UDim2.new(pct / 100, 0, 1, 0),
                 BackgroundColor3 = HealthModule.getColor(pct)
@@ -1065,7 +1710,8 @@ task.spawn(function()
         local aInfo = ArmorModule.get(t)
         if aInfo then
             local pct = aInfo.percent
-            armorText.Text = string.format("Armor  %d / %d", math.floor(aInfo.current), math.floor(aInfo.max))
+            armorText.Text = string.format("Armor  %d / %d",
+                math.floor(aInfo.current), math.floor(aInfo.max))
             TweenService:Create(armorFill, TweenInfo.new(0.15), {
                 Size = UDim2.new(pct / 100, 0, 1, 0),
                 BackgroundColor3 = ArmorModule.getColor(pct)
@@ -1075,7 +1721,9 @@ task.spawn(function()
     end
 end)
 
--- ---- Player add/remove handling ----
+-- ============================================================
+-- PLAYER ADD / REMOVE
+-- ============================================================
 Players.PlayerAdded:Connect(function() refreshList() end)
 Players.PlayerRemoving:Connect(function(p)
     if selectedTarget == p then
@@ -1096,11 +1744,21 @@ end
 end)(targetFrame)
 
 -- ============================================================
--- CLOSE BUTTON
+-- CLOSE
 -- ============================================================
 closeBtn.MouseButton1Click:Connect(function()
     if cleanupTarget then cleanupTarget() end
     screenGui:Destroy()
 end)
 
-print("Crispy Target Standalone loaded!")
+-- ============================================================
+-- GLOBAL C-SYNC KEYBIND LISTENER
+-- ============================================================
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == CSync.config.keybind then
+        CSync.setEnabled(not CSync.config.enabled)
+    end
+end)
+
+print("Crispy Target + C-Sync Standalone loaded!")
