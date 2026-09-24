@@ -1,6 +1,6 @@
 -- ============================================================
 -- C-SYNC Standalone (ForceField Self Material Edition)
--- Draggable GUI with toggle, sliders, color pickers, keybind
+-- Fixed sliders, material restore on disable, X close button
 -- ============================================================
 
 local Players          = game:GetService("Players")
@@ -133,13 +133,37 @@ local CSync = (function()
         chams:PivotTo(desyncedCFrame)
     end
 
-    -- ---- Self material ----
+    -- ============================================================
+    -- ORIGINAL MATERIAL STORAGE (for restore)
+    -- ============================================================
+    local savedMaterials = {}      -- [BasePart] = { Material = ..., Color = ... }
+    local savedToolMaterials = {}  -- [BasePart] = { Material = ..., Color = ... }
+
+    local function restoreMaterials(store)
+        for part, data in pairs(store) do
+            if part and part.Parent then
+                pcall(function()
+                    part.Material = data.Material
+                    part.Color    = data.Color
+                end)
+            end
+        end
+        table.clear(store)
+    end
+
+    -- ---- Self material (ForceField, hardcoded) ----
     local function updateSelfMaterial()
         local char = player.Character
         if not char then return end
         if M.config.selfMaterial.enabled then
             for _, part in ipairs(char:GetDescendants()) do
                 if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    if not savedMaterials[part] then
+                        savedMaterials[part] = {
+                            Material = part.Material,
+                            Color    = part.Color,
+                        }
+                    end
                     part.Material = Enum.Material.ForceField
                     part.Color    = M.config.selfMaterial.color
                 end
@@ -147,7 +171,7 @@ local CSync = (function()
         end
     end
 
-    -- ---- Self tool material ----
+    -- ---- Self tool material (ForceField, hardcoded) ----
     local function updateSelfToolMaterial()
         local char = player.Character
         if not char then return end
@@ -156,6 +180,12 @@ local CSync = (function()
             if tool then
                 for _, part in ipairs(tool:GetDescendants()) do
                     if part:IsA("BasePart") then
+                        if not savedToolMaterials[part] then
+                            savedToolMaterials[part] = {
+                                Material = part.Material,
+                                Color    = part.Color,
+                            }
+                        end
                         part.Material = Enum.Material.ForceField
                         part.Color    = M.config.selfToolMaterial.color
                     end
@@ -164,10 +194,27 @@ local CSync = (function()
         end
     end
 
+    -- ---- Restore when toggles turn off ----
+    local function restoreSelfMaterial()
+        restoreMaterials(savedMaterials)
+    end
+
+    local function restoreSelfToolMaterial()
+        restoreMaterials(savedToolMaterials)
+    end
+
     -- ---- Main loop ----
     RunService.Heartbeat:Connect(function()
         local char = player.Character
         local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+
+        -- Restore materials when features disabled
+        if not M.config.selfMaterial.enabled and next(savedMaterials) then
+            restoreSelfMaterial()
+        end
+        if not M.config.selfToolMaterial.enabled and next(savedToolMaterials) then
+            restoreSelfToolMaterial()
+        end
 
         if not hrp or not M.config.enabled then
             if tracer then tracer.Visible = false end
@@ -245,7 +292,13 @@ local CSync = (function()
     end)
 
     -- ---- Public setters ----
-    function M.setEnabled(v)   M.config.enabled = v and true or false end
+    function M.setEnabled(v)
+        M.config.enabled = v and true or false
+        if not M.config.enabled then
+            if tracer then tracer.Visible = false end
+            if chams  then chams.Parent   = nil    end
+        end
+    end
     function M.setType(v)      M.config.type = v end
 
     function M.setStatic(axis, v)
@@ -270,11 +323,37 @@ local CSync = (function()
     function M.setChar(v)      M.config.visualizeChar   = v and true or false end
     function M.setKeybind(k)   M.config.keybind = k end
 
-    function M.setSelfMaterialEnabled(v) M.config.selfMaterial.enabled = v and true or false end
-    function M.setSelfMaterialColor(c)   M.config.selfMaterial.color   = c end
+    function M.setSelfMaterialEnabled(v)
+        M.config.selfMaterial.enabled = v and true or false
+        if not M.config.selfMaterial.enabled then
+            restoreSelfMaterial()
+        end
+    end
+    function M.setSelfMaterialColor(c)
+        M.config.selfMaterial.color = c
+    end
 
-    function M.setSelfToolMaterialEnabled(v) M.config.selfToolMaterial.enabled = v and true or false end
-    function M.setSelfToolMaterialColor(c)   M.config.selfToolMaterial.color   = c end
+    function M.setSelfToolMaterialEnabled(v)
+        M.config.selfToolMaterial.enabled = v and true or false
+        if not M.config.selfToolMaterial.enabled then
+            restoreSelfToolMaterial()
+        end
+    end
+    function M.setSelfToolMaterialColor(c)
+        M.config.selfToolMaterial.color = c
+    end
+
+    -- Reset everything
+    function M.resetAll()
+        restoreSelfMaterial()
+        restoreSelfToolMaterial()
+        M.config.enabled = false
+        M.config.visualize = false
+        M.config.selfMaterial.enabled = false
+        M.config.selfToolMaterial.enabled = false
+        if tracer then tracer.Visible = false end
+        if chams  then chams.Parent   = nil    end
+    end
 
     return M
 end)()
@@ -293,8 +372,8 @@ screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent         = playerGui
 
 local main = Instance.new("Frame")
-main.Size             = UDim2.new(0, 300, 0, 480)
-main.Position         = UDim2.new(0.5, -150, 0.5, -240)
+main.Size             = UDim2.new(0, 300, 0, 500)
+main.Position         = UDim2.new(0.5, -150, 0.5, -250)
 main.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
 main.BorderSizePixel  = 0
 main.Active           = true
@@ -331,7 +410,7 @@ accentCorner.CornerRadius = UDim.new(1, 0)
 accentCorner.Parent = titleAccent
 
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size              = UDim2.new(1, -30, 1, 0)
+titleLabel.Size              = UDim2.new(1, -60, 1, 0)
 titleLabel.Position          = UDim2.new(0, 22, 0, 0)
 titleLabel.BackgroundTransparency = 1
 titleLabel.Text              = "C-Sync  |  Standalone"
@@ -340,6 +419,27 @@ titleLabel.Font              = Enum.Font.GothamBold
 titleLabel.TextSize          = 14
 titleLabel.TextXAlignment    = Enum.TextXAlignment.Left
 titleLabel.Parent            = titleBar
+
+-- X close button (no background)
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size                = UDim2.new(0, 30, 0, 34)
+closeBtn.Position            = UDim2.new(1, -34, 0, 0)
+closeBtn.BackgroundTransparency = 1
+closeBtn.BackgroundColor3    = Color3.fromRGB(0, 0, 0)
+closeBtn.BorderSizePixel     = 0
+closeBtn.Text                = "X"
+closeBtn.TextColor3          = Color3.fromRGB(180, 180, 180)
+closeBtn.Font                = Enum.Font.GothamBold
+closeBtn.TextSize            = 14
+closeBtn.AutoButtonColor     = false
+closeBtn.Parent              = titleBar
+
+closeBtn.MouseEnter:Connect(function()
+    closeBtn.TextColor3 = Color3.fromRGB(255, 80, 80)
+end)
+closeBtn.MouseLeave:Connect(function()
+    closeBtn.TextColor3 = Color3.fromRGB(180, 180, 180)
+end)
 
 -- Dragging
 local dragging, dragStart, startPos = false, nil, nil
@@ -400,6 +500,9 @@ local function addCorner(inst, rad)
     c.Parent = inst
     return c
 end
+
+-- Track every toggle created for reset-on-X
+local allToggles = {}
 
 local function createLabel(text)
     local l = Instance.new("TextLabel")
@@ -470,10 +573,16 @@ local function createToggle(text, default, callback)
         callback(state)
     end)
 
-    return {
-        Set = function(v) state = v render() end,
+    local handle = {
+        Set = function(v)
+            state = v and true or false
+            render()
+        end,
         Get = function() return state end,
     }
+
+    table.insert(allToggles, handle)
+    return handle
 end
 
 local function createSlider(text, min, max, default, decimals, callback)
@@ -481,6 +590,7 @@ local function createSlider(text, min, max, default, decimals, callback)
     holder.Size             = UDim2.new(1, 0, 0, 42)
     holder.BackgroundColor3 = BG
     holder.BorderSizePixel  = 0
+    holder.Active           = true
     holder.Parent           = content
     addCorner(holder)
 
@@ -511,6 +621,7 @@ local function createSlider(text, min, max, default, decimals, callback)
     bar.Position         = UDim2.new(0, 10, 1, -14)
     bar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
     bar.BorderSizePixel  = 0
+    bar.Active           = false
     bar.Parent           = holder
     addCorner(bar, 99)
 
@@ -530,8 +641,11 @@ local function createSlider(text, min, max, default, decimals, callback)
         valueLabel.Text = string.format("%." .. decimals .. "f", value)
     end
 
-    local function setFromInput(input)
-        local alpha = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+    local function setFromAbsoluteX(absX)
+        local relStart = bar.AbsolutePosition.X
+        local width    = bar.AbsoluteSize.X
+        if width <= 0 then return end
+        local alpha    = math.clamp((absX - relStart) / width, 0, 1)
         value = min + (max - min) * alpha
         if decimals == 0 then
             value = math.floor(value + 0.5)
@@ -543,25 +657,47 @@ local function createSlider(text, min, max, default, decimals, callback)
         callback(value)
     end
 
+    -- Use InputBegan on holder to start sliding anywhere on the row
+    local function isPress(t)
+        return t == Enum.UserInputType.MouseButton1
+            or t == Enum.UserInputType.Touch
+    end
+
+    local function isMove(t)
+        return t == Enum.UserInputType.MouseMovement
+            or t == Enum.UserInputType.Touch
+    end
+
     holder.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if isPress(input.UserInputType) then
             sliding = true
-            setFromInput(input)
+            setFromAbsoluteX(input.Position.X)
         end
     end)
-    holder.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            sliding = false
+
+    holder.InputChanged:Connect(function(input)
+        if sliding and isMove(input.UserInputType) then
+            setFromAbsoluteX(input.Position.X)
         end
     end)
+
     UserInputService.InputChanged:Connect(function(input)
-        if sliding and input.UserInputType == Enum.UserInputType.MouseMovement then
-            setFromInput(input)
+        if sliding and isMove(input.UserInputType) then
+            setFromAbsoluteX(input.Position.X)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if isPress(input.UserInputType) then
+            sliding = false
         end
     end)
 
     render()
-    return { Set = function(v) value = v render(); callback(v) end }
+    return {
+        Set = function(v) value = v render(); callback(v) end,
+        Get = function() return value end,
+    }
 end
 
 local function createDropdown(text, options, default, callback)
@@ -765,6 +901,11 @@ end
 -- BUILD UI
 -- ============================================================
 local toggleEnabled
+local toggleVisualize
+local toggleTracer
+local toggleChar
+local toggleSelfMat
+local toggleToolMat
 
 createLabel("C-SYNC")
 
@@ -792,7 +933,7 @@ createSlider("Amount", 1, 100, CSync.config.randomization, 1, function(v) CSync.
 
 createLabel("VISUALIZATION")
 
-createToggle("Visualize", CSync.config.visualize, function(v)
+toggleVisualize = createToggle("Visualize", CSync.config.visualize, function(v)
     CSync.setVisualize(v)
 end)
 
@@ -800,11 +941,11 @@ createColorPicker("Color", CSync.config.visualizeColor, function(c)
     CSync.setColor(c)
 end)
 
-createToggle("Show Tracer",    CSync.config.visualizeTracer, function(v) CSync.setTracer(v) end)
-createToggle("Show Character", CSync.config.visualizeChar,   function(v) CSync.setChar(v)   end)
+toggleTracer = createToggle("Show Tracer",    CSync.config.visualizeTracer, function(v) CSync.setTracer(v) end)
+toggleChar   = createToggle("Show Character", CSync.config.visualizeChar,   function(v) CSync.setChar(v)   end)
 
 createLabel("SELF MATERIAL")
-createToggle("Self Material", CSync.config.selfMaterial.enabled, function(v)
+toggleSelfMat = createToggle("Self Material", CSync.config.selfMaterial.enabled, function(v)
     CSync.setSelfMaterialEnabled(v)
 end)
 createColorPicker("SM Color", CSync.config.selfMaterial.color, function(c)
@@ -812,7 +953,7 @@ createColorPicker("SM Color", CSync.config.selfMaterial.color, function(c)
 end)
 
 createLabel("SELF TOOL MATERIAL")
-createToggle("Tool Material", CSync.config.selfToolMaterial.enabled, function(v)
+toggleToolMat = createToggle("Tool Material", CSync.config.selfToolMaterial.enabled, function(v)
     CSync.setSelfToolMaterialEnabled(v)
 end)
 createColorPicker("TM Color", CSync.config.selfToolMaterial.color, function(c)
@@ -827,7 +968,34 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     if input.KeyCode == CSync.config.keybind then
         CSync.config.enabled = not CSync.config.enabled
         if toggleEnabled then toggleEnabled.Set(CSync.config.enabled) end
+        CSync.setEnabled(CSync.config.enabled)
     end
+end)
+
+-- ============================================================
+-- X CLOSE BUTTON: reset all toggles + materials, then hide
+-- ============================================================
+closeBtn.MouseButton1Click:Connect(function()
+    -- Turn off every toggle
+    for _, handle in ipairs(allToggles) do
+        if handle.Get() == true then
+            handle.Set(false)
+        end
+    end
+
+    -- Call every setter to off via the module
+    CSync.setEnabled(false)
+    CSync.setVisualize(false)
+    CSync.setTracer(false)
+    CSync.setChar(false)
+    CSync.setSelfMaterialEnabled(false)
+    CSync.setSelfToolMaterialEnabled(false)
+
+    -- Restore materials immediately
+    if CSync.resetAll then CSync.resetAll() end
+
+    -- Hide the window
+    main.Visible = false
 end)
 
 print("[C-Sync Standalone] Loaded.")
