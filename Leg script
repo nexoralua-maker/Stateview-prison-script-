@@ -1,6 +1,5 @@
 --//==========================================================
---// LEGION GRABS GUI — Full Rewrite (Hoverboard Removed)
---// Grabbed player FOLLOWS you when you move (real-time)
+--// LEGION GRABS GUI — Full Rewrite (Anti-Fling Grab)
 --//==========================================================
 
 local CoreGui        = game:GetService("CoreGui")
@@ -50,7 +49,7 @@ local Settings = {
 local M = {}
 
 --==========================================================
--- CORE GRAB — victim FOLLOWS you in real time
+-- CORE GRAB — anti-fling version
 --==========================================================
 function M.Grab(character, grabAnimId)
     if not character or not character.Parent then return end
@@ -58,7 +57,7 @@ function M.Grab(character, grabAnimId)
 
     if Cache.Loops.Grab then Cache.Loops.Grab:Disconnect(); Cache.Loops.Grab = nil end
 
-    -- Strip any stale physics from previous grabs
+    -- Remove any stale physics from a previous grab
     for _, p in ipairs(character:GetDescendants()) do
         if p:IsA("BodyVelocity") or p:IsA("BodyGyro") or p:IsA("BodyPosition") then
             p:Destroy()
@@ -70,7 +69,7 @@ function M.Grab(character, grabAnimId)
         if a.Animation.AnimationId:match("11075367458") then a:Stop() end
     end
 
-    -- Wait for constraint + body parts (max 3s, never blocks forever)
+    -- Wait for constraint + body parts (max 3s)
     local waited = 0
     while not (character:FindFirstChild("GRABBING_CONSTRAINT")
         and character:FindFirstChild("UpperTorso")
@@ -82,7 +81,36 @@ function M.Grab(character, grabAnimId)
         if waited > 3 or not character.Parent then return end
     end
 
-    -- Force the grab constraint to be effectively infinite
+    --==========================================================
+    -- ANTI-FLING STEP 1:
+    -- Freeze the victim BEFORE touching the constraint length.
+    -- This stops the physics solver from snapping them into us.
+    --==========================================================
+    local function freezeTarget()
+        for _, p in ipairs(character:GetDescendants()) do
+            if p:IsA("BasePart") then
+                p.CanCollide = false
+                p.AssemblyLinearVelocity  = Vector3.zero
+                p.AssemblyAngularVelocity = Vector3.zero
+                p.Velocity = Vector3.zero
+            end
+        end
+    end
+    freezeTarget()
+
+    --==========================================================
+    -- ANTI-FLING STEP 2:
+    -- Teleport the victim's UpperTorso to the hand FIRST,
+    -- THEN set the constraint length. Otherwise the constraint
+    -- tries to pull them across the map in one frame → fling.
+    --==========================================================
+    pcall(function()
+        local hand = LP.Character.RightHand
+        character.UpperTorso.CFrame = CFrame.new(hand.Position - Vector3.new(0,1,0),
+                                                 LP.Character.HumanoidRootPart.Position)
+    end)
+
+    -- Now it's safe to make the constraint effectively infinite
     local gc = character.GRABBING_CONSTRAINT
     local function forceConstraint()
         if not gc or not gc.Parent then return end
@@ -96,7 +124,12 @@ function M.Grab(character, grabAnimId)
     end
     forceConstraint()
 
-    -- Physics
+    --==========================================================
+    -- ANTI-FLING STEP 3:
+    -- Physics is created AFTER the target is already positioned.
+    -- BP is set to their CURRENT position first, then the loop
+    -- moves it toward the hand smoothly instead of snapping.
+    --==========================================================
     local BP = Instance.new("BodyPosition", character.UpperTorso)
     local BG = Instance.new("BodyGyro",     character.UpperTorso)
     BP.D, BG.D = 200, 100
@@ -104,8 +137,9 @@ function M.Grab(character, grabAnimId)
     BG.P = 30000
     BP.MaxForce  = Vector3.new(9e9, 9e9, 9e9)
     BG.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    BP.Position = character.UpperTorso.Position
 
-    -- Grab animation on our character
+    -- Grab animation
     local anim = Instance.new("Animation")
     anim.AnimationId = "rbxassetid://"..grabAnimId
     local GrabAnim = LP.Character.Humanoid:LoadAnimation(anim)
@@ -115,7 +149,7 @@ function M.Grab(character, grabAnimId)
     end)
 
     --==========================================================
-    -- FOLLOW LOOP — runs every frame, drags victim with you
+    -- FOLLOW LOOP
     --==========================================================
     Cache.Loops.Grab = RunService.Heartbeat:Connect(function()
         if not character or not character.Parent
@@ -144,24 +178,49 @@ function M.Grab(character, grabAnimId)
             BG.D = 100; BG.P = 30000; BG.MaxTorque = Vector3.new(9e9,9e9,9e9)
         end
 
-        --==========================================================
-        -- FOLLOW LOGIC — recalced every frame so victim sticks to you
-        --==========================================================
+        -- Target: right in front of your right hand
         local hand = LP.Character.RightHand
         local root = LP.Character.HumanoidRootPart
-
         local holdOffset = Vector3.new(0, -1, -2.2)
         local targetPos  = hand.Position + hand.CFrame.LookVector * holdOffset.Z
                           + Vector3.new(0, holdOffset.Y, 0)
 
-        BP.Position = targetPos
-        BG.CFrame   = CFrame.new(character.UpperTorso.Position, root.Position)
+        --==========================================================
+        -- ANTI-FLING STEP 4:
+        -- Only move BP toward the target in small increments so
+        -- the physics engine doesn't overshoot and launch anyone.
+        --==========================================================
+        local current = BP.Position
+        local diff    = (targetPos - current)
+        if diff.Magnitude > 50 then
+            -- If we somehow ended up very far, jump once (rare)
+            BP.Position = targetPos
+        else
+            -- Smooth interpolate instead of snapping
+            BP.Position = current + diff * 0.35
+        end
 
+        BG.CFrame = CFrame.new(character.UpperTorso.Position, root.Position)
+
+        -- Keep velocity zeroed every frame
         for _, p in ipairs(character:GetChildren()) do
             if p:IsA("BasePart") then
                 p.AssemblyLinearVelocity  = Vector3.zero
                 p.AssemblyAngularVelocity = Vector3.zero
                 p.CanCollide = false
+            end
+        end
+
+        --==========================================================
+        -- ANTI-FLING STEP 5:
+        -- Also zero YOUR velocity in case the victim pushes back.
+        -- (Prevents self-launch.)
+        --==========================================================
+        local myRoot = LP.Character:FindFirstChild("HumanoidRootPart")
+        if myRoot then
+            if myRoot.AssemblyLinearVelocity.Magnitude > 300 then
+                myRoot.AssemblyLinearVelocity  = Vector3.zero
+                myRoot.AssemblyAngularVelocity = Vector3.zero
             end
         end
 
@@ -274,9 +333,7 @@ function M.StopAudio()
 end
 
 function M.Chat(msg)
-    if msg == nil or msg == "" or msg:gsub("%s", "") == "" then
-        return false
-    end
+    if msg == nil or msg == "" or msg:gsub("%s", "") == "" then return false end
     local success = false
     pcall(function()
         local channels = TextChatService:FindFirstChild("TextChannels")
@@ -435,7 +492,7 @@ T["Time Stop"] = function()
 end
 
 T["Hado 90"] = function()
-    if Settings.Grab["Hado 90"] then
+     if Settings.Grab["Hado 90"] then
         M.CreateTool("Hado 90", function()
             if not Settings.Grab.GrabbedCharacter then return end
             Settings.Grab.Grab = false
@@ -836,7 +893,7 @@ Instance.new("UICorner", tbar).CornerRadius = UDim.new(0,12)
 
 local title = Instance.new("TextLabel", tbar)
 title.Size = UDim2.new(1, -80, 1, 0); title.Position = UDim2.new(0, 20, 0, 0)
-title.BackgroundTransparency = 1; title.Text = "Legion · Grabs (Follow Version)"
+title.BackgroundTransparency = 1; title.Text = "Legion · Grabs"
 title.TextColor3 = Color3.fromRGB(255,255,255); title.TextSize = 18
 title.Font = Enum.Font.GothamBold; title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -878,7 +935,7 @@ iTitle.Font = Enum.Font.GothamMedium; iTitle.TextXAlignment = Enum.TextXAlignmen
 local iDesc = Instance.new("TextLabel", info)
 iDesc.Size = UDim2.new(1, -20, 0, 320); iDesc.Position = UDim2.new(0, 10, 0, 45)
 iDesc.BackgroundTransparency = 1
-iDesc.Text = "The victim now FOLLOWS you when you move.\n\n"..
+iDesc.Text = "The victim follows you when you move.\n\n"..
              "Step 1 — Turn ON Grab Function Tool below.\n"..
              "Step 2 — Crouch + CTRL+G on a torso to grab.\n"..
              "Step 3 — Walk around and they will follow.\n"..
@@ -947,7 +1004,7 @@ local function makeToggle(grabName, order)
             local ok, err = pcall(T[grabName])
             if not ok then warn("[Legion] "..grabName..": "..tostring(err)) end
         end
-        iTitle.Text = grabName..": "..(state and "ON — tool added to Backpack" or "OFF — tool removed")
+        iTitle.Text = grabName..": "..(state and "ON" or "OFF")
     end)
 
     btn.MouseEnter:Connect(function()
@@ -965,9 +1022,6 @@ local order = {
 }
 for i, name in ipairs(order) do makeToggle(name, i) end
 
---==========================================================
--- CORE "Grab Function Tool" wiring
---==========================================================
 local function hookGrab()
     if Cache.Connections.Grab then
         Cache.Connections.Grab:Disconnect(); Cache.Connections.Grab = nil
@@ -1039,9 +1093,6 @@ fxBtn.MouseButton1Click:Connect(function()
     fxStroke.Color = Settings.Grab.Effects and Color3.fromRGB(81,194,58) or Color3.fromRGB(45,45,45)
 end)
 
---==========================================================
--- RESPAWN
---==========================================================
 LP.CharacterAdded:Connect(function(char)
     repeat task.wait() until char:FindFirstChild("BodyEffects")
                     and char.BodyEffects:FindFirstChild("Grabbed")
@@ -1060,4 +1111,4 @@ RunService.Heartbeat:Connect(function()
     if LP.Character then M.StopAnim(LP.Character, "4798175381") end
 end)
 
-print("[Legion] Grab GUI loaded — Hoverboard removed.")
+print("[Legion] Grab GUI loaded — anti-fling grab active.")
