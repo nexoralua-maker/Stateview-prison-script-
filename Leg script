@@ -3,6 +3,7 @@
 --// - Tool-based grabs (toggle in GUI -> equip from backpack -> click)
 --// - Core "Grab Function Tool" that actually grips the victim
 --// - Make Player Stand: Clone behind player, facing same way
+--// - Over me: Pins grabbed player at the bottom of your character
 --// - M.Chat uses TextChatService (with legacy fallback)
 --// - Respawn-safe (grab rehooks, tools recreated)
 --//==========================================================
@@ -24,7 +25,7 @@ local Sound          = Instance.new("Sound", RS)
 --==========================================================
 local Cache = {
     Tools = {},
-    Loops = { Grab=nil, Orbit=nil, Ora=nil, Portal=nil, MakeStand=nil },
+    Loops = { Grab=nil, Orbit=nil, Ora=nil, Portal=nil, MakeStand=nil, OverMe=nil },
     Connections = { Grab=nil },
 }
 
@@ -45,6 +46,7 @@ local Settings = {
         ["Domain Expansion"]= false,
         ["Portal"]          = false,
         ["Whirlwind Kick"]  = false,
+        ["Over me"]         = false,
     },
 }
 
@@ -211,7 +213,6 @@ function M.Chat(msg)
 
     local success = false
 
-    -- 1) Modern TextChatService
     pcall(function()
         local channels = TextChatService:FindFirstChild("TextChannels")
         if channels then
@@ -223,7 +224,6 @@ function M.Chat(msg)
         end
     end)
 
-    -- 2) Legacy chat fallback (older games)
     if not success then
         pcall(function()
             local legacy = RS:FindFirstChild("DefaultChatSystemChatEvents")
@@ -485,7 +485,7 @@ T["Made In Heaven"] = function()
 end
 
 T["Chezburger"] = function()
-     if Settings.Grab["Chezburger"] then
+      if Settings.Grab["Chezburger"] then
         M.CreateTool("Mmm.. chezburger", function()
             if not Settings.Grab.GrabbedCharacter then return end
             M.Play("6647570"); M.Chat("Can i haz chezburger ples?")
@@ -593,8 +593,6 @@ T["Make Player Stand"] = function()
                 M.NoVelocity(Clone)
                 M.NoVelocity(Settings.Grab.GrabbedCharacter)
 
-                -- BEHIND the player: +Z is backward.
-                -- Offset: -1 X (right side), random Y (up), +3 Z (behind player)
                 local rp = LP.Character.HumanoidRootPart
                 Clone.HumanoidRootPart.CFrame = rp.CFrame * CFrame.new(-1, math.random(3,4.2), 3)
             end)
@@ -758,6 +756,92 @@ T["Whirlwind Kick"] = function()
 end
 
 --==========================================================
+-- OVER ME — Pins grabbed player at the bottom of your character
+--==========================================================
+T["Over me"] = function()
+    if Settings.Grab["Over me"] then
+        M.CreateTool("Over me", function()
+            if not Settings.Grab.GrabbedCharacter then return end
+            Settings.Grab.Grab = false
+
+            local g = Settings.Grab.GrabbedCharacter
+            local LPChar = LP.Character
+
+            M.StopAnim(LPChar, "3135389157")
+            M.StopAnim(LPChar, "11075367458")
+
+            -- Clear existing constraints so we control the victim's position
+            for _, p in ipairs(g:GetDescendants()) do
+                if p:IsA("BodyPosition") or p:IsA("BodyGyro") then
+                    p:Destroy()
+                end
+            end
+
+            local BP = Instance.new("BodyPosition", g.UpperTorso)
+            BP.D = 200
+            BP.MaxForce = Vector3.new(10000, 10000, 10000)
+
+            local BG = Instance.new("BodyGyro", g.UpperTorso)
+            BG.D = 100
+            BG.MaxTorque = Vector3.new(10000, 10000, 10000)
+            BG.CFrame = CFrame.new(g.UpperTorso.Position, LPChar.HumanoidRootPart.Position)
+
+            -- Keep the victim pinned under your feet
+            if Cache.Loops.OverMe then Cache.Loops.OverMe:Disconnect() end
+            Cache.Loops.OverMe = RunService.Heartbeat:Connect(function()
+                if not LPChar
+                or not LPChar:FindFirstChild("HumanoidRootPart")
+                or not LPChar:FindFirstChild("BodyEffects")
+                or LPChar.BodyEffects.Grabbed.Value == nil then
+                    if Cache.Loops.OverMe then
+                        Cache.Loops.OverMe:Disconnect()
+                        Cache.Loops.OverMe = nil
+                    end
+                    return
+                end
+
+                local root = LPChar.HumanoidRootPart
+                local victimPos = root.Position + Vector3.new(0, -3, 0)
+
+                BP.Position = victimPos
+                BG.CFrame = CFrame.new(g.UpperTorso.Position, root.Position)
+
+                M.NoVelocity(g)
+            end)
+
+            M.Play("8578316223")
+            M.Chat("Over me.")
+
+            task.wait(3)
+
+            -- Cleanup
+            if Cache.Loops.OverMe then
+                Cache.Loops.OverMe:Disconnect()
+                Cache.Loops.OverMe = nil
+            end
+
+            for _, p in ipairs(g:GetDescendants()) do
+                if p:IsA("BodyPosition") or p:IsA("BodyGyro") then
+                    p:Destroy()
+                end
+            end
+
+            M.StopAudio()
+            task.wait(0.3)
+            RS.MainEvent:FireServer("Grabbing", false)
+            task.wait(0.5)
+            Settings.Grab.Grab = true
+        end)
+    else
+        if Cache.Loops.OverMe then
+            Cache.Loops.OverMe:Disconnect()
+            Cache.Loops.OverMe = nil
+        end
+        M.DestroyTool("Over me")
+    end
+end
+
+--==========================================================
 -- GUI
 --==========================================================
 local old = CoreGui:FindFirstChild("LegionGrabsGUI")
@@ -849,7 +933,8 @@ iDesc.Text = "Step 1 — Turn ON Grab Function Tool below.\n"..
              " • Punch Back\n"..
              " • Domain Expansion\n"..
              " • Portal\n"..
-             " • Whirlwind Kick\n"
+             " • Whirlwind Kick\n"..
+             " • Over me\n"
 iDesc.TextColor3 = Color3.fromRGB(150,150,150); iDesc.TextSize = 11
 iDesc.Font = Enum.Font.Gotham; iDesc.TextXAlignment = Enum.TextXAlignment.Left
 iDesc.TextYAlignment = Enum.TextYAlignment.Top; iDesc.TextWrapped = true
@@ -928,7 +1013,7 @@ end
 local order = {
     "Time Stop","Hado 90","C Moon","Made In Heaven","Chezburger","Orbit",
     "Get Over Here","Make Player Stand","Punch Back","Domain Expansion",
-    "Portal","Whirlwind Kick",
+    "Portal","Whirlwind Kick","Over me",
 }
 for i, name in ipairs(order) do makeToggle(name, i) end
 
@@ -1013,4 +1098,4 @@ RunService.Heartbeat:Connect(function()
     if LP.Character then M.StopAnim(LP.Character, "4798175381") end
 end)
 
-print("[Legion] Grab GUI loaded — 12 grab tools + core Grab Function Tool.")
+print("[Legion] Grab GUI loaded — 13 grab tools + core Grab Function Tool.")
