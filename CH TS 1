@@ -1,5 +1,6 @@
 -- ============================================================
--- CrispyHub TARGET TAB + C-Sync Dropdown (Standalone Draggable)
+-- CrispyHub TARGET TAB + C-Sync (Self Material Edition)
+-- Standalone Draggable GUI
 -- ============================================================
 
 local Players            = game:GetService("Players")
@@ -96,7 +97,7 @@ function HealthModule.getColor(percent)
 end
 
 -- ============================================================
--- C-SYNC MODULE  (encapsulated, driven by dropdown controls)
+-- C-SYNC MODULE (self material / self tool material)
 -- ============================================================
 local CSync = (function()
     local M = {
@@ -110,15 +111,26 @@ local CSync = (function()
             randomization    = 5,
             visualize        = false,
             visualizeTracer  = true,
-            visualizeDot     = true,
             visualizeChar    = false,
             visualizeColor   = Color3.fromRGB(207, 227, 0),
-            dotSize          = 16,
             originalPosition = CFrame.new(1, 1, 1),
+
+            -- NEW: self material
+            selfMaterial = {
+                enabled = false,
+                type    = "Neon",
+                color   = Color3.fromRGB(207, 227, 0),
+            },
+            -- NEW: self tool material
+            selfToolMaterial = {
+                enabled = false,
+                type    = "Neon",
+                color   = Color3.fromRGB(207, 227, 0),
+            },
         }
     }
 
-    -- ---- Drawing library ----
+    -- ---- Drawing library (for tracer + ghost) ----
     local Drawing
     do
         local ok, res = pcall(function()
@@ -129,15 +141,11 @@ local CSync = (function()
         if ok then Drawing = res else warn("[C-Sync] Failed to load Drawing library") end
     end
 
-    local tracer, dot
+    local tracer
     if Drawing then
         tracer = Drawing.new("Line")
         tracer.Visible = false
         tracer.Thickness = 2
-
-        dot = Drawing.new("Circle")
-        dot.Visible = false
-        dot.Filled = true
     end
 
     -- ---- Helpers ----
@@ -158,7 +166,6 @@ local CSync = (function()
         local clone = plr.Character:Clone()
         clone.Parent = Workspace
         plr.Character.Archivable = false
-
         for _, part in ipairs(clone:GetChildren()) do
             if part:IsA("Accessory") then
                 part:Destroy()
@@ -179,7 +186,7 @@ local CSync = (function()
         return clone
     end
 
-    -- ---- Chams ----
+    -- ---- Ghost chams ----
     local chams
     local function rebuildChams()
         if chams then chams:Destroy() end
@@ -207,6 +214,41 @@ local CSync = (function()
         chams:PivotTo(desyncedCFrame)
     end
 
+    -- ---- Self material update (character parts) ----
+    local function updateSelfMaterial()
+        local char = player.Character
+        if not char then return end
+
+        if M.config.selfMaterial.enabled then
+            local materialType = Enum.Material[M.config.selfMaterial.type] or Enum.Material.Neon
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.Material = materialType
+                    part.Color    = M.config.selfMaterial.color
+                end
+            end
+        end
+    end
+
+    -- ---- Self tool material update ----
+    local function updateSelfToolMaterial()
+        local char = player.Character
+        if not char then return end
+
+        if M.config.selfToolMaterial.enabled then
+            local materialType = Enum.Material[M.config.selfToolMaterial.type] or Enum.Material.Neon
+            local tool = char:FindFirstChildOfClass("Tool")
+            if tool then
+                for _, part in ipairs(tool:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.Material = materialType
+                        part.Color    = M.config.selfToolMaterial.color
+                    end
+                end
+            end
+        end
+    end
+
     -- ---- Main loop ----
     RunService.Heartbeat:Connect(function()
         local char = player.Character
@@ -214,7 +256,6 @@ local CSync = (function()
 
         if not hrp or not M.config.enabled then
             if tracer then tracer.Visible = false end
-            if dot    then dot.Visible    = false end
             if chams  then chams.Parent   = nil    end
             return
         end
@@ -244,16 +285,6 @@ local CSync = (function()
                 tracer.Visible = false
             end
 
-            if M.config.visualizeDot then
-                local pos, on = worldToScreen(desyncCFrame.Position)
-                dot.Visible  = on
-                dot.Position = pos
-                dot.Radius   = M.config.dotSize
-                dot.Color    = M.config.visualizeColor
-            else
-                dot.Visible = false
-            end
-
             if M.config.visualizeChar and chams then
                 chams.Parent = Workspace
                 updateChams(desyncCFrame, M.config.visualizeColor)
@@ -262,9 +293,12 @@ local CSync = (function()
             end
         else
             if tracer then tracer.Visible = false end
-            if dot    then dot.Visible    = false end
             if chams  then chams.Parent   = nil    end
         end
+
+        -- Self material / tool material (runs each frame while enabled)
+        updateSelfMaterial()
+        updateSelfToolMaterial()
 
         -- Apply desync
         hrp.CFrame = desyncCFrame
@@ -272,7 +306,7 @@ local CSync = (function()
         hrp.CFrame = M.config.originalPosition
     end)
 
-    -- ---- Metamethod hook (hide real CFrame from server) ----
+    -- ---- Metamethod hook ----
     pcall(function()
         if getrawmetatable and setreadonly and checkcaller then
             local mt = getrawmetatable(game)
@@ -314,11 +348,19 @@ local CSync = (function()
             end
         end
     end
-    function M.setDotSize(v)  M.config.dotSize = v end
     function M.setTracer(v)   M.config.visualizeTracer = v and true or false end
-    function M.setDot(v)      M.config.visualizeDot    = v and true or false end
     function M.setChar(v)     M.config.visualizeChar   = v and true or false end
     function M.setKeybind(k)  M.config.keybind = k end
+
+    -- Self material setters
+    function M.setSelfMaterialEnabled(v) M.config.selfMaterial.enabled = v and true or false end
+    function M.setSelfMaterialType(v)    M.config.selfMaterial.type    = v end
+    function M.setSelfMaterialColor(c)   M.config.selfMaterial.color   = c end
+
+    -- Self tool material setters
+    function M.setSelfToolMaterialEnabled(v) M.config.selfToolMaterial.enabled = v and true or false end
+    function M.setSelfToolMaterialType(v)    M.config.selfToolMaterial.type    = v end
+    function M.setSelfToolMaterialColor(c)   M.config.selfToolMaterial.color   = c end
 
     return M
 end)()
@@ -381,7 +423,7 @@ local cc = Instance.new("UICorner")
 cc.CornerRadius = UDim.new(0, 8)
 cc.Parent = closeBtn
 
--- ---- Dragging ----
+-- Dragging
 local dragging, dragStart, startPos, dragInput = false, nil, nil, nil
 title.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -439,9 +481,7 @@ local killAnimId = "rbxassetid://124982597491660"
 local targetHistory = {}
 local HISTORY_SIZE = 5
 
--- ============================================================
 -- HELPERS
--- ============================================================
 local function getThumb(p)
     local ok, t = pcall(function()
         return Players:GetUserThumbnailAsync(p.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
@@ -477,9 +517,7 @@ local function getRealTargetPosition(tgtRoot)
     return currentPos
 end
 
--- ============================================================
--- PIZZA / DONUT AUTO-CLICKER
--- ============================================================
+-- PIZZA/DONUT AUTO-CLICKER
 local PD_TOOL_NAMES = { "[Pizza]", "[Donut]" }
 local PD_CLICK_DELAY = 0.1
 local PD_MAX_HEALTH  = 100
@@ -591,9 +629,7 @@ player.CharacterAdded:Connect(function()
     if autoKillEnabled then task.wait(0.5) pd_watchHealth() end
 end)
 
--- ============================================================
 -- FLING
--- ============================================================
 local flingActive = false
 local flingRunning = false
 local savedFlingFallenHeight = Workspace.FallenPartsDestroyHeight
@@ -702,9 +738,7 @@ local function startFling()
 end
 local function stopFling() flingActive = false end
 
--- ============================================================
--- ANIMATION HELPERS
--- ============================================================
+-- ANIMATION
 local function playKillAnim()
     local char = player.Character
     if not char then return end
@@ -728,9 +762,7 @@ player.CharacterAdded:Connect(function()
     if autoKillEnabled then task.wait(0.5) playKillAnim() end
 end)
 
--- ============================================================
 -- TARGET TAB UI
--- ============================================================
 local mainScroll = Instance.new("ScrollingFrame")
 mainScroll.Name = "TargetScroll"
 mainScroll.Size = UDim2.new(1, 0, 1, 0)
@@ -753,7 +785,6 @@ holderLayout.Padding = UDim.new(0, 6)
 holderLayout.SortOrder = Enum.SortOrder.LayoutOrder
 holderLayout.Parent = holder
 
--- Top box (avatar + name)
 local topBox = Instance.new("Frame")
 topBox.Size = UDim2.new(1, 0, 0, 92)
 topBox.BackgroundTransparency = 1
@@ -783,7 +814,6 @@ targetName.Font = Enum.Font.GothamBold
 targetName.TextSize = 13
 targetName.Parent = topBox
 
--- Player list
 local listFrame = Instance.new("Frame")
 listFrame.Size = UDim2.new(0.9, 0, 0, 110)
 listFrame.Position = UDim2.new(0.05, 0, 0, 0)
@@ -868,7 +898,6 @@ local function refreshList()
 end
 refreshList()
 
--- Health bar
 local healthBg = Instance.new("Frame")
 healthBg.Size = UDim2.new(0.9, 0, 0, 20)
 healthBg.Position = UDim2.new(0.05, 0, 0, 0)
@@ -901,7 +930,6 @@ healthText.TextSize = 12
 healthText.ZIndex = 2
 healthText.Parent = healthBg
 
--- Armor bar
 local armorBg = Instance.new("Frame")
 armorBg.Size = UDim2.new(0.9, 0, 0, 20)
 armorBg.Position = UDim2.new(0.05, 0, 0, 0)
@@ -979,7 +1007,7 @@ spectateBtn.MouseButton1Click:Connect(function()
     if spectating then stopSpectate() else startSpectate() end
 end)
 
--- TP button
+-- TP
 local tpBtn = Instance.new("TextButton")
 tpBtn.Size = UDim2.new(0.9, 0, 0, 24)
 tpBtn.Position = UDim2.new(0.05, 0, 0, 0)
@@ -1015,9 +1043,7 @@ tpBtn.MouseButton1Click:Connect(function()
     myRoot.CFrame = tgtRoot.CFrame * CFrame.new(0, 0, 3)
 end)
 
--- ============================================================
--- AUTO KILL + C-SYNC DROPDOWN  (combined row)
--- ============================================================
+-- AUTO KILL + C-SYNC DROPDOWN row
 local autoKillRow = Instance.new("Frame")
 autoKillRow.Size = UDim2.new(0.9, 0, 0, 24)
 autoKillRow.Position = UDim2.new(0.05, 0, 0, 0)
@@ -1063,7 +1089,7 @@ local csCorner = Instance.new("UICorner")
 csCorner.CornerRadius = UDim.new(0, 6)
 csCorner.Parent = cSyncArrowBtn
 
--- ---- Auto Kill logic (unchanged) ----
+-- Auto Kill logic
 local function equipTool(toolName)
     local char = player.Character
     if not char then return false end
@@ -1195,9 +1221,7 @@ autoKillBtn.MouseButton1Click:Connect(function()
     if autoKillEnabled then stopAutoKill() else startAutoKill() end
 end)
 
--- ============================================================
--- C-SYNC DROPDOWN (collapsed by default)
--- ============================================================
+-- C-SYNC DROPDOWN
 local csDropdown = Instance.new("Frame")
 csDropdown.Name = "CSyncDropdown"
 csDropdown.Size = UDim2.new(0.9, 0, 0, 0)
@@ -1225,7 +1249,6 @@ csdPad.PaddingLeft   = UDim.new(0, 6)
 csdPad.PaddingRight  = UDim.new(0, 6)
 csdPad.Parent = csDropdown
 
--- ---- Compact UI helpers scoped to csDropdown ----
 local CS_ACCENT = Color3.fromRGB(207, 227, 0)
 local CS_BG     = Color3.fromRGB(28, 28, 28)
 local CS_TEXT   = Color3.fromRGB(220, 220, 220)
@@ -1603,10 +1626,9 @@ local function csColorPicker(text, default, order, callback)
 end
 
 -- ============================================================
--- POPULATE DROPDOWN (order matters!)
+-- POPULATE DROPDOWN
 -- ============================================================
 csLabel("C-SYNC", 1)
-
 csToggle("Enabled", false, 2, function(v) CSync.setEnabled(v) end)
 csKeybind("Keybind", CSync.config.keybind, 3, function(k) CSync.setKeybind(k) end)
 csDropdownMaker("Type",
@@ -1624,25 +1646,40 @@ csSlider("Amount", 1, 100, CSync.config.randomization, 1, 10, function(v) CSync.
 csLabel("VISUALIZATION", 11)
 csToggle("Visualize", false, 12, function(v) CSync.setVisualize(v) end)
 csColorPicker("Color", CSync.config.visualizeColor, 13, function(c) CSync.setColor(c) end)
-csSlider("Dot Size", 1, 40, CSync.config.dotSize, 0, 14, function(v) CSync.setDotSize(v) end)
-csToggle("Show Tracer", true, 15, function(v) CSync.setTracer(v) end)
-csToggle("Show Dot", true, 16, function(v) CSync.setDot(v) end)
-csToggle("Show Character", false, 17, function(v) CSync.setChar(v) end)
+csToggle("Show Tracer", true, 14, function(v) CSync.setTracer(v) end)
+csToggle("Show Character", false, 15, function(v) CSync.setChar(v) end)
 
--- ---- Compute expanded height dynamically ----
+-- ============ SELF MATERIAL ============
+csLabel("SELF MATERIAL", 20)
+csToggle("Self Material", false, 21, function(v) CSync.setSelfMaterialEnabled(v) end)
+csColorPicker("SM Color", CSync.config.selfMaterial.color, 22, function(c) CSync.setSelfMaterialColor(c) end)
+csDropdownMaker("SM Type",
+    { "Neon", "ForceField", "Glass", "Plastic", "SmoothPlastic", "Metal", "Marble",
+      "Granite", "Concrete", "Ice", "Foil", "DiamondPlate", "Sand", "Fabric", "Wood",
+      "WoodPlanks", "Cobblestone", "Slate" },
+    CSync.config.selfMaterial.type, 23, function(v) CSync.setSelfMaterialType(v) end)
+
+-- ============ SELF TOOL MATERIAL ============
+csLabel("SELF TOOL MATERIAL", 30)
+csToggle("Tool Material", false, 31, function(v) CSync.setSelfToolMaterialEnabled(v) end)
+csColorPicker("TM Color", CSync.config.selfToolMaterial.color, 32, function(c) CSync.setSelfToolMaterialColor(c) end)
+csDropdownMaker("TM Type",
+    { "Neon", "ForceField", "Glass", "Plastic", "SmoothPlastic", "Metal", "Marble",
+      "Granite", "Concrete", "Ice", "Foil", "DiamondPlate", "Sand", "Fabric", "Wood",
+      "WoodPlanks", "Cobblestone", "Slate" },
+    CSync.config.selfToolMaterial.type, 33, function(v) CSync.setSelfToolMaterialType(v) end)
+
+-- ---- Dropdown height calc + toggle ----
 local function computeDropdownHeight()
-    local total = 12 -- top/bottom padding
+    local total = 12
     for _, child in ipairs(csDropdown:GetChildren()) do
-        if child:IsA("GuiObject") and child:IsA("Frame")
-            or child:IsA("TextLabel")
-            or child:IsA("TextButton") then
+        if child:IsA("GuiObject") then
             total = total + child.AbsoluteSize.Y + 4
         end
     end
     return total
 end
 
--- ---- Dropdown toggle ----
 local csOpen = false
 cSyncArrowBtn.MouseButton1Click:Connect(function()
     csOpen = not csOpen
@@ -1651,7 +1688,6 @@ cSyncArrowBtn.MouseButton1Click:Connect(function()
         or Color3.fromRGB(80, 60, 20)
 
     if csOpen then
-        -- Wait a frame so AbsoluteSize is populated
         task.wait()
         csDropdown.Size = UDim2.new(0.9, 0, 0, computeDropdownHeight())
     else
@@ -1659,9 +1695,7 @@ cSyncArrowBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ============================================================
 -- FLING ROW
--- ============================================================
 local flingBtn = Instance.new("TextButton")
 flingBtn.Size = UDim2.new(0.9, 0, 0, 24)
 flingBtn.Position = UDim2.new(0.05, 0, 0, 0)
@@ -1691,9 +1725,7 @@ flingBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ============================================================
--- LIVE HEALTH / ARMOR BAR UPDATES
--- ============================================================
+-- LIVE HEALTH / ARMOR UPDATE
 task.spawn(function()
     while targetFrame.Parent do
         local t = selectedTarget or player
@@ -1721,9 +1753,7 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
 -- PLAYER ADD / REMOVE
--- ============================================================
 Players.PlayerAdded:Connect(function() refreshList() end)
 Players.PlayerRemoving:Connect(function(p)
     if selectedTarget == p then
@@ -1743,17 +1773,13 @@ end
 
 end)(targetFrame)
 
--- ============================================================
 -- CLOSE
--- ============================================================
 closeBtn.MouseButton1Click:Connect(function()
     if cleanupTarget then cleanupTarget() end
     screenGui:Destroy()
 end)
 
--- ============================================================
--- GLOBAL C-SYNC KEYBIND LISTENER
--- ============================================================
+-- GLOBAL C-SYNC KEYBIND
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == CSync.config.keybind then
@@ -1761,4 +1787,4 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
-print("Crispy Target + C-Sync Standalone loaded!")
+print("Crispy Target + C-Sync (Self Material Edition) loaded!")
