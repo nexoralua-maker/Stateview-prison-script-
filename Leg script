@@ -814,78 +814,65 @@ T["Whirlwind Kick"] = function()
 end
 
 --==========================================================
--- OVER ME — Pins grabbed player at the bottom of your character
+-- OVER ME — Ungrabs whatever you're currently holding
 --==========================================================
 T["Over me"] = function()
     if Settings.Grab["Over me"] then
         M.CreateTool("Over me", function()
-            if not Settings.Grab.GrabbedCharacter then return end
-            Settings.Grab.Grab = false
-
             local g = Settings.Grab.GrabbedCharacter
-            local LPChar = LP.Character
 
-            M.StopAnim(LPChar, "3135389157")
-            M.StopAnim(LPChar, "11075367458")
-
-            for _, p in ipairs(g:GetDescendants()) do
-                if p:IsA("BodyPosition") or p:IsA("BodyGyro") then
-                    p:Destroy()
-                end
-            end
-
-            local BP = Instance.new("BodyPosition", g.UpperTorso)
-            BP.D = 200
-            BP.MaxForce = Vector3.new(10000, 10000, 10000)
-
-            local BG = Instance.new("BodyGyro", g.UpperTorso)
-            BG.D = 100
-            BG.MaxTorque = Vector3.new(10000, 10000, 10000)
-            BG.CFrame = CFrame.new(g.UpperTorso.Position, LPChar.HumanoidRootPart.Position)
-
-            if Cache.Loops.OverMe then Cache.Loops.OverMe:Disconnect() end
-            Cache.Loops.OverMe = RunService.Heartbeat:Connect(function()
-                if not LPChar
-                or not LPChar:FindFirstChild("HumanoidRootPart")
-                or not LPChar:FindFirstChild("BodyEffects")
-                or LPChar.BodyEffects.Grabbed.Value == nil then
-                    if Cache.Loops.OverMe then
-                        Cache.Loops.OverMe:Disconnect()
-                        Cache.Loops.OverMe = nil
-                    end
-                    return
-                end
-
-                local root = LPChar.HumanoidRootPart
-                local victimPos = root.Position + Vector3.new(0, -3, 0)
-
-                BP.Position = victimPos
-                BG.CFrame = CFrame.new(g.UpperTorso.Position, root.Position)
-
-                M.NoVelocity(g)
-            end)
-
-            M.Play("8578316223")
-            M.Chat("Over me.")
-
-            task.wait(3)
-
+            -- Stop any active Over me loop first
             if Cache.Loops.OverMe then
                 Cache.Loops.OverMe:Disconnect()
                 Cache.Loops.OverMe = nil
             end
 
-            for _, p in ipairs(g:GetDescendants()) do
-                if p:IsA("BodyPosition") or p:IsA("BodyGyro") then
-                    p:Destroy()
+            -- Clean up constraints on the victim so they fall free
+            if g then
+                for _, p in ipairs(g:GetDescendants()) do
+                    if p:IsA("BodyPosition")
+                    or p:IsA("BodyGyro")
+                    or p:IsA("BodyVelocity") then
+                        p:Destroy()
+                    end
                 end
+                pcall(function()
+                    if g:FindFirstChild("GRABBING_CONSTRAINT")
+                    and g.GRABBING_CONSTRAINT:FindFirstChild("H") then
+                        g.GRABBING_CONSTRAINT.H.Length = 0.1
+                    end
+                end)
             end
 
-            M.StopAudio()
-            task.wait(0.3)
-            RS.MainEvent:FireServer("Grabbing", false)
-            task.wait(0.5)
+            -- Stop the grab animation on yourself
+            M.StopAnim(LP.Character, "3135389157")
+            M.StopAnim(LP.Character, "11075367458")
+
+            -- Stop the core grab loop
+            if Cache.Loops.Grab then
+                Cache.Loops.Grab:Disconnect()
+                Cache.Loops.Grab = nil
+            end
+
+            -- Tell the server we released the grab
+            pcall(function()
+                RS.MainEvent:FireServer("Grabbing", false)
+            end)
+
+            -- Clear local grab state
+            Settings.Grab.GrabbedCharacter = nil
+            if LP.Character
+            and LP.Character:FindFirstChild("BodyEffects")
+            and LP.Character.BodyEffects:FindFirstChild("Grabbed") then
+                pcall(function()
+                    LP.Character.BodyEffects.Grabbed.Value = nil
+                end)
+            end
+
+            -- Reset grab flag so you can grab again right away
             Settings.Grab.Grab = true
+
+            M.Chat("Released.")
         end)
     else
         if Cache.Loops.OverMe then
