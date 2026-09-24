@@ -23,7 +23,7 @@ local YELLOW_GRADIENT = ColorSequence.new{
     ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 150, 0))
 }
 local DARK_BG = Color3.fromRGB(20, 20, 25)
-local PANEL_BG = Color3.fromRGB(30, 30, 35)
+local PANEL_BG = Color3.fromRGB(25, 25, 30)          -- <-- Action list panel color
 local TEXT_WHITE = Color3.fromRGB(240, 240, 240)
 local TEXT_GRAY = Color3.fromRGB(180, 180, 180)
 
@@ -218,7 +218,7 @@ local mainTabBtn = Instance.new("TextButton")
 mainTabBtn.Size = UDim2.new(0, 130, 0, 38)
 mainTabBtn.Position = UDim2.new(0, 10, 0, 15)
 mainTabBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-mainTabBtn.Text = "" -- No default text, we use custom icon + label
+mainTabBtn.Text = ""
 mainTabBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
 mainTabBtn.Font = Enum.Font.GothamBold
 mainTabBtn.TextSize = 15
@@ -238,8 +238,8 @@ homeIcon.Name = "HomeIcon"
 homeIcon.Size = UDim2.new(0, 20, 0, 20)
 homeIcon.Position = UDim2.new(0, 12, 0.5, -10)
 homeIcon.BackgroundTransparency = 1
-homeIcon.Image = "rbxassetid://6031075931" -- House icon
-homeIcon.ImageColor3 = Color3.fromRGB(20, 20, 20) -- Dark icon to match tab
+homeIcon.Image = "rbxassetid://6031075931"
+homeIcon.ImageColor3 = Color3.fromRGB(20, 20, 20)
 homeIcon.ZIndex = 4
 homeIcon.Parent = mainTabBtn
 
@@ -272,7 +272,7 @@ rightPanel.Parent = mainFrame
 local actionListFrame = Instance.new("Frame")
 actionListFrame.Name = "ActionListFrame"
 actionListFrame.Size = UDim2.new(0, 150, 1, 0)
-actionListFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+actionListFrame.BackgroundColor3 = PANEL_BG
 actionListFrame.BorderSizePixel = 0
 actionListFrame.ClipsDescendants = true
 actionListFrame.ZIndex = 3
@@ -282,11 +282,12 @@ local actionListCorner = Instance.new("UICorner")
 actionListCorner.CornerRadius = UDim.new(0, 6)
 actionListCorner.Parent = actionListFrame
 
--- Scroll Frame that blends with the panel (transparent, no border, thin scrollbar)
+-- Scroll Frame: MATCHES the panel color exactly so it blends in
 local actionListScroll = Instance.new("ScrollingFrame")
 actionListScroll.Name = "ActionListScroll"
 actionListScroll.Size = UDim2.new(1, 0, 1, 0)
-actionListScroll.BackgroundTransparency = 1
+actionListScroll.BackgroundColor3 = PANEL_BG   -- <-- same color as actionListFrame
+actionListScroll.BackgroundTransparency = 0   -- <-- fully opaque, no mismatch
 actionListScroll.BorderSizePixel = 0
 actionListScroll.ScrollBarThickness = 3
 actionListScroll.ScrollBarImageColor3 = Color3.fromRGB(255, 200, 0)
@@ -297,7 +298,7 @@ actionListScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 actionListScroll.ZIndex = 3
 actionListScroll.Parent = actionListFrame
 
--- Round the scroll frame itself so it doesn't poke out of the rounded panel
+-- Round the scroll frame so corners match the panel
 local scrollCorner = Instance.new("UICorner")
 scrollCorner.CornerRadius = UDim.new(0, 6)
 scrollCorner.Parent = actionListScroll
@@ -402,7 +403,6 @@ local actions = {
 }
 
 for i, actionName in ipairs(actions) do
-    -- 1. Main Button
     local btn = Instance.new("TextButton")
     btn.Name = actionName:gsub(" ", "") .. "Btn"
     btn.Size = UDim2.new(1, -12, 0, 32)
@@ -416,7 +416,6 @@ for i, actionName in ipairs(actions) do
     btnCorner.CornerRadius = UDim.new(0, 4)
     btnCorner.Parent = btn
 
-    -- 2. Text Label (Left aligned)
     local textLabel = Instance.new("TextLabel")
     textLabel.Size = UDim2.new(1, -35, 1, 0)
     textLabel.Position = UDim2.new(0, 10, 0, 0)
@@ -429,7 +428,6 @@ for i, actionName in ipairs(actions) do
     textLabel.ZIndex = 5
     textLabel.Parent = btn
 
-    -- 3. Toggle Box (Right aligned)
     local toggleBox = Instance.new("Frame")
     toggleBox.Size = UDim2.new(0, 18, 0, 18)
     toggleBox.Position = UDim2.new(1, -25, 0.5, -9)
@@ -447,7 +445,6 @@ for i, actionName in ipairs(actions) do
     boxStroke.Thickness = 1
     boxStroke.Parent = toggleBox
 
-    -- 4. Inner Fill for Toggle Box
     local boxFill = Instance.new("Frame")
     boxFill.Size = UDim2.new(1, -4, 1, -4)
     boxFill.Position = UDim2.new(0, 2, 0, 2)
@@ -464,11 +461,9 @@ for i, actionName in ipairs(actions) do
     fillCorner.CornerRadius = UDim.new(0, 3)
     fillCorner.Parent = boxFill
 
-    -- State (all start OFF)
     local isToggled = false
     boxFill.Visible = false
 
-    -- 5. Click logic
     btn.MouseButton1Click:Connect(function()
         isToggled = not isToggled
         if isToggled then
@@ -483,7 +478,6 @@ for i, actionName in ipairs(actions) do
         end
     end)
 
-    -- Hover effect
     btn.MouseEnter:Connect(function()
         if not isToggled then
             btn.BackgroundTransparency = 0
@@ -504,7 +498,7 @@ local settingsFrame = Instance.new("Frame")
 settingsFrame.Name = "SettingsFrame"
 settingsFrame.Size = UDim2.new(1, -160, 1, 0)
 settingsFrame.Position = UDim2.new(0, 160, 0, 0)
-settingsFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+settingsFrame.BackgroundColor3 = PANEL_BG
 settingsFrame.BorderSizePixel = 0
 settingsFrame.ZIndex = 3
 settingsFrame.Parent = rightPanel
