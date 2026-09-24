@@ -281,27 +281,45 @@ local actionListCorner = Instance.new("UICorner")
 actionListCorner.CornerRadius = UDim.new(0, 6)
 actionListCorner.Parent = actionListFrame
 
+-- Make the action list scrollable so all 24 buttons fit
+local actionListScroll = Instance.new("ScrollingFrame")
+actionListScroll.Name = "ActionListScroll"
+actionListScroll.Size = UDim2.new(1, 0, 1, 0)
+actionListScroll.BackgroundTransparency = 1
+actionListScroll.BorderSizePixel = 0
+actionListScroll.ScrollBarThickness = 4
+actionListScroll.ScrollBarImageColor3 = Color3.fromRGB(255, 200, 0)
+actionListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+actionListScroll.ZIndex = 3
+actionListScroll.Parent = actionListFrame
+
 local actionListLayout = Instance.new("UIListLayout")
 actionListLayout.Padding = UDim.new(0, 2)
 actionListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 actionListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 actionListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-actionListLayout.Parent = actionListFrame
+actionListLayout.Parent = actionListScroll
+
+-- Auto-size canvas to fit all buttons
+actionListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    actionListScroll.CanvasSize = UDim2.new(0, 0, 0, actionListLayout.AbsoluteContentSize.Y + 20)
+end)
 
 local actionListPadding = Instance.new("UIPadding")
 actionListPadding.PaddingTop = UDim.new(0, 10)
-actionListPadding.Parent = actionListFrame
+actionListPadding.PaddingBottom = UDim.new(0, 10)
+actionListPadding.Parent = actionListScroll
 
 -- ==========================================
--- SECTION HEADER: "Neckgrabs"
+-- SECTION HEADER: "Moves"
 -- ==========================================
 local sectionHeader = Instance.new("Frame")
-sectionHeader.Name = "NeckgrabsSection"
+sectionHeader.Name = "MovesSection"
 sectionHeader.Size = UDim2.new(1, -12, 0, 26)
 sectionHeader.BackgroundTransparency = 1
 sectionHeader.LayoutOrder = 0
 sectionHeader.ZIndex = 4
-sectionHeader.Parent = actionListFrame
+sectionHeader.Parent = actionListScroll
 
 -- Yellow accent bar on the left
 local sectionAccent = Instance.new("Frame")
@@ -323,7 +341,7 @@ sectionTitle.Name = "SectionTitle"
 sectionTitle.Size = UDim2.new(1, -22, 1, 0)
 sectionTitle.Position = UDim2.new(0, 16, 0, 0)
 sectionTitle.BackgroundTransparency = 1
-sectionTitle.Text = "Neckgrabs"
+sectionTitle.Text = "Moves"
 sectionTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 sectionTitle.Font = Enum.Font.GothamBold
 sectionTitle.TextSize = 14
@@ -345,9 +363,34 @@ sectionDivider.ZIndex = 5
 sectionDivider.Parent = sectionHeader
 
 -- ==========================================
--- ACTION TOGGLES (Neckgrabs removed)
+-- ACTION TOGGLES (24 moves)
 -- ==========================================
-local actions = {"Control", "Rip In Half", "Hail", "Orbit", "Get Over Here", "Soft Sex", "Hard Sex", "Penis"}
+local actions = {
+    "Activate",
+    "Throw",
+    "Floar Slam",
+    "Hado 90",
+    "C Moon",
+    "Clone",
+    "BoomHeadShot",
+    "Heaven Throw",
+    "Domain Expansion",
+    "Boxing",
+    "Made in Heaven",
+    "Get Over Here",
+    "Head Breaker",
+    "Hell",
+    "Sex",
+    "fly punch",
+    "Bat Knock",
+    "Crusher",
+    "Knife Killer",
+    "Combo",
+    "Rip In Half",
+    "Punch",
+    "Control",
+    "Goku"
+}
 
 for i, actionName in ipairs(actions) do
     -- 1. Main Button
@@ -358,7 +401,7 @@ for i, actionName in ipairs(actions) do
     btn.Text = ""
     btn.LayoutOrder = i
     btn.ZIndex = 4
-    btn.Parent = actionListFrame
+    btn.Parent = actionListScroll
 
     local btnCorner = Instance.new("UICorner")
     btnCorner.CornerRadius = UDim.new(0, 4)
@@ -412,8 +455,9 @@ for i, actionName in ipairs(actions) do
     fillCorner.CornerRadius = UDim.new(0, 3)
     fillCorner.Parent = boxFill
 
-    -- State
+    -- State (all start OFF)
     local isToggled = false
+    boxFill.Visible = false
 
     -- 5. Click logic
     btn.MouseButton1Click:Connect(function()
@@ -444,17 +488,6 @@ for i, actionName in ipairs(actions) do
             textLabel.TextColor3 = TEXT_GRAY
         end
     end)
-
-    -- Highlight "Control" by default
-    if actionName == "Control" then
-        isToggled = true
-        boxFill.Visible = true
-        textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.BackgroundTransparency = 0
-        btn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-    else
-        boxFill.Visible = false
-    end
 end
 
 -- Right Sub-Panel (Settings)
@@ -631,4 +664,4 @@ end
 
 -- Create the two sliders
 local vehicleFlySpeedSlider = createSlider(settingsFrame, "Vehicle Fly Speed")
-local controlSpeedSlider = createSlider(settingsFrame, "Control Speed") 
+local controlSpeedSlider = createSlider(settingsFrame, "Control Speed")
