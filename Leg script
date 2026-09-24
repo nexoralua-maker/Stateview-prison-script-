@@ -1,5 +1,10 @@
 --//==========================================================
---// LEGION GRABS GUI — Full Rewrite (Anti-Fling Grab)
+--// LEGION GRABS GUI — Full Rewrite
+--// - Tool-based grabs (toggle in GUI -> equip from backpack -> click)
+--// - Core "Grab Function Tool" that actually grips the victim
+--// - Make Player Stand: Clone behind player, facing same way
+--// - M.Chat uses TextChatService (with legacy fallback)
+--// - Respawn-safe (grab rehooks, tools recreated)
 --//==========================================================
 
 local CoreGui        = game:GetService("CoreGui")
@@ -48,189 +53,53 @@ local Settings = {
 --==========================================================
 local M = {}
 
---==========================================================
--- CORE GRAB — anti-fling version
---==========================================================
 function M.Grab(character, grabAnimId)
-    if not character or not character.Parent then return end
+    assert(character, "Character is nil")
     Settings.Grab.GrabbedCharacter = character
+    if Cache.Loops.Grab then Cache.Loops.Grab:Disconnect() end
 
-    if Cache.Loops.Grab then Cache.Loops.Grab:Disconnect(); Cache.Loops.Grab = nil end
-
-    -- Remove any stale physics from a previous grab
     for _, p in ipairs(character:GetDescendants()) do
         if p:IsA("BodyVelocity") or p:IsA("BodyGyro") or p:IsA("BodyPosition") then
             p:Destroy()
         end
     end
 
-    -- Stop the wrong grab anim on our own character
     for _, a in ipairs(LP.Character.Humanoid:GetPlayingAnimationTracks()) do
         if a.Animation.AnimationId:match("11075367458") then a:Stop() end
     end
 
-    -- Wait for constraint + body parts (max 3s)
-    local waited = 0
-    while not (character:FindFirstChild("GRABBING_CONSTRAINT")
-        and character:FindFirstChild("UpperTorso")
-        and character:FindFirstChild("LowerTorso")
-        and LP.Character
-        and LP.Character:FindFirstChild("RightHand")
-        and LP.Character:FindFirstChild("HumanoidRootPart")) do
-        task.wait(0.05); waited = waited + 0.05
-        if waited > 3 or not character.Parent then return end
-    end
+    repeat task.wait() until character:FindFirstChild("GRABBING_CONSTRAINT")
+    if not character.GRABBING_CONSTRAINT:FindFirstChild("H") then return end
 
-    --==========================================================
-    -- ANTI-FLING STEP 1:
-    -- Freeze the victim BEFORE touching the constraint length.
-    -- This stops the physics solver from snapping them into us.
-    --==========================================================
-    local function freezeTarget()
-        for _, p in ipairs(character:GetDescendants()) do
-            if p:IsA("BasePart") then
-                p.CanCollide = false
-                p.AssemblyLinearVelocity  = Vector3.zero
-                p.AssemblyAngularVelocity = Vector3.zero
-                p.Velocity = Vector3.zero
-            end
-        end
-    end
-    freezeTarget()
-
-    --==========================================================
-    -- ANTI-FLING STEP 2:
-    -- Teleport the victim's UpperTorso to the hand FIRST,
-    -- THEN set the constraint length. Otherwise the constraint
-    -- tries to pull them across the map in one frame → fling.
-    --==========================================================
-    pcall(function()
-        local hand = LP.Character.RightHand
-        character.UpperTorso.CFrame = CFrame.new(hand.Position - Vector3.new(0,1,0),
-                                                 LP.Character.HumanoidRootPart.Position)
-    end)
-
-    -- Now it's safe to make the constraint effectively infinite
-    local gc = character.GRABBING_CONSTRAINT
-    local function forceConstraint()
-        if not gc or not gc.Parent then return end
-        if gc:FindFirstChild("H") then
-            pcall(function() gc.H.Length = 9e9 end)
-        else
-            for _, c in ipairs(gc:GetChildren()) do
-                if c:IsA("HingeConstraint") then pcall(function() c.Length = 9e9 end) end
-            end
-        end
-    end
-    forceConstraint()
-
-    --==========================================================
-    -- ANTI-FLING STEP 3:
-    -- Physics is created AFTER the target is already positioned.
-    -- BP is set to their CURRENT position first, then the loop
-    -- moves it toward the hand smoothly instead of snapping.
-    --==========================================================
     local BP = Instance.new("BodyPosition", character.UpperTorso)
     local BG = Instance.new("BodyGyro",     character.UpperTorso)
-    BP.D, BG.D = 200, 100
-    BP.P = 30000
-    BG.P = 30000
-    BP.MaxForce  = Vector3.new(9e9, 9e9, 9e9)
-    BG.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-    BP.Position = character.UpperTorso.Position
-
-    -- Grab animation
     local anim = Instance.new("Animation")
     anim.AnimationId = "rbxassetid://"..grabAnimId
     local GrabAnim = LP.Character.Humanoid:LoadAnimation(anim)
+
+    BP.D, BG.D = 200, 100
+    BP.MaxForce  = Vector3.new(10000,10000,10000)
+    BG.MaxTorque = Vector3.new(10000,10000,10000)
+
+    BG.CFrame   = CFrame.new(character.UpperTorso.Position, LP.Character.HumanoidRootPart.Position)
+    BP.Position = LP.Character.RightHand.Position - Vector3.new(0,1,0)
+    character.GRABBING_CONSTRAINT.H.Length = 9e9
+
     GrabAnim.Priority = Enum.AnimationPriority.Action4
-    pcall(function()
-        GrabAnim:Play(); GrabAnim:AdjustSpeed(0); GrabAnim.TimePosition = .1
-    end)
+    GrabAnim:Play(); GrabAnim:AdjustSpeed(0); GrabAnim.TimePosition = .1
 
-    --==========================================================
-    -- FOLLOW LOOP
-    --==========================================================
     Cache.Loops.Grab = RunService.Heartbeat:Connect(function()
-        if not character or not character.Parent
-        or not LP.Character
-        or not LP.Character:FindFirstChild("BodyEffects")
-        or not LP.Character:FindFirstChild("RightHand")
-        or not LP.Character:FindFirstChild("HumanoidRootPart")
-        or not character:FindFirstChild("UpperTorso") then
-            if Cache.Loops.Grab then Cache.Loops.Grab:Disconnect(); Cache.Loops.Grab = nil end
-            Settings.Grab.GrabbedCharacter = nil
-            return
+        if Settings.Grab.GrabbedCharacter
+        and LP.Character
+        and LP.Character:FindFirstChild("BodyEffects")
+        and LP.Character.BodyEffects.Grabbed.Value ~= nil
+        and Settings.Grab.Grab then
+            BG.CFrame   = CFrame.new(character.UpperTorso.Position, LP.Character.HumanoidRootPart.Position)
+            BP.Position = LP.Character.RightHand.Position - Vector3.new(0,1,0)
         end
-
-        if LP.Character.BodyEffects.Grabbed.Value == nil then
-            if Cache.Loops.Grab then Cache.Loops.Grab:Disconnect(); Cache.Loops.Grab = nil end
-            Settings.Grab.GrabbedCharacter = nil
-            return
-        end
-
-        if not BP.Parent then
-            BP = Instance.new("BodyPosition", character.UpperTorso)
-            BP.D = 200; BP.P = 30000; BP.MaxForce = Vector3.new(9e9,9e9,9e9)
-        end
-        if not BG.Parent then
-            BG = Instance.new("BodyGyro", character.UpperTorso)
-            BG.D = 100; BG.P = 30000; BG.MaxTorque = Vector3.new(9e9,9e9,9e9)
-        end
-
-        -- Target: right in front of your right hand
-        local hand = LP.Character.RightHand
-        local root = LP.Character.HumanoidRootPart
-        local holdOffset = Vector3.new(0, -1, -2.2)
-        local targetPos  = hand.Position + hand.CFrame.LookVector * holdOffset.Z
-                          + Vector3.new(0, holdOffset.Y, 0)
-
-        --==========================================================
-        -- ANTI-FLING STEP 4:
-        -- Only move BP toward the target in small increments so
-        -- the physics engine doesn't overshoot and launch anyone.
-        --==========================================================
-        local current = BP.Position
-        local diff    = (targetPos - current)
-        if diff.Magnitude > 50 then
-            -- If we somehow ended up very far, jump once (rare)
-            BP.Position = targetPos
-        else
-            -- Smooth interpolate instead of snapping
-            BP.Position = current + diff * 0.35
-        end
-
-        BG.CFrame = CFrame.new(character.UpperTorso.Position, root.Position)
-
-        -- Keep velocity zeroed every frame
-        for _, p in ipairs(character:GetChildren()) do
-            if p:IsA("BasePart") then
-                p.AssemblyLinearVelocity  = Vector3.zero
-                p.AssemblyAngularVelocity = Vector3.zero
-                p.CanCollide = false
-            end
-        end
-
-        --==========================================================
-        -- ANTI-FLING STEP 5:
-        -- Also zero YOUR velocity in case the victim pushes back.
-        -- (Prevents self-launch.)
-        --==========================================================
-        local myRoot = LP.Character:FindFirstChild("HumanoidRootPart")
-        if myRoot then
-            if myRoot.AssemblyLinearVelocity.Magnitude > 300 then
-                myRoot.AssemblyLinearVelocity  = Vector3.zero
-                myRoot.AssemblyAngularVelocity = Vector3.zero
-            end
-        end
-
-        forceConstraint()
     end)
 end
 
---==========================================================
--- Other helpers
---==========================================================
 function M.CreateTool(name, func)
     local Tool = Instance.new("Tool", LP.Backpack)
     Tool.Name = name
@@ -332,9 +201,17 @@ function M.StopAudio()
     pcall(function() RS:WaitForChild("MainEvent"):FireServer("BoomboxStop") end)
 end
 
+--==========================================================
+-- NEW CHAT FUNCTION (uses TextChatService, legacy fallback)
+--==========================================================
 function M.Chat(msg)
-    if msg == nil or msg == "" or msg:gsub("%s", "") == "" then return false end
+    if msg == nil or msg == "" or msg:gsub("%s", "") == "" then
+        return false
+    end
+
     local success = false
+
+    -- 1) Modern TextChatService
     pcall(function()
         local channels = TextChatService:FindFirstChild("TextChannels")
         if channels then
@@ -345,6 +222,8 @@ function M.Chat(msg)
             end
         end
     end)
+
+    -- 2) Legacy chat fallback (older games)
     if not success then
         pcall(function()
             local legacy = RS:FindFirstChild("DefaultChatSystemChatEvents")
@@ -354,6 +233,7 @@ function M.Chat(msg)
             end
         end)
     end
+
     return success
 end
 
@@ -465,11 +345,20 @@ T["Time Stop"] = function()
                 task.wait(1.5)
             end
             task.wait(1); M.StopAudio(); task.wait(.2); M.Play("6889746326")
+            Cache.Loops.Ora = RunService.Heartbeat:Connect(function()
+                local g = Settings.Grab.GrabbedCharacter
+                if g and g.UpperTorso:FindFirstChild("BodyPosition") then
+                    g.UpperTorso.BodyPosition.Position = M.FwdPos(2.8)
+                else
+                    if Cache.Loops.Ora then Cache.Loops.Ora:Disconnect(); Cache.Loops.Ora = nil end
+                end
+            end)
             for _ = 1,10 do
                 M.AnimPlay(LP.Character, 8254787838, 9); task.wait(.2)
                 M.AnimPlay(LP.Character, 8254794168, 9); task.wait(.2)
             end
             M.StopAnim(LP.Character,"8254794168"); task.wait(.1)
+            if Cache.Loops.Ora then Cache.Loops.Ora:Disconnect(); Cache.Loops.Ora = nil end
             M.Play("6191764144"); M.AnimPlay(LP.Character,"3354696735",1.5); task.wait(1)
             M.Play("7099835652"); task.wait(.3); M.Chat("Zero."); task.wait(3)
             M.Play("3084539117"); M.Chat("The time shall move again!"); task.wait(2)
@@ -492,7 +381,7 @@ T["Time Stop"] = function()
 end
 
 T["Hado 90"] = function()
-     if Settings.Grab["Hado 90"] then
+    if Settings.Grab["Hado 90"] then
         M.CreateTool("Hado 90", function()
             if not Settings.Grab.GrabbedCharacter then return end
             Settings.Grab.Grab = false
@@ -596,7 +485,7 @@ T["Made In Heaven"] = function()
 end
 
 T["Chezburger"] = function()
-    if Settings.Grab["Chezburger"] then
+     if Settings.Grab["Chezburger"] then
         M.CreateTool("Mmm.. chezburger", function()
             if not Settings.Grab.GrabbedCharacter then return end
             M.Play("6647570"); M.Chat("Can i haz chezburger ples?")
@@ -673,6 +562,9 @@ T["Get Over Here"] = function()
     end
 end
 
+--==========================================================
+-- MAKE PLAYER STAND  — Clone goes BEHIND the player
+--==========================================================
 T["Make Player Stand"] = function()
     if Settings.Grab["Make Player Stand"] then
         M.CreateTool("Make Player Stand", function()
@@ -700,6 +592,9 @@ T["Make Player Stand"] = function()
                 end
                 M.NoVelocity(Clone)
                 M.NoVelocity(Settings.Grab.GrabbedCharacter)
+
+                -- BEHIND the player: +Z is backward.
+                -- Offset: -1 X (right side), random Y (up), +3 Z (behind player)
                 local rp = LP.Character.HumanoidRootPart
                 Clone.HumanoidRootPart.CFrame = rp.CFrame * CFrame.new(-1, math.random(3,4.2), 3)
             end)
@@ -885,6 +780,7 @@ Instance.new("UICorner", main).CornerRadius = UDim.new(0,12)
 local ms = Instance.new("UIStroke", main)
 ms.Color = Color3.fromRGB(35,35,35); ms.Thickness = 1.5
 
+-- Title bar
 local tbar = Instance.new("Frame", main)
 tbar.Size = UDim2.new(1, 0, 0, 45)
 tbar.BackgroundColor3 = Color3.fromRGB(18,18,18)
@@ -893,7 +789,7 @@ Instance.new("UICorner", tbar).CornerRadius = UDim.new(0,12)
 
 local title = Instance.new("TextLabel", tbar)
 title.Size = UDim2.new(1, -80, 1, 0); title.Position = UDim2.new(0, 20, 0, 0)
-title.BackgroundTransparency = 1; title.Text = "Legion · Grabs"
+title.BackgroundTransparency = 1; title.Text = "Legion · Grabs (Tool-Based)"
 title.TextColor3 = Color3.fromRGB(255,255,255); title.TextSize = 18
 title.Font = Enum.Font.GothamBold; title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -903,6 +799,7 @@ close.BackgroundColor3 = Color3.fromRGB(255,90,82); close.Text = ""; close.Borde
 Instance.new("UICorner", close).CornerRadius = UDim.new(1,0)
 close.MouseButton1Click:Connect(function() main.Visible = false end)
 
+-- Left list
 local list = Instance.new("ScrollingFrame", main)
 list.Size = UDim2.new(0, 240, 1, -60)
 list.Position = UDim2.new(0, 10, 0, 50)
@@ -918,6 +815,7 @@ lp.PaddingTop = UDim.new(0, 10); lp.PaddingBottom = UDim.new(0, 10)
 local ll = Instance.new("UIListLayout", list)
 ll.Padding = UDim.new(0, 8); ll.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
+-- Right panel
 local info = Instance.new("Frame", main)
 info.Size = UDim2.new(1, -260, 1, -60)
 info.Position = UDim2.new(0, 260, 0, 50)
@@ -933,21 +831,30 @@ iTitle.TextColor3 = Color3.fromRGB(220,220,220); iTitle.TextSize = 12
 iTitle.Font = Enum.Font.GothamMedium; iTitle.TextXAlignment = Enum.TextXAlignment.Left
 
 local iDesc = Instance.new("TextLabel", info)
-iDesc.Size = UDim2.new(1, -20, 0, 320); iDesc.Position = UDim2.new(0, 10, 0, 45)
+iDesc.Size = UDim2.new(1, -20, 0, 200); iDesc.Position = UDim2.new(0, 10, 0, 45)
 iDesc.BackgroundTransparency = 1
-iDesc.Text = "The victim follows you when you move.\n\n"..
-             "Step 1 — Turn ON Grab Function Tool below.\n"..
-             "Step 2 — Crouch + CTRL+G on a torso to grab.\n"..
-             "Step 3 — Walk around and they will follow.\n"..
-             "Step 4 — Turn ON a tool in the list, equip, click.\n\n"..
-             "Tools:\n"..
-             " • Time Stop\n • Hado 90\n • C Moon\n • Made In Heaven\n"..
-             " • Chezburger\n • Orbit\n • Get Over Here\n • Make Player Stand\n"..
-             " • Punch Back\n • Domain Expansion\n • Portal\n • Whirlwind Kick"
+iDesc.Text = "Step 1 — Turn ON Grab Function Tool below.\n"..
+             "Step 2 — Turn ON any grab tool in the list.\n"..
+             "Step 3 — Equip it from your hotbar and click.\n\n"..
+             "Tip: Crouch + CTRL+G on a torso to grab.\n\n"..
+             "Tools added to the Backpack:\n"..
+             " • Time Stop\n"..
+             " • Hado 90\n"..
+             " • C Moon\n"..
+             " • Made In Heaven\n"..
+             " • Chezburger\n"..
+             " • Orbit\n"..
+             " • Get Over Here\n"..
+             " • Make Player Stand\n"..
+             " • Punch Back\n"..
+             " • Domain Expansion\n"..
+             " • Portal\n"..
+             " • Whirlwind Kick\n"
 iDesc.TextColor3 = Color3.fromRGB(150,150,150); iDesc.TextSize = 11
 iDesc.Font = Enum.Font.Gotham; iDesc.TextXAlignment = Enum.TextXAlignment.Left
 iDesc.TextYAlignment = Enum.TextYAlignment.Top; iDesc.TextWrapped = true
 
+-- Core toggles
 local grabBtn = Instance.new("TextButton", info)
 grabBtn.Size = UDim2.new(1, -40, 0, 40); grabBtn.Position = UDim2.new(0, 20, 1, -100)
 grabBtn.BackgroundColor3 = Color3.fromRGB(28,28,28); grabBtn.BorderSizePixel = 0
@@ -966,6 +873,9 @@ fxBtn.Font = Enum.Font.GothamMedium; fxBtn.AutoButtonColor = false
 Instance.new("UICorner", fxBtn).CornerRadius = UDim.new(0,8)
 local fxStroke = Instance.new("UIStroke", fxBtn); fxStroke.Color = Color3.fromRGB(81,194,58)
 
+--==========================================================
+-- TOGGLE BUTTON FACTORY
+--==========================================================
 local function makeToggle(grabName, order)
     local btn = Instance.new("TextButton", list)
     btn.Size = UDim2.new(0, 216, 0, 36)
@@ -1004,7 +914,7 @@ local function makeToggle(grabName, order)
             local ok, err = pcall(T[grabName])
             if not ok then warn("[Legion] "..grabName..": "..tostring(err)) end
         end
-        iTitle.Text = grabName..": "..(state and "ON" or "OFF")
+        iTitle.Text = grabName..": "..(state and "ON — tool added to Backpack" or "OFF — tool removed")
     end)
 
     btn.MouseEnter:Connect(function()
@@ -1022,37 +932,34 @@ local order = {
 }
 for i, name in ipairs(order) do makeToggle(name, i) end
 
+--==========================================================
+-- CORE "Grab Function Tool"
+--==========================================================
 local function hookGrab()
     if Cache.Connections.Grab then
         Cache.Connections.Grab:Disconnect(); Cache.Connections.Grab = nil
     end
-    Cache.Connections.Grab = RunService.Heartbeat:Connect(function()
-        if not LP.Character then return end
-        local be = LP.Character:FindFirstChild("BodyEffects")
-        if not be or not be:FindFirstChild("Grabbed") then return end
+    if not LP.Character
+    or not LP.Character:FindFirstChild("BodyEffects")
+    or not LP.Character.BodyEffects:FindFirstChild("Grabbed") then return end
 
-        local gv = be.Grabbed.Value
-        if not gv then
-            if Cache.Loops.Grab then
-                if Settings.Grab.GrabbedCharacter then
-                    for _, p in ipairs(Settings.Grab.GrabbedCharacter:GetDescendants()) do
-                        if p:IsA("BodyVelocity") or p:IsA("BodyGyro") or p:IsA("BodyPosition") then
-                            p:Destroy()
-                        end
-                    end
+    Cache.Connections.Grab = LP.Character.BodyEffects.Grabbed:GetPropertyChangedSignal("Value"):Connect(function()
+        if Cache.Loops.Grab then
+            if Settings.Grab.GrabbedCharacter then
+                for _, p in ipairs(Settings.Grab.GrabbedCharacter:GetDescendants()) do
+                    if p:IsA("BodyVelocity") or p:IsA("BodyGyro") or p:IsA("BodyPosition") then p:Destroy() end
                 end
-                Settings.Grab.GrabbedCharacter = nil
-                Cache.Loops.Grab:Disconnect(); Cache.Loops.Grab = nil
             end
-            M.StopAnim(LP.Character, "3135389157")
+            Settings.Grab.GrabbedCharacter = nil
+            Cache.Loops.Grab:Disconnect(); Cache.Loops.Grab = nil
+        end
+        if LP.Character.BodyEffects.Grabbed.Value ~= nil then
+            M.Grab(LP.Character.BodyEffects.Grabbed.Value, 3135389157)
+            M.CanCollide(LP.Character.BodyEffects.Grabbed.Value, false)
+            M.NoVelocity(LP.Character.BodyEffects.Grabbed.Value)
             return
         end
-
-        if Settings.Grab.GrabbedCharacter and Settings.Grab.GrabbedCharacter.Parent then return end
-
-        M.Grab(gv, 3135389157)
-        M.CanCollide(gv, false)
-        M.NoVelocity(gv)
+        M.StopAnim(LP.Character, "3135389157")
     end)
 end
 
@@ -1062,19 +969,10 @@ grabBtn.MouseButton1Click:Connect(function()
     grabStroke.Color = Settings.Grab.Grab and Color3.fromRGB(81,194,58) or Color3.fromRGB(45,45,45)
 
     if Settings.Grab.Grab then
-        task.spawn(function()
-            if not LP.Character then return end
-            local waited = 0
-            while not (LP.Character:FindFirstChild("BodyEffects")
-                and LP.Character.BodyEffects:FindFirstChild("Grabbed")) do
-                task.wait(0.1); waited = waited + 0.1
-                if waited > 10 then return end
-            end
-            hookGrab()
-        end)
+        hookGrab()
     else
         if Settings.Grab.GrabbedCharacter then
-            pcall(function() RS.MainEvent:FireServer("Grabbing", false) end)
+            RS.MainEvent:FireServer("Grabbing", false)
             M.StopAnim(LP.Character, "3135389157")
         end
         if Cache.Loops.Grab then
@@ -1093,6 +991,9 @@ fxBtn.MouseButton1Click:Connect(function()
     fxStroke.Color = Settings.Grab.Effects and Color3.fromRGB(81,194,58) or Color3.fromRGB(45,45,45)
 end)
 
+--==========================================================
+-- RESPAWN — re-hook grab and recreate enabled tools
+--==========================================================
 LP.CharacterAdded:Connect(function(char)
     repeat task.wait() until char:FindFirstChild("BodyEffects")
                     and char.BodyEffects:FindFirstChild("Grabbed")
@@ -1107,8 +1008,9 @@ LP.CharacterAdded:Connect(function(char)
     end
 end)
 
+-- Prevent rip-tool throw animation from ever getting stuck
 RunService.Heartbeat:Connect(function()
     if LP.Character then M.StopAnim(LP.Character, "4798175381") end
 end)
 
-print("[Legion] Grab GUI loaded — anti-fling grab active.")
+print("[Legion] Grab GUI loaded — 12 grab tools + core Grab Function Tool.")
