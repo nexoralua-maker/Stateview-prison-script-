@@ -379,39 +379,88 @@ function Holding()
     until LocalPlayer2.Character.BodyEffects.Grabbed.Value == nil or u19 == true
 end
 
+-- ============================================================
+-- Grab (FIXED — robust, with timeouts, works every time)
+-- ============================================================
 function Grab()
-    if LocalPlayer2.Character.BodyEffects.Grabbed.Value then
-        GrabbedValue = LocalPlayer2.Character.BodyEffects.Grabbed.Value
-        local GRABBING_CONSTRAINT = GrabbedValue:WaitForChild("GRABBING_CONSTRAINT")
-        if not GRABBING_CONSTRAINT then return end
-        RopeConstraint = GRABBING_CONSTRAINT:FindFirstChildOfClass("RopeConstraint")
-        RopeConstraint.Length = 1 / 0
-        u19 = false
-        for _, child in pairs(GrabbedValue:GetChildren()) do
-            if child:IsA("BasePart") then child.CanCollide = false end
-        end
+    -- 1) Wait for BodyEffects.Grabbed.Value (max 5s)
+    local grabbed = nil
+    do
+        local t = 0
         repeat
-            task.wait()
-            for _, v in pairs(LocalPlayer2.Character.Humanoid:GetPlayingAnimationTracks()) do
-                if v.Animation.AnimationId:match("rbxassetid://11075367458") then
-                    u19 = true
-                    v:Stop()
+            task.wait(0.05)
+            t = t + 0.05
+            local be = LocalPlayer2.Character and LocalPlayer2.Character:FindFirstChild("BodyEffects")
+            if be then
+                local g = be:FindFirstChild("Grabbed")
+                if g and g.Value then grabbed = g.Value end
+            end
+        until grabbed or t >= 5
+    end
+    if not grabbed or not grabbed.Parent then return end
+
+    GrabbedValue = grabbed
+
+    -- 2) Wait for GRABBING_CONSTRAINT (max 5s)
+    local GRABBING_CONSTRAINT
+    do
+        local t = 0
+        repeat
+            task.wait(0.05)
+            t = t + 0.05
+            if not GrabbedValue.Parent then return end
+            GRABBING_CONSTRAINT = GrabbedValue:FindFirstChild("GRABBING_CONSTRAINT")
+        until GRABBING_CONSTRAINT or t >= 5
+    end
+    if not GRABBING_CONSTRAINT then return end
+
+    RopeConstraint = GRABBING_CONSTRAINT:FindFirstChildOfClass("RopeConstraint")
+    if not RopeConstraint then return end
+    RopeConstraint.Length = 1 / 0
+
+    u19 = false
+    for _, child in pairs(GrabbedValue:GetChildren()) do
+        if child:IsA("BasePart") then child.CanCollide = false end
+    end
+
+    -- 3) Wait for grab animation 11075367458 (max 3s)
+    do
+        local t = 0
+        repeat
+            task.wait(0.05)
+            t = t + 0.05
+            local hum = LocalPlayer2.Character and LocalPlayer2.Character:FindFirstChild("Humanoid")
+            if hum then
+                for _, v in pairs(hum:GetPlayingAnimationTracks()) do
+                    if v.Animation.AnimationId:match("rbxassetid://11075367458") then
+                        u19 = true
+                        v:Stop()
+                    end
                 end
             end
-        until u19 == true
-        for _, descendant in pairs(GrabbedValue:GetDescendants()) do
-            if descendant:IsA("BasePart") then
-                descendant.Velocity = Vector3.zero
-                descendant.AssemblyAngularVelocity = Vector3.zero
-                descendant.AssemblyLinearVelocity = Vector3.zero
+            local be = LocalPlayer2.Character and LocalPlayer2.Character:FindFirstChild("BodyEffects")
+            if be and be:FindFirstChild("Grabbed") and not be.Grabbed.Value then
+                return
             end
-        end
-        u19 = false
-        AnimPlayvv2(3135389157, 0, 0.1, 0.3)
-        Holding()
-        AnimStopv2(3135389157)
-        Destroy("UpperTorso")
+        until u19 == true or t >= 3
     end
+
+    if not GrabbedValue.Parent then return end
+
+    -- 4) Zero velocities + play hold animation + Holding loop
+    for _, descendant in pairs(GrabbedValue:GetDescendants()) do
+        if descendant:IsA("BasePart") then
+            descendant.Velocity = Vector3.zero
+            descendant.AssemblyAngularVelocity = Vector3.zero
+            descendant.AssemblyLinearVelocity = Vector3.zero
+        end
+    end
+
+    u19 = false
+    AnimPlayvv2(3135389157, 0, 0.1, 0.3)
+    Holding()
+    AnimStopv2(3135389157)
+    Destroy("UpperTorso")
 end
 
 function ControlAlign222(p46, p47, p48)
@@ -431,7 +480,7 @@ function playLightingTween(p42, p43, p44, p45)
 end
 
 -- ============================================================
--- ToolSSs - Creates all 23 tools
+-- ToolSSs - Creates all tools
 -- ============================================================
 
 function ToolSSs()
@@ -446,8 +495,7 @@ function ToolSSs()
     Tool.Parent = LocalPlayer2.Backpack
     Tool.Activated:Connect(function()
         ReplicatedStorage.MainEvent:FireServer("Grabbing", true)
-        wait(0.3)
-        Grab()
+        task.spawn(Grab)
     end)
 
     -- ==================== Tool 2: Throw ====================
@@ -1580,9 +1628,7 @@ function ToolSSs()
             Humanoid.WalkSpeed = 0
             stopAlign = false
 
-            -- =========================================================
             -- STEP 1: Align 3 studs + play animation 3354696735
-            -- =========================================================
             spawn(function()
                 repeat
                     task.wait()
@@ -1592,9 +1638,7 @@ function ToolSSs()
             AnimPlay(3354696735, 1)
             task.wait(2)
 
-            -- =========================================================
             -- STEP 2: Align 10 studs + play animation 110517638794017
-            -- =========================================================
             stopAlign = true
             task.wait(0.1)
             stopAlign = false
@@ -1607,23 +1651,18 @@ function ToolSSs()
             AnimPlay(110517638794017, 1)
             task.wait(2)
 
-            -- =========================================================
-            -- STEP 3: Play animation 73436636651186 at 0.5 speed
-            --         Wait for it to FULLY FINISH, then use Hell kill
-            -- =========================================================
+            -- STEP 3: Play animation 73436636651186 at 0.5 speed, then Hell kill
             AnimPlay(73436636651186, 0.5)
 
-            -- Wait until the step-3 animation is no longer playing
             repeat task.wait() until playing and not playing.IsPlaying
 
-            -- If grab was released mid-animation, don't kill
             if not LocalPlayer2.Character.BodyEffects.Grabbed.Value then
                 stopAlign = true
                 Humanoid.WalkSpeed = 16
                 return
             end
 
-            -- ============ HELL TOOL KILL METHOD ============
+            -- HELL TOOL KILL METHOD
             local strKill = tostring(LocalPlayer2.Character.BodyEffects.Grabbed.Value)
             if Players:FindFirstChild(strKill) then
                 local CharacterK = Players[strKill].Character
@@ -1648,147 +1687,139 @@ function ToolSSs()
         end
     end)
 
--- ==================== Tool 25: Shooter ====================
-if LocalPlayer2.Backpack:FindFirstChild("Shooter") then
-    LocalPlayer2.Backpack:FindFirstChild("Shooter"):Destroy()
-end
-task.wait(0.1)
-local ToolShooter = Instance.new("Tool")
-ToolShooter.RequiresHandle = false
-ToolShooter.Name = "Shooter"
-ToolShooter.Parent = LocalPlayer2.Backpack
-ToolShooter.Activated:Connect(function()
-    if LocalPlayer2.Character.BodyEffects.Grabbed.Value then
-        for _, v in pairs(LocalPlayer.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
-            if v.Animation.AnimationId == "rbxassetid://3135389157" then v:Stop() end
-        end
-
-        local Character = LocalPlayer2.Character
-        local Humanoid = Character:WaitForChild("Humanoid")
-        local BodyEffects = Character:FindFirstChild("BodyEffects")
-        if not BodyEffects or not BodyEffects:FindFirstChild("Grabbed") then return end
-        local str = tostring(BodyEffects.Grabbed.Value)
-        local str4 = Players:FindFirstChild(str)
-        if not str4 or not str4.Character then return end
-
-        Humanoid.WalkSpeed = 0
-        stopAlign = false
-
-        -- =========================================================
-        -- STEP 1: Bored — align 3 studs + animation 10713992055
-        -- =========================================================
-        spawn(function()
-            repeat
-                task.wait()
-                Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -3), CFrame.Angles(0, math.pi, 0))
-            until stopAlign
-        end)
-        AnimPlay(10713992055, 1)
-        task.wait(2)
-
-        -- =========================================================
-        -- STEP 2: Kick — align 15 studs + animation 2788306916
-        -- =========================================================
-        stopAlign = true
-        task.wait(0.1)
-        stopAlign = false
-        spawn(function()
-            repeat
-                task.wait()
-                Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -15), CFrame.Angles(0, math.pi, 0))
-            until stopAlign
-        end)
-        AnimPlay(2788306916, 1)
-        task.wait(2)
-
-        -- =========================================================
-        -- STEP 3: Pulls back — align 3 studs + animation 16768625968
-        -- =========================================================
-        stopAlign = true
-        task.wait(0.1)
-        stopAlign = false
-        spawn(function()
-            repeat
-                task.wait()
-                Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -3), CFrame.Angles(0, math.pi, 0))
-            until stopAlign
-        end)
-        AnimPlay(16768625968, 1)
-        task.wait(2)
-
-        -- =========================================================
-        -- STEP 4: Punch — align 15 studs + animation 3354696735
-        -- =========================================================
-        stopAlign = true
-        task.wait(0.1)
-        stopAlign = false
-        spawn(function()
-            repeat
-                task.wait()
-                Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -15), CFrame.Angles(0, math.pi, 0))
-            until stopAlign
-        end)
-        AnimPlay(3354696735, 1)
-        task.wait(2)
-
-        -- =========================================================
-        -- STEP 5: Shoot — equip [Revolver], play 72650574575349,
-        --         wait for it to fully finish, then unequip.
-        -- =========================================================
-        stopAlign = true
-        task.wait(0.1)
-
-        -- Unequip Shooter, equip Revolver
-        local revolver = LocalPlayer2.Backpack:FindFirstChild("[Revolver]")
-            or LocalPlayer2.Character:FindFirstChild("[Revolver]")
-        if revolver then
-            ToolShooter.Parent = LocalPlayer2.Backpack
-            revolver.Parent = LocalPlayer2.Character
-            task.wait(0.2)
-        end
-
-        AnimPlay(72650574575349, 1)
-
-        -- Wait until shoot animation FULLY finishes
-        repeat task.wait() until playing and not playing.IsPlaying
-
-        -- Unequip Revolver
-        if revolver then
-            revolver.Parent = LocalPlayer2.Backpack
-        end
-
-        -- If grab was released mid-animation, abort kill
-        if not LocalPlayer2.Character.BodyEffects.Grabbed.Value then
-            stopAlign = true
-            Humanoid.WalkSpeed = 16
-            return
-        end
-
-        -- ============ HELL TOOL KILL METHOD ============
-        local strKill = tostring(LocalPlayer2.Character.BodyEffects.Grabbed.Value)
-        if Players:FindFirstChild(strKill) then
-            local CharacterK = Players[strKill].Character
-            if CharacterK and CharacterK:FindFirstChild("UpperTorso") then
-                CharacterK.UpperTorso.CFrame = CFrame.new(0, -1200000, 0)
-            end
-        end
-        local str7 = Players:FindFirstChild(strKill)
-        if str7 and str7.Character then
-            local CharacterK = str7.Character
-            for _, v in ipairs({"RightUpperArm", "LeftUpperArm", "RightUpperLeg", "LeftUpperLeg"}) do
-                local limb = CharacterK:FindFirstChild(v)
-                if limb then limb.CFrame = CFrame.new(0, -1200000, 0) end
-            end
-        end
-        task.wait(0.5)
-        ReplicatedStorage:WaitForChild("MainEvent"):FireServer("Grabbing")
-
-        stopAlign = true
-        Destroy("UpperTorso")
-        Humanoid.WalkSpeed = 16
+    -- ==================== Tool 25: Shooter ====================
+    if LocalPlayer2.Backpack:FindFirstChild("Shooter") then
+        LocalPlayer2.Backpack:FindFirstChild("Shooter"):Destroy()
     end
-end)
+    if LocalPlayer2.Character and LocalPlayer2.Character:FindFirstChild("Shooter") then
+        LocalPlayer2.Character:FindFirstChild("Shooter"):Destroy()
+    end
+    task.wait(0.1)
+    local ToolShooter = Instance.new("Tool")
+    ToolShooter.RequiresHandle = false
+    ToolShooter.Name = "Shooter"
+    ToolShooter.Parent = LocalPlayer2.Backpack
+    ToolShooter.Activated:Connect(function()
+        if LocalPlayer2.Character.BodyEffects.Grabbed.Value then
+            for _, v in pairs(LocalPlayer.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
+                if v.Animation.AnimationId == "rbxassetid://3135389157" then v:Stop() end
+            end
 
+            local Character = LocalPlayer2.Character
+            local Humanoid = Character:WaitForChild("Humanoid")
+            local BodyEffects = Character:FindFirstChild("BodyEffects")
+            if not BodyEffects or not BodyEffects:FindFirstChild("Grabbed") then return end
+            local str = tostring(BodyEffects.Grabbed.Value)
+            local str4 = Players:FindFirstChild(str)
+            if not str4 or not str4.Character then return end
+
+            Humanoid.WalkSpeed = 0
+            stopAlign = false
+
+            -- STEP 1: Bored — align 3 stud + anim 10713992055
+            spawn(function()
+                repeat
+                    task.wait()
+                    Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -3), CFrame.Angles(0, math.pi, 0))
+                until stopAlign
+            end)
+            AnimPlay(10713992055, 1)
+            task.wait(2)
+
+            -- STEP 2: Kick — align 15 stud + anim 2788306916
+            stopAlign = true
+            task.wait(0.1)
+            stopAlign = false
+            spawn(function()
+                repeat
+                    task.wait()
+                    Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -15), CFrame.Angles(0, math.pi, 0))
+                until stopAlign
+            end)
+            AnimPlay(2788306916, 1)
+            task.wait(2)
+
+            -- STEP 3: Pulls back — align 3 stud + anim 16768625968
+            stopAlign = true
+            task.wait(0.1)
+            stopAlign = false
+            spawn(function()
+                repeat
+                    task.wait()
+                    Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -3), CFrame.Angles(0, math.pi, 0))
+                until stopAlign
+            end)
+            AnimPlay(16768625968, 1)
+            task.wait(2)
+
+            -- STEP 4: Punch — align 15 stud + anim 3354696735
+            stopAlign = true
+            task.wait(0.1)
+            stopAlign = false
+            spawn(function()
+                repeat
+                    task.wait()
+                    Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -15), CFrame.Angles(0, math.pi, 0))
+                until stopAlign
+            end)
+            AnimPlay(3354696735, 1)
+            task.wait(2)
+
+            -- STEP 5: Shoot — equip [Revolver], play 72650574575349,
+            --         wait for finish, unequip, then Goku kill method
+            stopAlign = true
+            task.wait(0.1)
+
+            -- Unequip Shooter, equip [Revolver]
+            local revolver = LocalPlayer2.Backpack:FindFirstChild("[Revolver]")
+                or LocalPlayer2.Character:FindFirstChild("[Revolver]")
+            if revolver then
+                ToolShooter.Parent = LocalPlayer2.Backpack
+                revolver.Parent = LocalPlayer2.Character
+                task.wait(0.2)
+            end
+
+            AnimPlay(72650574575349, 1)
+
+            -- Wait until shoot animation FULLY finishes
+            repeat task.wait() until playing and not playing.IsPlaying
+
+            -- Unequip [Revolver]
+            if revolver then
+                revolver.Parent = LocalPlayer2.Backpack
+            end
+
+            -- If grab was released mid-animation, abort kill
+            if not LocalPlayer2.Character.BodyEffects.Grabbed.Value then
+                stopAlign = true
+                Humanoid.WalkSpeed = 16
+                return
+            end
+
+            -- ============ GOKU KILL METHOD ============
+            local strKill = tostring(LocalPlayer2.Character.BodyEffects.Grabbed.Value)
+            if Players:FindFirstChild(strKill) then
+                local CharacterK = Players[strKill].Character
+                if CharacterK and CharacterK:FindFirstChild("UpperTorso") then
+                    CharacterK.UpperTorso.CFrame = CFrame.new(0, -1200000, 0)
+                end
+            end
+            local str7 = Players:FindFirstChild(strKill)
+            if str7 and str7.Character then
+                local CharacterK = str7.Character
+                for _, v in ipairs({"RightUpperArm", "LeftUpperArm", "RightUpperLeg", "LeftUpperLeg"}) do
+                    local limb = CharacterK:FindFirstChild(v)
+                    if limb then limb.CFrame = CFrame.new(0, -1200000, 0) end
+                end
+            end
+            task.wait(0.5)
+            ReplicatedStorage:WaitForChild("MainEvent"):FireServer("Grabbing")
+
+            stopAlign = true
+            Destroy("UpperTorso")
+            Humanoid.WalkSpeed = 16
+        end
+    end)
 end
 
 -- ============================================================
