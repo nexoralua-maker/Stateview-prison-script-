@@ -1,0 +1,1106 @@
+-- ============================================================
+-- CrispyHub TARGET TAB — Standalone Draggable GUI
+-- ============================================================
+
+local Players            = game:GetService("Players")
+local TweenService       = game:GetService("TweenService")
+local UserInputService   = game:GetService("UserInputService")
+local RunService         = game:GetService("RunService")
+local workspace          = game:GetService("Workspace")
+
+local player    = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local camera    = workspace.CurrentCamera
+
+-- ============================================================
+-- ARMOR MODULE
+-- ============================================================
+local ArmorModule = {}
+local ARMOR_ATTRIBUTES      = {"Armor", "ArmorPercent", "ArmorPercentage", "ArmorValue", "Shield"}
+local ARMOR_MAX_ATTRIBUTES  = {"MaxArmor", "ArmorMax", "MaxShield"}
+local ARMOR_VALUES          = {"Armor", "ArmorValue", "Shield"}
+local DEFAULT_MAX_ARMOR     = 100
+
+local function findAttribute(container, names)
+    if not container then return nil end
+    for _, n in ipairs(names) do
+        local v = container:GetAttribute(n)
+        if v ~= nil then return v, n end
+    end
+    return nil
+end
+
+local function findValueObject(container, names)
+    if not container then return nil end
+    for _, n in ipairs(names) do
+        local v = container:FindFirstChild(n)
+        if v and (v:IsA("NumberValue") or v:IsA("IntValue")) then
+            return v.Value, n, v
+        end
+    end
+    return nil
+end
+
+function ArmorModule.get(targetPlayer)
+    if not targetPlayer or not targetPlayer.Parent then return nil end
+    local character = targetPlayer.Character
+    if not character then return nil end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+
+    local armor = findAttribute(humanoid, ARMOR_ATTRIBUTES)
+    if armor ~= nil then
+        local maxArmor = findAttribute(humanoid, ARMOR_MAX_ATTRIBUTES) or DEFAULT_MAX_ARMOR
+        return { percent = math.clamp((armor / maxArmor) * 100, 0, 100), current = armor, max = maxArmor }
+    end
+
+    armor = findAttribute(character, ARMOR_ATTRIBUTES)
+    if armor ~= nil then
+        local maxArmor = findAttribute(character, ARMOR_MAX_ATTRIBUTES) or DEFAULT_MAX_ARMOR
+        return { percent = math.clamp((armor / maxArmor) * 100, 0, 100), current = armor, max = maxArmor }
+    end
+
+    for _, container in ipairs({humanoid, character}) do
+        local value = findValueObject(container, ARMOR_VALUES)
+        if value ~= nil then
+            local maxValue = findValueObject(container, ARMOR_MAX_ATTRIBUTES)
+            local max = maxValue or DEFAULT_MAX_ARMOR
+            return { percent = math.clamp((value / max) * 100, 0, 100), current = value, max = max }
+        end
+    end
+
+    return { percent = 0, current = 0, max = DEFAULT_MAX_ARMOR }
+end
+
+function ArmorModule.getColor(percent)
+    if percent >= 75 then return Color3.fromRGB(90, 170, 255)
+    elseif percent >= 50 then return Color3.fromRGB(60, 130, 230)
+    elseif percent >= 25 then return Color3.fromRGB(45, 95, 200)
+    else return Color3.fromRGB(30, 60, 160) end
+end
+
+-- ============================================================
+-- HEALTH MODULE
+-- ============================================================
+local HealthModule = {}
+function HealthModule.get(targetPlayer)
+    if not targetPlayer or not targetPlayer.Parent then return nil end
+    local character = targetPlayer.Character
+    if not character then return nil end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+    local max = humanoid.MaxHealth
+    if max <= 0 then return { percent = 0, current = 0, max = 100 } end
+    return {
+        percent = math.clamp((humanoid.Health / max) * 100, 0, 100),
+        current = humanoid.Health,
+        max = max
+    }
+end
+
+function HealthModule.getColor(percent)
+    if percent >= 75 then return Color3.fromRGB(60, 220, 100)
+    elseif percent >= 50 then return Color3.fromRGB(255, 210, 70)
+    elseif percent >= 25 then return Color3.fromRGB(255, 140, 50)
+    else return Color3.fromRGB(230, 70, 70) end
+end
+
+-- ============================================================
+-- BUILD DRAGGABLE WINDOW
+-- ============================================================
+if playerGui:FindFirstChild("CrispyTargetHub") then
+    playerGui.CrispyTargetHub:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CrispyTargetHub"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 400, 0, 480)
+main.Position = UDim2.new(0.5, -200, 0.5, -240)
+main.BackgroundColor3 = Color3.fromRGB(255, 210, 60)
+main.BorderSizePixel = 0
+main.Active = true
+main.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 12)
+mainCorner.Parent = main
+
+local gradient = Instance.new("UIGradient")
+gradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 230, 80)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 190, 40)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 150, 20))
+})
+gradient.Rotation = 90
+gradient.Parent = main
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 40)
+title.BackgroundTransparency = 1
+title.Text = "Target Tab"
+title.TextColor3 = Color3.fromRGB(30, 20, 0)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 22
+title.Parent = main
+
+-- Close button
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -36, 0, 5)
+closeBtn.BackgroundColor3 = Color3.fromRGB(255, 210, 60)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(40, 25, 5)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 15
+closeBtn.AutoButtonColor = false
+closeBtn.Parent = main
+
+local cc = Instance.new("UICorner")
+cc.CornerRadius = UDim.new(0, 8)
+cc.Parent = closeBtn
+
+-- ============================================================
+-- DRAGGING
+-- ============================================================
+local dragging = false
+local dragStart, startPos, dragInput
+
+title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = main.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+
+title.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- ============================================================
+-- TARGET TAB CONTENT
+-- ============================================================
+local targetFrame = Instance.new("Frame")
+targetFrame.Name = "Target"
+targetFrame.Size = UDim2.new(1, -10, 1, -50)
+targetFrame.Position = UDim2.new(0, 5, 0, 45)
+targetFrame.BackgroundTransparency = 1
+targetFrame.Parent = main
+
+local cleanupTarget = (function(targetFrame)
+
+local selectedTarget = player
+local spectating = false
+local spectateConn = nil
+local autoKillEnabled = false
+local autoKillTask = nil
+local pauseTask = nil
+local pauseTp = false
+
+local lastShot = 0
+local AUTO_SHOOT_DELAY = 0.1
+
+local killAnimTrack = nil
+local killAnimId = "rbxassetid://124982597491660"
+
+local targetHistory = {}
+local HISTORY_SIZE = 5
+
+-- ============================================================
+-- HELPERS
+-- ============================================================
+local function getThumb(p)
+    local ok, t = pcall(function()
+        return Players:GetUserThumbnailAsync(p.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+    end)
+    return ok and t or ""
+end
+
+local function getPlayersList()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player then
+            table.insert(list, p)
+        end
+    end
+    table.sort(list, function(a, b)
+        return (a.DisplayName or a.Name):lower() < (b.DisplayName or b.Name):lower()
+    end)
+    return list
+end
+
+local function getRealTargetPosition(tgtRoot)
+    local now = tick()
+    local currentPos = tgtRoot.Position
+    table.insert(targetHistory, {pos = currentPos, time = now})
+    if #targetHistory > HISTORY_SIZE then
+        table.remove(targetHistory, 1)
+    end
+    if #targetHistory >= 2 then
+        local prev = targetHistory[#targetHistory - 1]
+        local jump = (currentPos - prev.pos).Magnitude
+        local dt = now - prev.time
+        if jump > 30 and dt < 0.2 then
+            return prev.pos
+        end
+    end
+    local velocity = tgtRoot.AssemblyLinearVelocity
+    if velocity.Magnitude > 1 then
+        local predicted = currentPos + velocity * 0.05
+        return currentPos:Lerp(predicted, 0.5)
+    end
+    return currentPos
+end
+
+-- ============================================================
+-- PIZZA / DONUT AUTO-CLICKER
+-- ============================================================
+local PD_TOOL_NAMES = { "[Pizza]", "[Donut]" }
+local PD_CLICK_DELAY = 0.1
+local PD_MAX_HEALTH  = 100
+local pd_running = false
+
+local function pd_getHumanoid()
+    local char = player.Character
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function pd_findTool()
+    local char = player.Character
+    local backpack = player:FindFirstChild("Backpack")
+    for _, name in ipairs(PD_TOOL_NAMES) do
+        if char and char:FindFirstChild(name) then return char:FindFirstChild(name) end
+        if backpack and backpack:FindFirstChild(name) then return backpack:FindFirstChild(name) end
+    end
+    return nil
+end
+
+local function pd_getEquippedTool()
+    local char = player.Character
+    if not char then return nil end
+    for _, name in ipairs(PD_TOOL_NAMES) do
+        local t = char:FindFirstChild(name)
+        if t then return t end
+    end
+    return nil
+end
+
+local function pd_startClicking()
+    if pd_running then return end
+    pd_running = true
+    task.spawn(function()
+        while pd_running and autoKillEnabled do
+            local hum = pd_getHumanoid()
+            if hum and hum.Health >= PD_MAX_HEALTH then
+                pd_running = false break
+            end
+            local tool = pd_getEquippedTool()
+            if not tool then
+                local found = pd_findTool()
+                if found and hum then hum:EquipTool(found) else pd_running = false break end
+            else
+                pcall(function() tool:Activate() end)
+            end
+            task.wait(PD_CLICK_DELAY)
+        end
+        pd_running = false
+    end)
+end
+
+local function pd_stopClicking() pd_running = false end
+
+local function pd_unequipTools()
+    local hum = pd_getHumanoid()
+    if not hum then return end
+    local char = player.Character
+    if not char then return end
+    for _, name in ipairs(PD_TOOL_NAMES) do
+        local tool = char:FindFirstChild(name)
+        if tool then
+            pcall(function() hum:UnequipTools() end)
+            break
+        end
+    end
+end
+
+local function pd_equipAndClick()
+    local tool = pd_findTool()
+    if not tool then pd_stopClicking() return end
+    local hum = pd_getHumanoid()
+    if hum and tool.Parent ~= player.Character then hum:EquipTool(tool) end
+    pd_startClicking()
+end
+
+local pd_healthConn = nil
+local function pd_watchHealth()
+    if pd_healthConn then pd_healthConn:Disconnect() pd_healthConn = nil end
+    local hum = pd_getHumanoid()
+    if not hum then return end
+    pd_healthConn = hum.HealthChanged:Connect(function(newHealth)
+        if not autoKillEnabled then return end
+        if newHealth >= PD_MAX_HEALTH then
+            pd_stopClicking() pd_unequipTools()
+        elseif newHealth < PD_MAX_HEALTH then
+            pd_equipAndClick()
+        end
+    end)
+end
+
+local pd_safetyTask = nil
+local function pd_start()
+    pd_watchHealth()
+    local hum = pd_getHumanoid()
+    if hum and hum.Health < PD_MAX_HEALTH then pd_equipAndClick() end
+    if pd_safetyTask then task.cancel(pd_safetyTask) pd_safetyTask = nil end
+    pd_safetyTask = task.spawn(function()
+        while autoKillEnabled do
+            local hum = pd_getHumanoid()
+            if hum then
+                if hum.Health >= PD_MAX_HEALTH then
+                    pd_stopClicking()
+                    if pd_getEquippedTool() then pd_unequipTools() end
+                else
+                    if pd_findTool() then pd_equipAndClick() else pd_stopClicking() end
+                end
+            end
+            task.wait(0.25)
+        end
+    end)
+end
+
+local function pd_stop()
+    pd_stopClicking()
+    pd_unequipTools()
+    if pd_healthConn then pd_healthConn:Disconnect() pd_healthConn = nil end
+    if pd_safetyTask then task.cancel(pd_safetyTask) pd_safetyTask = nil end
+end
+
+player.CharacterAdded:Connect(function()
+    if autoKillEnabled then
+        task.wait(0.5)
+        pd_watchHealth()
+    end
+end)
+
+-- ============================================================
+-- FLING
+-- ============================================================
+local flingActive = false
+local flingRunning = false
+local savedFlingFallenHeight = workspace.FallenPartsDestroyHeight
+
+local function doSkidFling(TargetPlayer)
+    local character = player.Character
+    local humanoid  = character and character:FindFirstChildOfClass("Humanoid")
+    local rootPart  = humanoid and humanoid.RootPart
+    local tChar     = TargetPlayer.Character
+    if not tChar then return end
+
+    local tHumanoid = tChar:FindFirstChildOfClass("Humanoid")
+    local tRootPart = tHumanoid and tHumanoid.RootPart
+    local tHead     = tChar:FindFirstChild("Head")
+    local accessory = tChar:FindFirstChildOfClass("Accessory")
+    local handle    = accessory and accessory:FindFirstChild("Handle")
+
+    if not (character and humanoid and rootPart) then return end
+
+    local oldPos
+    if rootPart.Velocity.Magnitude < 50 then oldPos = rootPart.CFrame end
+    if tHumanoid and tHumanoid.Sit then return end
+
+    if tHead then camera.CameraSubject = tHead
+    elseif handle then camera.CameraSubject = handle
+    elseif tHumanoid and tRootPart then camera.CameraSubject = tHumanoid end
+
+    if not tChar:FindFirstChildWhichIsA("BasePart") then return end
+
+    local function FPos(basePart, pos, ang)
+        rootPart.CFrame = CFrame.new(basePart.Position) * pos * ang
+        character:SetPrimaryPartCFrame(CFrame.new(basePart.Position) * pos * ang)
+        rootPart.Velocity    = Vector3.new(9e7, 9e7 * 10, 9e7)
+        rootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+    end
+
+    local function SFBasePart(basePart)
+        local timeToWait = 2
+        local startTime = tick()
+        local angle = 0
+        repeat
+            if rootPart and tHumanoid and flingActive then
+                if basePart.Velocity.Magnitude < 50 then
+                    angle = angle + 100
+                    FPos(basePart, CFrame.new(0, 1.5, 0) + tHumanoid.MoveDirection * basePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(angle), 0, 0))
+                    task.wait()
+                    FPos(basePart, CFrame.new(0, -1.5, 0) + tHumanoid.MoveDirection * basePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(angle), 0, 0))
+                    task.wait()
+                    FPos(basePart, CFrame.new(0, 1.5, 0) + tHumanoid.MoveDirection, CFrame.Angles(math.rad(angle), 0, 0))
+                    task.wait()
+                    FPos(basePart, CFrame.new(0, -1.5, 0) + tHumanoid.MoveDirection, CFrame.Angles(math.rad(angle), 0, 0))
+                    task.wait()
+                else
+                    FPos(basePart, CFrame.new(0, 1.5, tHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                    task.wait()
+                    FPos(basePart, CFrame.new(0, -1.5, -tHumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+                    task.wait()
+                    FPos(basePart, CFrame.new(0, 1.5, tHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                    task.wait()
+                    FPos(basePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                    task.wait()
+                end
+            end
+        until startTime + timeToWait < tick() or not flingActive
+
+        pcall(function() workspace.FallenPartsDestroyHeight = 0/0 end)
+        local bv = Instance.new("BodyVelocity")
+        bv.Parent   = rootPart
+        bv.Velocity = Vector3.new(0, 0, 0)
+        bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+
+        if flingActive then
+            if tRootPart then SFBasePart(tRootPart)
+            elseif tHead then SFBasePart(tHead)
+            elseif handle then SFBasePart(handle) end
+        end
+
+        bv:Destroy()
+        humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+        camera.CameraSubject = humanoid
+
+        if oldPos then
+            local startT = tick()
+            repeat
+                rootPart.CFrame = oldPos * CFrame.new(0, .5, 0)
+                character:SetPrimaryPartCFrame(oldPos * CFrame.new(0, .5, 0))
+                humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+                for _, part in pairs(character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        part.Velocity, part.RotVelocity = Vector3.new(), Vector3.new()
+                    end
+                end
+                task.wait()
+            until (rootPart.Position - oldPos.p).Magnitude < 25 or tick() - startT > 1
+            pcall(function() workspace.FallenPartsDestroyHeight = savedFlingFallenHeight end)
+        end
+    end
+
+    SFBasePart(tRootPart or tHead or handle)
+end
+
+local function startFling()
+    if flingRunning then return end
+    flingActive = true
+    flingRunning = true
+    task.spawn(function()
+        while flingActive do
+            local t = selectedTarget
+            if t and t ~= player and t.Character
+                and t.Character:FindFirstChildOfClass("Humanoid") then
+                pcall(doSkidFling, t)
+            end
+            task.wait(0.1)
+        end
+        flingRunning = false
+    end)
+end
+
+local function stopFling() flingActive = false end
+
+-- ============================================================
+-- ANIMATION HELPERS
+-- ============================================================
+local function playKillAnim()
+    local char = player.Character
+    if not char then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    if killAnimTrack then
+        pcall(function() killAnimTrack:Stop() end)
+        killAnimTrack = nil
+    end
+    local ok, anim = pcall(function()
+        local a = Instance.new("Animation")
+        a.AnimationId = killAnimId
+        return humanoid:LoadAnimation(a)
+    end)
+    if not ok or not anim then return end
+    killAnimTrack = anim
+    killAnimTrack.Looped = true
+    pcall(function() killAnimTrack:Play() end)
+end
+
+local function stopKillAnim()
+    if killAnimTrack then
+        pcall(function() killAnimTrack:Stop() end)
+        killAnimTrack = nil
+    end
+end
+
+player.CharacterAdded:Connect(function()
+    if autoKillEnabled then
+        task.wait(0.5)
+        playKillAnim()
+    end
+end)
+
+-- ============================================================
+-- UI
+-- ============================================================
+local mainScroll = Instance.new("ScrollingFrame")
+mainScroll.Name = "TargetScroll"
+mainScroll.Size = UDim2.new(1, 0, 1, 0)
+mainScroll.Position = UDim2.new(0, 0, 0, 0)
+mainScroll.BackgroundTransparency = 1
+mainScroll.BorderSizePixel = 0
+mainScroll.ScrollBarThickness = 5
+mainScroll.ScrollBarImageColor3 = Color3.fromRGB(255, 200, 60)
+mainScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+mainScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+mainScroll.Parent = targetFrame
+
+local holder = Instance.new("Frame")
+holder.Name = "Holder"
+holder.Size = UDim2.new(1, 0, 0, 340)
+holder.BackgroundTransparency = 1
+holder.Parent = mainScroll
+
+local holderLayout = Instance.new("UIListLayout")
+holderLayout.Padding = UDim.new(0, 6)
+holderLayout.SortOrder = Enum.SortOrder.LayoutOrder
+holderLayout.Parent = holder
+
+local topBox = Instance.new("Frame")
+topBox.Size = UDim2.new(1, 0, 0, 92)
+topBox.BackgroundTransparency = 1
+topBox.LayoutOrder = 1
+topBox.Parent = holder
+
+local targetAvatar = Instance.new("ImageLabel")
+targetAvatar.Size = UDim2.new(0, 70, 0, 70)
+targetAvatar.Position = UDim2.new(0.5, -35, 0, 0)
+targetAvatar.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
+targetAvatar.BackgroundTransparency = 0.35
+targetAvatar.BorderSizePixel = 0
+targetAvatar.Image = getThumb(player)
+targetAvatar.Parent = topBox
+
+local avCorner = Instance.new("UICorner")
+avCorner.CornerRadius = UDim.new(1, 0)
+avCorner.Parent = targetAvatar
+
+local targetName = Instance.new("TextLabel")
+targetName.Size = UDim2.new(1, 0, 0, 18)
+targetName.Position = UDim2.new(0, 0, 0, 74)
+targetName.BackgroundTransparency = 1
+targetName.Text = "@" .. player.Name
+targetName.TextColor3 = Color3.fromRGB(40, 25, 5)
+targetName.Font = Enum.Font.GothamBold
+targetName.TextSize = 13
+targetName.Parent = topBox
+
+local listFrame = Instance.new("Frame")
+listFrame.Size = UDim2.new(0.9, 0, 0, 110)
+listFrame.Position = UDim2.new(0.05, 0, 0, 0)
+listFrame.BackgroundColor3 = Color3.fromRGB(50, 38, 18)
+listFrame.BackgroundTransparency = 0.4
+listFrame.BorderSizePixel = 0
+listFrame.ClipsDescendants = true
+listFrame.LayoutOrder = 2
+listFrame.Parent = holder
+
+local lfCorner = Instance.new("UICorner")
+lfCorner.CornerRadius = UDim.new(0, 6)
+lfCorner.Parent = listFrame
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size = UDim2.new(1, -6, 1, -6)
+scroll.Position = UDim2.new(0, 3, 0, 3)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 4
+scroll.ScrollBarImageColor3 = Color3.fromRGB(255, 200, 60)
+scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.Parent = listFrame
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 3)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Parent = scroll
+
+local function makeRow(p, order)
+    local row = Instance.new("TextButton")
+    row.Size = UDim2.new(1, 0, 0, 24)
+    row.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
+    row.BackgroundTransparency = 0.35
+    row.BorderSizePixel = 0
+    row.Text = ""
+    row.AutoButtonColor = false
+    row.LayoutOrder = order
+    row.Parent = scroll
+
+    local rCorner = Instance.new("UICorner")
+    rCorner.CornerRadius = UDim.new(0, 5)
+    rCorner.Parent = row
+
+    local icon = Instance.new("ImageLabel")
+    icon.Size = UDim2.new(0, 18, 0, 18)
+    icon.Position = UDim2.new(0, 4, 0.5, -9)
+    icon.BackgroundTransparency = 1
+    icon.Image = getThumb(p)
+    icon.Parent = row
+
+    local icCorner = Instance.new("UICorner")
+    icCorner.CornerRadius = UDim.new(1, 0)
+    icCorner.Parent = icon
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -30, 1, 0)
+    lbl.Position = UDim2.new(0, 26, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = (p.DisplayName or p.Name) .. " (@" .. p.Name .. ")"
+    lbl.TextColor3 = Color3.fromRGB(40, 25, 5)
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextSize = 11
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextTruncate = Enum.TextTruncate.AtEnd
+    lbl.Parent = row
+
+    row.MouseButton1Click:Connect(function()
+        selectedTarget = p
+        targetName.Text = (p.DisplayName or p.Name) .. " (@" .. p.Name .. ")"
+        targetAvatar.Image = getThumb(p)
+        targetHistory = {}
+    end)
+end
+
+local function refreshList()
+    for _, c in ipairs(scroll:GetChildren()) do
+        if c:IsA("TextButton") then c:Destroy() end
+    end
+    for i, p in ipairs(getPlayersList()) do
+        makeRow(p, i)
+    end
+end
+
+refreshList()
+
+local healthBg = Instance.new("Frame")
+healthBg.Size = UDim2.new(0.9, 0, 0, 20)
+healthBg.Position = UDim2.new(0.05, 0, 0, 0)
+healthBg.BackgroundColor3 = Color3.fromRGB(40, 30, 15)
+healthBg.BorderSizePixel = 0
+healthBg.LayoutOrder = 3
+healthBg.Parent = holder
+
+local hbCorner = Instance.new("UICorner")
+hbCorner.CornerRadius = UDim.new(0, 5)
+hbCorner.Parent = healthBg
+
+local healthFill = Instance.new("Frame")
+healthFill.Size = UDim2.new(1, 0, 1, 0)
+healthFill.BackgroundColor3 = Color3.fromRGB(60, 220, 100)
+healthFill.BorderSizePixel = 0
+healthFill.Parent = healthBg
+
+local hfCorner = Instance.new("UICorner")
+hfCorner.CornerRadius = UDim.new(0, 5)
+hfCorner.Parent = healthFill
+
+local healthText = Instance.new("TextLabel")
+healthText.Size = UDim2.new(1, 0, 1, 0)
+healthText.BackgroundTransparency = 1
+healthText.Text = "Health"
+healthText.TextColor3 = Color3.fromRGB(255, 255, 255)
+healthText.Font = Enum.Font.GothamBold
+healthText.TextSize = 12
+healthText.ZIndex = 2
+healthText.Parent = healthBg
+
+local armorBg = Instance.new("Frame")
+armorBg.Size = UDim2.new(0.9, 0, 0, 20)
+armorBg.Position = UDim2.new(0.05, 0, 0, 0)
+armorBg.BackgroundColor3 = Color3.fromRGB(40, 30, 15)
+armorBg.BorderSizePixel = 0
+armorBg.LayoutOrder = 4
+armorBg.Parent = holder
+
+local abCorner = Instance.new("UICorner")
+abCorner.CornerRadius = UDim.new(0, 5)
+abCorner.Parent = armorBg
+
+local armorFill = Instance.new("Frame")
+armorFill.Size = UDim2.new(1, 0, 1, 0)
+armorFill.BackgroundColor3 = Color3.fromRGB(90, 170, 255)
+armorFill.BorderSizePixel = 0
+armorFill.Parent = armorBg
+
+local afCorner = Instance.new("UICorner")
+afCorner.CornerRadius = UDim.new(0, 5)
+afCorner.Parent = armorFill
+
+local armorText = Instance.new("TextLabel")
+armorText.Size = UDim2.new(1, 0, 1, 0)
+armorText.BackgroundTransparency = 1
+armorText.Text = "Armor"
+armorText.TextColor3 = Color3.fromRGB(255, 255, 255)
+armorText.Font = Enum.Font.GothamBold
+armorText.TextSize = 12
+armorText.ZIndex = 2
+armorText.Parent = armorBg
+
+-- ---- Spectate button ----
+local spectateBtn = Instance.new("TextButton")
+spectateBtn.Size = UDim2.new(0.9, 0, 0, 24)
+spectateBtn.Position = UDim2.new(0.05, 0, 0, 0)
+spectateBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+spectateBtn.BorderSizePixel = 0
+spectateBtn.Text = "Spectate: OFF"
+spectateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+spectateBtn.Font = Enum.Font.GothamBold
+spectateBtn.TextSize = 12
+spectateBtn.AutoButtonColor = false
+spectateBtn.LayoutOrder = 5
+spectateBtn.Parent = holder
+
+local spCorner = Instance.new("UICorner")
+spCorner.CornerRadius = UDim.new(0, 6)
+spCorner.Parent = spectateBtn
+
+local function stopSpectate()
+    spectating = false
+    spectateBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+    spectateBtn.Text = "Spectate: OFF"
+    if spectateConn then spectateConn:Disconnect() spectateConn = nil end
+    local char = player.Character
+    camera.CameraSubject = char and char:FindFirstChildOfClass("Humanoid") or nil
+    camera.CameraType = Enum.CameraType.Custom
+end
+
+local function startSpectate()
+    spectating = true
+    spectateBtn.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
+    spectateBtn.Text = "Spectate: ON"
+    spectateConn = RunService.RenderStepped:Connect(function()
+        if not spectating then return end
+        local t = selectedTarget
+        if not t or not t.Parent then return end
+        local char = t.Character
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then camera.CameraSubject = hum end
+    end)
+end
+
+spectateBtn.MouseButton1Click:Connect(function()
+    if spectating then stopSpectate() else startSpectate() end
+end)
+
+-- ---- TP button ----
+local tpBtn = Instance.new("TextButton")
+tpBtn.Size = UDim2.new(0.9, 0, 0, 24)
+tpBtn.Position = UDim2.new(0.05, 0, 0, 0)
+tpBtn.BackgroundColor3 = Color3.fromRGB(255, 140, 40)
+tpBtn.BorderSizePixel = 0
+tpBtn.Text = "TP to Target"
+tpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+tpBtn.Font = Enum.Font.GothamBold
+tpBtn.TextSize = 12
+tpBtn.AutoButtonColor = false
+tpBtn.LayoutOrder = 6
+tpBtn.Parent = holder
+
+local tpCorner = Instance.new("UICorner")
+tpCorner.CornerRadius = UDim.new(0, 6)
+tpCorner.Parent = tpBtn
+
+local function flashBtn(btn, fromColor, toColor)
+    btn.BackgroundColor3 = toColor
+    task.wait(0.15)
+    TweenService:Create(btn, TweenInfo.new(0.3), {BackgroundColor3 = fromColor}):Play()
+end
+
+tpBtn.MouseButton1Click:Connect(function()
+    local t = selectedTarget
+    flashBtn(tpBtn, Color3.fromRGB(255, 140, 40), Color3.fromRGB(255, 220, 100))
+    if not t or not t.Parent or t == player then return end
+    local myChar = player.Character
+    local targetChar = t.Character
+    if not myChar or not targetChar then return end
+    local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+    local tgtRoot = targetChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot or not tgtRoot then return end
+    myRoot.CFrame = tgtRoot.CFrame * CFrame.new(0, 0, 3)
+end)
+
+-- ---- Auto Kill button ----
+local autoKillBtn = Instance.new("TextButton")
+autoKillBtn.Size = UDim2.new(0.9, 0, 0, 24)
+autoKillBtn.Position = UDim2.new(0.05, 0, 0, 0)
+autoKillBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+autoKillBtn.BorderSizePixel = 0
+autoKillBtn.Text = "Auto Kill: OFF"
+autoKillBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+autoKillBtn.Font = Enum.Font.GothamBold
+autoKillBtn.TextSize = 12
+autoKillBtn.AutoButtonColor = false
+autoKillBtn.LayoutOrder = 7
+autoKillBtn.Parent = holder
+
+local akCorner = Instance.new("UICorner")
+akCorner.CornerRadius = UDim.new(0, 6)
+akCorner.Parent = autoKillBtn
+
+local function equipTool(toolName)
+    local char = player.Character
+    if not char then return false end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return false end
+    local equipped = char:FindFirstChild(toolName)
+    if equipped and equipped:IsA("Tool") then return true end
+    local backpack = player:FindFirstChild("Backpack")
+    if backpack then
+        local tool = backpack:FindFirstChild(toolName)
+        if tool and tool:IsA("Tool") then
+            humanoid:EquipTool(tool)
+            return true
+        end
+    end
+    return false
+end
+
+local function tryAutoShoot()
+    local char = player.Character
+    if not char then return end
+    local tool = char:FindFirstChildWhichIsA("Tool")
+    if not tool then return end
+    if tool.Name == "[Pizza]" or tool.Name == "[Donut]" then return end
+    local toolName = tool.Name:lower()
+    if toolName:find("katana") or toolName:find("knife")
+        or toolName:find("sword") or toolName:find("bat")
+        or toolName:find("fist") or toolName:find("crowbar") then
+        return
+    end
+    if tick() - lastShot < AUTO_SHOOT_DELAY then return end
+    lastShot = tick()
+    pcall(function() tool:Activate() end)
+end
+
+local function runAutoKillTick()
+    local t = selectedTarget
+    if not t or not t.Parent or t == player then return end
+    local myChar = player.Character
+    local tgtChar = t.Character
+    if not myChar or not tgtChar then return end
+    local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+    local tgtRoot = tgtChar:FindFirstChild("HumanoidRootPart")
+    local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+    if not myRoot or not tgtRoot or not humanoid then return end
+
+    if humanoid.Sit then humanoid.Sit = false end
+    humanoid.PlatformStand = false
+    humanoid.AutoRotate = false
+    humanoid.WalkSpeed = 0
+    humanoid.JumpPower = 0
+    humanoid.JumpHeight = 0
+
+    local realTargetPos = getRealTargetPosition(tgtRoot)
+
+    local radius = 15
+    local theta = math.random() * math.pi * 2
+    local phi = math.acos(2 * math.random() - 1)
+    local offX = radius * math.sin(phi) * math.cos(theta)
+    local offY = math.max(0, radius * math.cos(phi))
+    local offZ = radius * math.sin(phi) * math.sin(theta)
+
+    local newPos = Vector3.new(
+        realTargetPos.X + offX,
+        realTargetPos.Y + offY,
+        realTargetPos.Z + offZ
+    )
+
+    local diff = realTargetPos - newPos
+    local yRot = math.atan2(diff.X, diff.Z)
+
+    myRoot.CFrame = CFrame.new(newPos) * CFrame.Angles(0, yRot, 0)
+    myRoot.AssemblyLinearVelocity = Vector3.zero
+    myRoot.AssemblyAngularVelocity = Vector3.zero
+
+    tryAutoShoot()
+
+    local equipped = myChar:FindFirstChildWhichIsA("Tool")
+    if not equipped then
+        pcall(function() equipTool("Katana") end)
+    end
+end
+
+local function stopAutoKill()
+    autoKillEnabled = false
+    autoKillBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+    autoKillBtn.Text = "Auto Kill: OFF"
+    if autoKillTask then task.cancel(autoKillTask) autoKillTask = nil end
+    if pauseTask then task.cancel(pauseTask) pauseTask = nil end
+    pauseTp = false
+    targetHistory = {}
+    stopKillAnim()
+    pd_stop()
+    local char = player.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.Sit = false
+            hum.PlatformStand = false
+            hum.AutoRotate = true
+            hum.WalkSpeed = 16
+            hum.JumpPower = 50
+            hum.JumpHeight = 7.2
+        end
+    end
+end
+
+local function startAutoKill()
+    autoKillEnabled = true
+    pauseTp = false
+    lastShot = 0
+    targetHistory = {}
+    autoKillBtn.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
+    autoKillBtn.Text = "Auto Kill: ON"
+
+    playKillAnim()
+    pd_start()
+
+    autoKillTask = task.spawn(function()
+        while autoKillEnabled do
+            if not pauseTp then pcall(runAutoKillTick) end
+            task.wait(0.1)
+        end
+    end)
+
+    pauseTask = task.spawn(function()
+        while autoKillEnabled do
+            task.wait(1)
+            if not autoKillEnabled then break end
+            pauseTp = true
+            local myChar = player.Character
+            if myChar then
+                local root = myChar:FindFirstChild("HumanoidRootPart")
+                if root then
+                    root.AssemblyLinearVelocity = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                end
+            end
+            task.wait(0.1)
+            pauseTp = false
+        end
+    end)
+end
+
+autoKillBtn.MouseButton1Click:Connect(function()
+    if autoKillEnabled then stopAutoKill() else startAutoKill() end
+end)
+
+-- ---- Fling button ----
+local flingBtn = Instance.new("TextButton")
+flingBtn.Size = UDim2.new(0.9, 0, 0, 24)
+flingBtn.Position = UDim2.new(0.05, 0, 0, 0)
+flingBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+flingBtn.BorderSizePixel = 0
+flingBtn.Text = "Fling: OFF"
+flingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+flingBtn.Font = Enum.Font.GothamBold
+flingBtn.TextSize = 12
+flingBtn.AutoButtonColor = false
+flingBtn.LayoutOrder = 8
+flingBtn.Parent = holder
+
+local flCorner = Instance.new("UICorner")
+flCorner.CornerRadius = UDim.new(0, 6)
+flCorner.Parent = flingBtn
+
+flingBtn.MouseButton1Click:Connect(function()
+    if flingActive then
+        stopFling()
+        flingBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+        flingBtn.Text = "Fling: OFF"
+    else
+        startFling()
+        flingBtn.BackgroundColor3 = Color3.fromRGB(80, 220, 120)
+        flingBtn.Text = "Fling: ON"
+    end
+end)
+
+-- ---- Health / Armor live update loop ----
+task.spawn(function()
+    while targetFrame.Parent do
+        local t = selectedTarget or player
+        local hInfo = HealthModule.get(t)
+        if hInfo then
+            local pct = hInfo.percent
+            healthText.Text = string.format("Health  %d / %d", math.floor(hInfo.current), math.floor(hInfo.max))
+            TweenService:Create(healthFill, TweenInfo.new(0.15), {
+                Size = UDim2.new(pct / 100, 0, 1, 0),
+                BackgroundColor3 = HealthModule.getColor(pct)
+            }):Play()
+        end
+        local aInfo = ArmorModule.get(t)
+        if aInfo then
+            local pct = aInfo.percent
+            armorText.Text = string.format("Armor  %d / %d", math.floor(aInfo.current), math.floor(aInfo.max))
+            TweenService:Create(armorFill, TweenInfo.new(0.15), {
+                Size = UDim2.new(pct / 100, 0, 1, 0),
+                BackgroundColor3 = ArmorModule.getColor(pct)
+            }):Play()
+        end
+        task.wait(0.15)
+    end
+end)
+
+-- ---- Player add/remove handling ----
+Players.PlayerAdded:Connect(function() refreshList() end)
+Players.PlayerRemoving:Connect(function(p)
+    if selectedTarget == p then
+        selectedTarget = player
+        targetName.Text = "@" .. player.Name
+        targetAvatar.Image = getThumb(player)
+        targetHistory = {}
+    end
+    refreshList()
+end)
+
+return function()
+    stopSpectate()
+    stopAutoKill()
+    stopFling()
+end
+
+end)(targetFrame)
+
+-- ============================================================
+-- CLOSE BUTTON
+-- ============================================================
+closeBtn.MouseButton1Click:Connect(function()
+    if cleanupTarget then cleanupTarget() end
+    screenGui:Destroy()
+end)
+
+print("Crispy Target Standalone loaded!")
