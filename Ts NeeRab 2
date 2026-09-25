@@ -1700,169 +1700,157 @@ ToolShooter.RequiresHandle = false
 ToolShooter.Name = "Shooter"
 ToolShooter.Parent = LocalPlayer2.Backpack
 ToolShooter.Activated:Connect(function()
-    if LocalPlayer2.Character.BodyEffects.Grabbed.Value then
-        -- Stop the hold animation before starting
-        for _, v in pairs(LocalPlayer.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
-            if v.Animation.AnimationId == "rbxassetid://3135389157" then v:Stop() end
-        end
+    if not LocalPlayer2.Character.BodyEffects.Grabbed.Value then return end
 
-        local Character = LocalPlayer2.Character
-        local Humanoid = Character:WaitForChild("Humanoid")
-        local BodyEffects = Character:FindFirstChild("BodyEffects")
-        if not BodyEffects or not BodyEffects:FindFirstChild("Grabbed") then return end
-        local str = tostring(BodyEffects.Grabbed.Value)
-        local str4 = Players:FindFirstChild(str)
-        if not str4 or not str4.Character then return end
-
-        Humanoid.WalkSpeed = 0
-        stopAlign = false
-
-        -- =========================================================
-        -- Helper: play an animation and wait until it FULLY stops.
-        -- - Looped = false so it ends naturally
-        -- - Waits on Stopped event
-        -- - Force-stops after `timeout` seconds as a safety net
-        -- - Stops it once more before returning (nothing lingers)
-        -- =========================================================
-        local function playAndWait(animId, speed, timeout)
-            -- Stop any previously playing instance of THIS anim id
-            for _, v in pairs(Humanoid:GetPlayingAnimationTracks()) do
-                if v.Animation and v.Animation.AnimationId:match("rbxassetid://" .. animId) then
-                    pcall(function() v:Stop(0) end)
-                end
-            end
-            AnimPlay(animId, speed or 1)
-            local track = playing
-            if not track then return end
-
-            track.Looped = false
-
-            local done = false
-            local conn
-            conn = track.Stopped:Connect(function()
-                done = true
-                if conn then conn:Disconnect() end
-            end)
-
-            local t = 0
-            local limit = timeout or 10
-            repeat
-                task.wait(0.05)
-                t = t + 0.05
-                if not done and t >= limit then
-                    pcall(function() track:Stop(0) end)
-                    done = true
-                end
-            until done
-
-            if conn then conn:Disconnect() end
-            pcall(function() track:Stop(0) end)
-            task.wait(0.05)
-        end
-
-        -- =========================================================
-        -- STEP 1: Bored — align 3 stud + anim 10713992055
-        -- =========================================================
-        spawn(function()
-            repeat
-                task.wait()
-                Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -3), CFrame.Angles(0, math.pi, 0))
-            until stopAlign
-        end)
-        playAndWait(10713992055, 1, 8)
-
-        -- =========================================================
-        -- STEP 2: Kick — align 15 stud + anim 2788306916
-        -- =========================================================
-        stopAlign = true
-        task.wait(0.1)
-        stopAlign = false
-        spawn(function()
-            repeat
-                task.wait()
-                Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -15), CFrame.Angles(0, math.pi, 0))
-            until stopAlign
-        end)
-        playAndWait(2788306916, 1, 8)
-
-        -- =========================================================
-        -- STEP 3: Pulls back — align 3 stud + anim 16768625968
-        -- =========================================================
-        stopAlign = true
-        task.wait(0.1)
-        stopAlign = false
-        spawn(function()
-            repeat
-                task.wait()
-                Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -3), CFrame.Angles(0, math.pi, 0))
-            until stopAlign
-        end)
-        playAndWait(16768625968, 1, 8)
-
-        -- =========================================================
-        -- STEP 4: Punch — align 15 stud + anim 3354696735
-        -- =========================================================
-        stopAlign = true
-        task.wait(0.1)
-        stopAlign = false
-        spawn(function()
-            repeat
-                task.wait()
-                Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, -15), CFrame.Angles(0, math.pi, 0))
-            until stopAlign
-        end)
-        playAndWait(3354696735, 1, 8)
-
-        -- =========================================================
-        -- STEP 5: Shoot — equip [Revolver] → play 72650574575349
-        --         → wait for finish → unequip → Goku kill
-        -- =========================================================
-        stopAlign = true
-        task.wait(0.1)
-
-        local revolver = LocalPlayer2.Backpack:FindFirstChild("[Revolver]")
-            or LocalPlayer2.Character:FindFirstChild("[Revolver]")
-        if revolver then
-            ToolShooter.Parent = LocalPlayer2.Backpack
-            revolver.Parent = LocalPlayer2.Character
-            task.wait(0.2)
-        end
-
-        playAndWait(72650574575349, 1, 10)
-
-        if revolver then
-            revolver.Parent = LocalPlayer2.Backpack
-        end
-
-        if not LocalPlayer2.Character.BodyEffects.Grabbed.Value then
-            stopAlign = true
-            Humanoid.WalkSpeed = 16
-            return
-        end
-
-        -- ============ GOKU KILL METHOD ============
-        local strKill = tostring(LocalPlayer2.Character.BodyEffects.Grabbed.Value)
-        if Players:FindFirstChild(strKill) then
-            local CharacterK = Players[strKill].Character
-            if CharacterK and CharacterK:FindFirstChild("UpperTorso") then
-                CharacterK.UpperTorso.CFrame = CFrame.new(0, -1200000, 0)
-            end
-        end
-        local str7 = Players:FindFirstChild(strKill)
-        if str7 and str7.Character then
-            local CharacterK = str7.Character
-            for _, v in ipairs({"RightUpperArm", "LeftUpperArm", "RightUpperLeg", "LeftUpperLeg"}) do
-                local limb = CharacterK:FindFirstChild(v)
-                if limb then limb.CFrame = CFrame.new(0, -1200000, 0) end
-            end
-        end
-        task.wait(0.5)
-        ReplicatedStorage:WaitForChild("MainEvent"):FireServer("Grabbing")
-
-        stopAlign = true
-        Destroy("UpperTorso")
-        Humanoid.WalkSpeed = 16
+    -- Stop the hold animation before starting
+    for _, v in pairs(LocalPlayer.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
+        if v.Animation.AnimationId == "rbxassetid://3135389157" then v:Stop() end
     end
+
+    local Character = LocalPlayer2.Character
+    local Humanoid = Character:WaitForChild("Humanoid")
+    local BodyEffects = Character:FindFirstChild("BodyEffects")
+    if not BodyEffects or not BodyEffects:FindFirstChild("Grabbed") then return end
+    local str = tostring(BodyEffects.Grabbed.Value)
+    local str4 = Players:FindFirstChild(str)
+    if not str4 or not str4.Character then return end
+
+    Humanoid.WalkSpeed = 0
+
+    -- =========================================================
+    -- Helper: play an animation and wait until it FULLY stops.
+    --   * Looped = false so it ends naturally
+    --   * Waits on the Stopped event
+    --   * Force-stops after `timeout` seconds as a safety net
+    --   * Stops it once more before returning (nothing lingers)
+    -- =========================================================
+    local function playAndWait(animId, speed, timeout)
+        -- Kill any previous instance of this exact anim id
+        for _, v in pairs(Humanoid:GetPlayingAnimationTracks()) do
+            if v.Animation and v.Animation.AnimationId:match("rbxassetid://" .. animId) then
+                pcall(function() v:Stop(0) end)
+            end
+        end
+        AnimPlay(animId, speed or 1)
+        local track = playing
+        if not track then return end
+
+        track.Looped = false
+
+        local done = false
+        local conn
+        conn = track.Stopped:Connect(function()
+            done = true
+            if conn then conn:Disconnect() end
+        end)
+
+        local t = 0
+        local limit = timeout or 10
+        repeat
+            task.wait(0.05)
+            t = t + 0.05
+            if not done and t >= limit then
+                pcall(function() track:Stop(0) end)
+                done = true
+            end
+        until done
+
+        if conn then conn:Disconnect() end
+        pcall(function() track:Stop(0) end)
+        task.wait(0.05)
+    end
+
+    -- =========================================================
+    -- Helper: run an align loop at a given Z offset until stopped
+    --   * Kills any prior loop first, so only ONE runs at a time
+    -- =========================================================
+    local function startAlign(zOffset)
+        stopAlign = true
+        task.wait(0.1)
+        stopAlign = false
+        spawn(function()
+            repeat
+                task.wait()
+                Align(8000, 800, "UpperTorso", "HumanoidRootPart", CFrame.new(0, 0, zOffset), CFrame.Angles(0, math.pi, 0))
+            until stopAlign
+        end)
+    end
+
+    -- =========================================================
+    -- STEP 1: Bored — align 3 stud + anim 10713992055
+    -- =========================================================
+    startAlign(-3)
+    playAndWait(10713992055, 1, 8)
+
+    -- =========================================================
+    -- STEP 2: Kick — align 15 stud + anim 2788306916
+    -- =========================================================
+    startAlign(-15)
+    playAndWait(2788306916, 1, 8)
+
+    -- =========================================================
+    -- STEP 3: Pulls back — align 3 stud + anim 16768625968
+    -- =========================================================
+    startAlign(-3)
+    playAndWait(16768625968, 1, 8)
+
+    -- =========================================================
+    -- STEP 4: Punch — align 15 stud + anim 3354696735
+    -- =========================================================
+    startAlign(-15)
+    playAndWait(3354696735, 1, 8)
+
+    -- =========================================================
+    -- STEP 5: Shoot — align 15 stud (KEPT ACTIVE), equip [Revolver],
+    --         play 72650574575349, wait finish, unequip, Goku kill
+    -- =========================================================
+    startAlign(-15)
+
+    local revolver = LocalPlayer2.Backpack:FindFirstChild("[Revolver]")
+        or LocalPlayer2.Character:FindFirstChild("[Revolver]")
+    if revolver then
+        ToolShooter.Parent = LocalPlayer2.Backpack
+        revolver.Parent = LocalPlayer2.Character
+        task.wait(0.2)
+    end
+
+    -- Align loop stays running the whole time the shot plays
+    playAndWait(72650574575349, 1, 10)
+
+    -- Unequip [Revolver]
+    if revolver then
+        revolver.Parent = LocalPlayer2.Backpack
+    end
+
+    -- If grab was released mid-animation, abort cleanly
+    if not LocalPlayer2.Character.BodyEffects.Grabbed.Value then
+        stopAlign = true
+        Humanoid.WalkSpeed = 16
+        return
+    end
+
+    -- ============ GOKU KILL METHOD ============
+    local strKill = tostring(LocalPlayer2.Character.BodyEffects.Grabbed.Value)
+    if Players:FindFirstChild(strKill) then
+        local CharacterK = Players[strKill].Character
+        if CharacterK and CharacterK:FindFirstChild("UpperTorso") then
+            CharacterK.UpperTorso.CFrame = CFrame.new(0, -1200000, 0)
+        end
+    end
+    local str7 = Players:FindFirstChild(strKill)
+    if str7 and str7.Character then
+        local CharacterK = str7.Character
+        for _, v in ipairs({"RightUpperArm", "LeftUpperArm", "RightUpperLeg", "LeftUpperLeg"}) do
+            local limb = CharacterK:FindFirstChild(v)
+            if limb then limb.CFrame = CFrame.new(0, -1200000, 0) end
+        end
+    end
+    task.wait(0.5)
+    ReplicatedStorage:WaitForChild("MainEvent"):FireServer("Grabbing")
+
+    stopAlign = true
+    Destroy("UpperTorso")
+    Humanoid.WalkSpeed = 16
 end)
     
 end
