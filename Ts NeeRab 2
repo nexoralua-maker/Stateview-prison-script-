@@ -1761,13 +1761,77 @@ ToolShooter.Activated:Connect(function()
     end
 
     -- =========================================================
-    -- Helper: run an align loop at a given Z offset until stopped
-    --   * Kills any prior loop first, so only ONE runs at a time
+    -- Limbs on the grabbed character we zero out + teleport
+    -- =========================================================
+    local LIMBS = {
+        "Head","HumanoidRootPart","UpperTorso","LowerTorso",
+        "LeftUpperArm","LeftLowerArm","RightUpperArm","RightLowerArm",
+        "LeftHand","RightHand",
+        "LeftUpperLeg","LeftLowerLeg","RightUpperLeg","RightLowerLeg",
+        "LeftFoot","RightFoot"
+    }
+
+    -- =========================================================
+    -- Helper: HARD SNAP — teleport the target to `zOffset` in
+    -- ONE frame (no BodyPosition glide-in like Domain Expansion).
+    -- =========================================================
+    local function hardSnap(zOffset)
+        if not GrabbedValue or not GrabbedValue.Parent then return end
+        if not LocalPlayer2.Character.BodyEffects.Grabbed.Value then return end
+
+        local upper = GrabbedValue:FindFirstChild("UpperTorso")
+        if not upper then return end
+
+        -- Make sure the movers exist on UpperTorso
+        if not upper:FindFirstChildWhichIsA("BodyPosition") or not upper:FindFirstChildWhichIsA("BodyGyro") then
+            local bp = Instance.new("BodyPosition", upper)
+            bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bp.P = 10000
+            bp.D = 175
+            local bg = Instance.new("BodyGyro", upper)
+            bg.maxTorque = Vector3.new(9000000000, 9000000000, 9000000000)
+            bg.P = 10000
+        end
+
+        local anchor = LocalPlayer2.Character:FindFirstChild("RightUpperArm")
+        if not anchor then return end
+
+        local targetPos = (anchor.CFrame * CFrame.new(0, 0, zOffset)).Position
+        local targetCF  = anchor.CFrame * CFrame.Angles(0, math.pi, 0)
+
+        -- Zero every limb's motion + kill collisions
+        for _, name in ipairs(LIMBS) do
+            local part = GrabbedValue:FindFirstChild(name)
+            if part then
+                part.AssemblyLinearVelocity  = Vector3.zero
+                part.AssemblyAngularVelocity = Vector3.zero
+                part.Velocity                = Vector3.zero
+                part.CanCollide              = false
+            end
+        end
+
+        -- Hard-set the mover + root CFrame (this is the "instant" part)
+        local bp = upper:FindFirstChildWhichIsA("BodyPosition")
+        local bg = upper:FindFirstChildWhichIsA("BodyGyro")
+        if bp then bp.Position = targetPos end
+        if bg then bg.CFrame  = targetCF  end
+        upper.CFrame   = targetCF
+        upper.Position = targetPos
+    end
+
+    -- =========================================================
+    -- Helper: SNAP-AND-HOLD — instantly snaps target to zOffset,
+    -- then starts a live align loop to keep it there.
     -- =========================================================
     local function startAlign(zOffset)
         stopAlign = true
-        task.wait(0.1)
+        task.wait(0.05)
         stopAlign = false
+
+        -- Frame 1: teleport into position (no fly-in)
+        hardSnap(zOffset)
+
+        -- Frame 2+: keep it pinned there
         spawn(function()
             repeat
                 task.wait()
@@ -1777,31 +1841,31 @@ ToolShooter.Activated:Connect(function()
     end
 
     -- =========================================================
-    -- STEP 1: Bored — align 3 stud + anim 10713992055
+    -- STEP 1: Bored — snap 3 stud + anim 10713992055
     -- =========================================================
     startAlign(-3)
     playAndWait(10713992055, 1, 8)
 
     -- =========================================================
-    -- STEP 2: Kick — align 15 stud + anim 2788306916
+    -- STEP 2: Kick — snap 15 stud + anim 2788306916
     -- =========================================================
     startAlign(-15)
     playAndWait(2788306916, 1, 8)
 
     -- =========================================================
-    -- STEP 3: Pulls back — align 3 stud + anim 16768625968
+    -- STEP 3: Pulls back — snap 3 stud + anim 16768625968
     -- =========================================================
     startAlign(-3)
     playAndWait(16768625968, 1, 8)
 
     -- =========================================================
-    -- STEP 4: Punch — align 15 stud + anim 3354696735
+    -- STEP 4: Punch — snap 15 stud + anim 3354696735
     -- =========================================================
     startAlign(-15)
     playAndWait(3354696735, 1, 8)
 
     -- =========================================================
-    -- STEP 5: Shoot — align 15 stud (KEPT ACTIVE), equip [Revolver],
+    -- STEP 5: Shoot — snap 15 stud (KEPT LIVE), equip [Revolver],
     --         play 72650574575349, wait finish, unequip, Goku kill
     -- =========================================================
     startAlign(-15)
