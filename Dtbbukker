@@ -1,40 +1,32 @@
 --==================================================================
 --  Death.Eye  -  View / Bullet GUI + Tracer + Health Highlight
---  - Draggable frame (normal, original behavior)
---  - GUI has a REAL soft shadow (ImageLabel-based)
---  - Red at 0 HP
---  - Toggle buttons redesigned to match the provided image exactly
---  - Roblox Notification on script load
---  - Renamed toggles: Spectate & Bullet
---  - IMPROVED BULLET: Prediction + Hitbox targeting
---  - ADDED AUTO PREDICTION TOGGLE
---  - ADDED AUTO FIRE TOGGLE (uses Bullet logic when Bullet is ON)
---  - TRACER NOW CONNECTS TO HIGHLIGHT (aims at target part)
+--  - HARDENED: defensive nil checks + safe notification
 --==================================================================
 
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local StarterGui       = game:GetService("StarterGui")
+local Stats            = game:GetService("Stats")
 
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+if not LocalPlayer then return end
+
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
+if not PlayerGui then return end
 
 --==================================================================
---  ROBLOX NOTIFICATION ON LOAD
+--  SAFE NOTIFICATION (won't break script if it fails)
 --==================================================================
 task.spawn(function()
-	task.wait(1)
-	local success, err = pcall(function()
+	task.wait(2)
+	pcall(function()
 		StarterGui:SetCore("SendNotification", {
 			Title = "Death.Eye";
-			Text = "On top";
+			Text  = "On top";
 			Duration = 5;
 		})
-	end
-	if not success then
-		warn("Could not send Roblox notification: " .. tostring(err))
-	end
+	end)
 end)
 
 --==================================================================
@@ -54,14 +46,11 @@ local highlight    = nil
 local billboard    = nil
 local billboardLabel = nil
 local renderConn   = nil
+local heartConn    = nil
 
 --==================================================================
---  IMPROVED BULLET CORE
+--  HELPERS
 --==================================================================
-local function calcGrip(handCF, targetCF)
-	return (handCF * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)):ToObjectSpace(targetCF):Inverse()
-end
-
 local function getBestTargetPart(character)
 	if not character then return nil end
 	local head = character:FindFirstChild("Head")
@@ -73,7 +62,45 @@ local function getBestTargetPart(character)
 	return nil
 end
 
+local function getEquippedTool()
+	if not LocalPlayer.Character then return nil end
+	local tool = LocalPlayer.Character:FindFirstChildWhichIsA("Tool")
+	if tool and tool:FindFirstChild("Handle") then
+		return tool
+	end
+	return nil
+end
+
+local function getPing()
+	local ping = 0.1
+	local ok = pcall(function()
+		local v = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+		if v then ping = v / 1000 end
+	end)
+	return ping
+end
+
+local function colorFor(health, maxHealth)
+	if health <= 0 then
+		return Color3.fromRGB(235, 60, 60)
+	elseif health <= 20 then
+		return Color3.fromRGB(235, 60, 60)
+	elseif health <= maxHealth * 0.5 then
+		return Color3.fromRGB(240, 210, 60)
+	else
+		return Color3.fromRGB(60, 220, 90)
+	end
+end
+
+--==================================================================
+--  BULLET CORE
+--==================================================================
+local function calcGrip(handCF, targetCF)
+	return (handCF * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)):ToObjectSpace(targetCF):Inverse()
+end
+
 local function fireBullet(tool, explicitTarget)
+	if not tool or not tool.Parent then return end
 	if not bulletOn and not explicitTarget then return end
 
 	local useTarget = explicitTarget or bulletTarget
@@ -83,48 +110,46 @@ local function fireBullet(tool, explicitTarget)
 	local tChar = useTarget.Character
 	if not char or not tChar then return end
 
-	local hand = char:FindFirstChild("RightHand")
+	local hand = char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm")
 	if not hand then return end
 
 	local targetPart = getBestTargetPart(tChar)
 	if not targetPart then return end
 
-	local targetVel = targetPart.AssemblyLinearVelocity
 	local hrp = tChar:FindFirstChild("HumanoidRootPart")
-	if hrp then
-		targetVel = hrp.AssemblyLinearVelocity
-	end
+	local targetVel = hrp and hrp.AssemblyLinearVelocity or targetPart.AssemblyLinearVelocity
 
 	local predictedPos = targetPart.Position
 	if autoPredictOn then
-		local ping = 0.1
-		local stats = game:GetService("Stats")
-		if stats and stats.Network and stats.Network.ServerStatsItem then
-			local pingValue = stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-			if pingValue then
-				ping = pingValue / 1000
-			end
-		end
-
-		local predictionTime = ping + 0.05
+		local predictionTime = getPing() + 0.05
 		predictedPos = targetPart.Position + (targetVel * predictionTime)
 	end
 
 	local predictedCF = CFrame.new(predictedPos)
 	local oldGrip = tool.Grip
 
-	tool.Parent   = LocalPlayer.Backpack
-	hand.Anchored = false
-	tool.Grip     = calcGrip(hand.CFrame, predictedCF)
-	hand.Anchored = true
-	tool.Parent   = char
+	local ok = pcall(function()
+		tool.Parent   = LocalPlayer.Backpack
+		hand.Anchored = false
+		tool.Grip     = calcGrip(hand.CFrame, predictedCF)
+		hand.Anchored = true
+		tool.Parent   = char
 
-	RunService.RenderStepped:Wait()
+		RunService.RenderStepped:Wait()
 
-	tool.Parent   = LocalPlayer.Backpack
-	hand.Anchored = false
-	tool.Grip     = oldGrip
-	tool.Parent   = char
+		tool.Parent   = LocalPlayer.Backpack
+		hand.Anchored = false
+		tool.Grip     = oldGrip
+		tool.Parent   = char
+	end)
+
+	if not ok then
+		pcall(function()
+			hand.Anchored = false
+			tool.Grip = oldGrip
+			if tool.Parent ~= char then tool.Parent = char end
+		end)
+	end
 end
 
 --==================================================================
@@ -132,15 +157,6 @@ end
 --==================================================================
 local lastAutoFire = 0
 local AUTO_FIRE_DELAY = 0.08
-
-local function getEquippedTool()
-	if not LocalPlayer.Character then return nil end
-	local tool = LocalPlayer.Character:FindFirstChildWhichIsA("Tool")
-	if tool and tool:FindFirstChild("Handle") then
-		return tool
-	end
-	return nil
-end
 
 local function isTargetVisible()
 	if not target or not target.Character then return false end
@@ -192,9 +208,9 @@ end
 local toolConns = {}
 
 local function hookTool(tool)
-	if toolConns[tool] then return end
+	if not tool or toolConns[tool] then return end
 	toolConns[tool] = tool.Activated:Connect(function()
-		fireBullet(tool)
+		pcall(fireBullet, tool)
 	end)
 end
 
@@ -207,6 +223,7 @@ local function unhookTool(tool)
 end
 
 local function watchCharacter(char)
+	if not char then return end
 	for _, c in ipairs(char:GetChildren()) do
 		if c:IsA("Tool") then hookTool(c) end
 	end
@@ -231,9 +248,6 @@ gui.IgnoreGuiInset = true
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent         = PlayerGui
 
---============================================================
---  SHADOW
---============================================================
 local SHADOW_PADDING = 24
 
 local shadow = Instance.new("ImageLabel")
@@ -547,18 +561,6 @@ local function ensureHighlight(char)
 	highlight.Parent              = char
 end
 
-local function colorFor(health, maxHealth)
-	if health <= 0 then
-		return Color3.fromRGB(235, 60, 60)
-	elseif health <= 20 then
-		return Color3.fromRGB(235, 60, 60)
-	elseif health <= maxHealth * 0.5 then
-		return Color3.fromRGB(240, 210, 60)
-	else
-		return Color3.fromRGB(60, 220, 90)
-	end
-end
-
 --==================================================================
 --  BILLBOARD
 --==================================================================
@@ -655,12 +657,10 @@ local function updateVisuals()
 	local tChar  = target.Character
 	local myChar = LocalPlayer.Character
 
-	----------------------------------------------------- TRACER
-	-- Now connects to the same body part the highlight wraps around,
-	-- so the tracer line "attaches" to the highlight visually.
+	-- TRACER
 	if tChar and myChar then
-		local myHRP    = myChar:FindFirstChild("HumanoidRootPart")
-		local targetPart = getBestTargetPart(tChar) -- Head > UpperTorso > HRP
+		local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+		local targetPart = getBestTargetPart(tChar)
 
 		if myHRP and targetPart then
 			if not tracerPart then makeTracer() end
@@ -675,7 +675,6 @@ local function updateVisuals()
 				tracerPart.CFrame       = CFrame.lookAt(from + dir * 0.5, to)
 				tracerPart.Transparency = 0.35
 
-				-- Match tracer color to the highlight/health color
 				local hum = tChar:FindFirstChildOfClass("Humanoid")
 				if hum then
 					tracerPart.Color = colorFor(hum.Health, hum.MaxHealth)
@@ -688,7 +687,7 @@ local function updateVisuals()
 		if tracerPart then tracerPart.Transparency = 1 end
 	end
 
-	----------------------------------------------------- HIGHLIGHT
+	-- HIGHLIGHT
 	if tChar then
 		ensureHighlight(tChar)
 
@@ -702,7 +701,7 @@ local function updateVisuals()
 		destroyHighlight()
 	end
 
-	----------------------------------------------------- BILLBOARD
+	-- BILLBOARD
 	updateBillboard()
 end
 
@@ -750,7 +749,7 @@ RunService.Heartbeat:Connect(function()
 
 	if bulletOn then
 		task.spawn(function()
-			fireBullet(gun, target)
+			pcall(fireBullet, gun, target)
 		end)
 	else
 		pcall(function()
@@ -842,13 +841,7 @@ searchBox.FocusLost:Connect(doSearch)
 
 viewBtn.MouseButton1Click:Connect(function()
 	viewOn = not viewOn
-
-	if viewOn then
-		viewCheck.TextTransparency = 0
-	else
-		viewCheck.TextTransparency = 1
-	end
-
+	viewCheck.TextTransparency = viewOn and 0 or 1
 	refreshView()
 end)
 
@@ -861,22 +854,12 @@ bulletBtn.MouseButton1Click:Connect(function()
 
 	bulletOn = not bulletOn
 	bulletTarget = target
-
-	if bulletOn then
-		bulletCheck.TextTransparency = 0
-	else
-		bulletCheck.TextTransparency = 1
-	end
+	bulletCheck.TextTransparency = bulletOn and 0 or 1
 end)
 
 autoPredictBtn.MouseButton1Click:Connect(function()
 	autoPredictOn = not autoPredictOn
-
-	if autoPredictOn then
-		autoPredictCheck.TextTransparency = 0
-	else
-		autoPredictCheck.TextTransparency = 1
-	end
+	autoPredictCheck.TextTransparency = autoPredictOn and 0 or 1
 end)
 
 autoFireBtn.MouseButton1Click:Connect(function()
@@ -887,18 +870,15 @@ autoFireBtn.MouseButton1Click:Connect(function()
 	end
 
 	autoFireOn = not autoFireOn
-
-	if autoFireOn then
-		autoFireCheck.TextTransparency = 0
-	else
-		autoFireCheck.TextTransparency = 1
-	end
+	autoFireCheck.TextTransparency = autoFireOn and 0 or 1
 end)
 
 --==================================================================
 --  RENDER LOOP
 --==================================================================
-renderConn = RunService.RenderStepped:Connect(updateVisuals)
+renderConn = RunService.RenderStepped:Connect(function()
+	pcall(updateVisuals)
+end)
 
 --==================================================================
 --  CLEANUP
@@ -911,10 +891,6 @@ Players.PlayerRemoving:Connect(function(plr)
 		bulletTarget = nil
 		bulletOn     = false
 		if bulletCheck then bulletCheck.TextTransparency = 1 end
-	end
-	if autoFireOn then
-		autoFireOn = false
-		if autoFireCheck then autoFireCheck.TextTransparency = 1 end
 	end
 end)
 
