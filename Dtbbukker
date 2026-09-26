@@ -8,13 +8,15 @@
 --  - Renamed toggles: Spectate & Bullet
 --  - IMPROVED BULLET: Prediction + Hitbox targeting
 --  - ADDED AUTO PREDICTION TOGGLE
---  - Bullet toggle now AUTO-FIRES (calls gun:Activate() automatically)
+--  - BULLET TOGGLE NOW AUTO-FIRES (calls gun:Activate())
+--  - ADDED SETTINGS GEAR + ANIMATED DROPDOWN (Auto-Fire ON by default)
 --==================================================================
 
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local StarterGui       = game:GetService("StarterGui")
+local TweenService     = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
@@ -45,7 +47,8 @@ local viewOn       = false
 
 local bulletTarget = nil
 local bulletOn     = false
-local autoPredictOn = true -- Enabled by default for best performance
+local autoPredictOn = true
+local autoFireOn    = true -- Auto-fire ON by default
 
 local tracerPart   = nil
 local highlight    = nil
@@ -53,8 +56,11 @@ local billboard    = nil
 local billboardLabel = nil
 local renderConn   = nil
 
-local AUTO_FIRE_DELAY = 0.1 -- seconds between auto-fires (adjust as needed)
-local lastAutoFire    = 0
+--==================================================================
+--  AUTO-FIRE STATE
+--==================================================================
+local AUTO_FIRE_DELAY = 0.1
+local lastAutoFire = 0
 
 --==================================================================
 --  IMPROVED BULLET CORE
@@ -74,6 +80,14 @@ local function getBestTargetPart(character)
 	return nil
 end
 
+local function getEquippedGun()
+	if not LocalPlayer.Character then return nil end
+	local tool = LocalPlayer.Character:FindFirstChildWhichIsA("Tool")
+	if not tool then return nil end
+	if not tool:FindFirstChild("Handle") then return nil end
+	return tool
+end
+
 local function fireBullet(tool)
 	if not bulletOn or not bulletTarget then return end
 
@@ -87,14 +101,12 @@ local function fireBullet(tool)
 	local targetPart = getBestTargetPart(tChar)
 	if not targetPart then return end
 
-	-- Get target velocity
 	local targetVel = targetPart.AssemblyLinearVelocity
 	local hrp = tChar:FindFirstChild("HumanoidRootPart")
 	if hrp then
 		targetVel = hrp.AssemblyLinearVelocity
 	end
 
-	-- Auto Prediction Calculation
 	local predictedPos = targetPart.Position
 	if autoPredictOn then
 		local ping = 0.1
@@ -105,6 +117,7 @@ local function fireBullet(tool)
 				ping = pingValue / 1000
 			end
 		end
+
 		local predictionTime = ping + 0.05
 		predictedPos = targetPart.Position + (targetVel * predictionTime)
 	end
@@ -114,7 +127,9 @@ local function fireBullet(tool)
 
 	tool.Parent   = LocalPlayer.Backpack
 	hand.Anchored = false
+
 	tool.Grip     = calcGrip(hand.CFrame, predictedCF)
+
 	hand.Anchored = true
 	tool.Parent   = char
 
@@ -127,43 +142,34 @@ local function fireBullet(tool)
 end
 
 --==================================================================
---  AUTO-FIRE LOOP (Bullet Toggle)
+--  AUTO-FIRE LOOP
 --==================================================================
--- Automatically calls gun:Activate() while Bullet toggle is ON
--- and a valid target is selected.
---==================================================================
-local function getEquippedGun()
-	local char = LocalPlayer.Character
-	if not char then return nil end
-	local tool = char:FindFirstChildWhichIsA("Tool")
-	if not tool then return nil end
-	if not tool:FindFirstChild("Handle") then return nil end
-	return tool
-end
-
-local autoFireConn = RunService.Heartbeat:Connect(function()
+local function tryAutoFire()
+	if not autoFireOn then return end -- settings dropdown control
 	if not bulletOn then return end
 	if not bulletTarget then return end
+	if not bulletTarget.Character then return end
+
+	local tChar = bulletTarget.Character
+	local hum = tChar:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then return end
+
 	if tick() - lastAutoFire < AUTO_FIRE_DELAY then return end
 
-	-- Validate target is still alive
-	local tChar = bulletTarget.Character
-	if not tChar then return end
-	local tHum = tChar:FindFirstChildOfClass("Humanoid")
-	if not tHum or tHum.Health <= 0 then return end
-
-	-- Get our equipped gun
 	local gun = getEquippedGun()
 	if not gun then return end
 
 	lastAutoFire = tick()
 
-	-- Fire the gun — this triggers the Activated event, which
-	-- our hookTool() catches and redirects via fireBullet()
 	pcall(function()
 		gun:Activate()
 	end)
-end)
+
+	task.spawn(function()
+		task.wait(0.01)
+		fireBullet(gun)
+	end)
+end
 
 --==================================================================
 --  TOOL HOOKING
@@ -239,6 +245,7 @@ main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 main.BackgroundTransparency = 0.15
 main.BorderSizePixel  = 0
 main.Active           = true
+main.ClipsDescendants = false -- allow dropdown to overflow
 main.ZIndex           = 1
 main.Parent           = gui
 
@@ -248,11 +255,11 @@ local mainStroke = Instance.new("UIStroke", main)
 mainStroke.Color     = Color3.fromRGB(60, 60, 65)
 mainStroke.Thickness = 1
 
--- title bar (drag handle)
+-- title bar
 local title = Instance.new("TextLabel")
 title.Name             = "Title"
 title.Size             = UDim2.new(1, 0, 0, 28)
-title.BackgroundColor3 = Color3.fromRGB(25, 25, 30) 
+title.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 title.BorderSizePixel  = 0
 title.Text             = ""
 title.TextXAlignment   = Enum.TextXAlignment.Left
@@ -266,7 +273,7 @@ title.Parent           = main
 Instance.new("UICorner", title).CornerRadius = UDim.new(0, 10)
 
 -- ============================================================
---  Death.Eye title with colored parts
+--  Death.Eye title
 -- ============================================================
 local titleContainer = Instance.new("Frame")
 titleContainer.Name                   = "TitleContainer"
@@ -285,7 +292,6 @@ titleLayout.Padding             = UDim.new(0, 0)
 titleLayout.Parent              = titleContainer
 
 local deathLabel = Instance.new("TextLabel")
-deathLabel.Name                   = "DeathLabel"
 deathLabel.Size                   = UDim2.new(0, 0, 1, 0)
 deathLabel.AutomaticSize          = Enum.AutomaticSize.X
 deathLabel.BackgroundTransparency = 1
@@ -298,7 +304,6 @@ deathLabel.ZIndex                 = 3
 deathLabel.Parent                 = titleContainer
 
 local dotLabel = Instance.new("TextLabel")
-dotLabel.Name                   = "DotLabel"
 dotLabel.Size                   = UDim2.new(0, 0, 1, 0)
 dotLabel.AutomaticSize          = Enum.AutomaticSize.X
 dotLabel.BackgroundTransparency = 1
@@ -311,7 +316,6 @@ dotLabel.ZIndex                 = 3
 dotLabel.Parent                 = titleContainer
 
 local eyeLabel = Instance.new("TextLabel")
-eyeLabel.Name                   = "EyeLabel"
 eyeLabel.Size                   = UDim2.new(0, 0, 1, 0)
 eyeLabel.AutomaticSize          = Enum.AutomaticSize.X
 eyeLabel.BackgroundTransparency = 1
@@ -358,7 +362,7 @@ nameLabel.ZIndex                 = 2
 nameLabel.Parent                 = main
 
 --============================================================
---  TOGGLE BUTTONS (Matching Image Exactly)
+--  TOGGLE BUTTONS
 --============================================================
 local function createImageToggle(parent, textStr, yPos)
 	local btn = Instance.new("TextButton")
@@ -423,18 +427,180 @@ local function createImageToggle(parent, textStr, yPos)
 	checkLabel.ZIndex = 4
 	checkLabel.Parent = cbFrame
 
-	return btn, checkLabel
+	return btn, checkLabel, cbFrame
 end
 
 -- Create Spectate Toggle
 local viewBtn, viewCheck = createImageToggle(main, "Spectate", 102)
 
--- Create Bullet Toggle
-local bulletBtn, bulletCheck = createImageToggle(main, "Bullet", 142)
+-- Create Bullet Toggle (returns cbFrame so we can place gear next to it)
+local bulletBtn, bulletCheck, bulletCheckFrame = createImageToggle(main, "Bullet", 142)
 
 -- Create Auto Prediction Toggle
 local autoPredictBtn, autoPredictCheck = createImageToggle(main, "Auto Prediction", 182)
 autoPredictCheck.TextTransparency = 0
+
+--==================================================================
+--  SETTINGS GEAR + DROPDOWN (next to Bullet checkbox)
+--==================================================================
+
+-- Gear icon — positioned side-by-side with the Bullet checkbox
+local gearBtn = Instance.new("ImageButton")
+gearBtn.Name = "SettingsGear"
+gearBtn.Size = UDim2.new(0, 20, 0, 20)
+gearBtn.Position = UDim2.new(1, -54, 0.5, -10) -- just left of the checkbox
+gearBtn.BackgroundTransparency = 1
+gearBtn.Image = "rbxassetid://6031280882"
+gearBtn.ImageColor3 = Color3.fromRGB(200, 200, 210)
+gearBtn.AutoButtonColor = false
+gearBtn.ZIndex = 4
+gearBtn.Parent = bulletBtn
+
+-- Make the checkbox not block the gear click
+bulletCheckFrame.ZIndex = 3
+gearBtn.ZIndex = 5
+
+-- Rotate gear on hover (visual feedback)
+gearBtn.MouseEnter:Connect(function()
+	TweenService:Create(gearBtn, TweenInfo.new(0.2), {
+		ImageColor3 = Color3.fromRGB(255, 255, 255)
+	}):Play()
+end)
+gearBtn.MouseLeave:Connect(function()
+	TweenService:Create(gearBtn, TweenInfo.new(0.2), {
+		ImageColor3 = Color3.fromRGB(200, 200, 210)
+	}):Play()
+end)
+
+-- Dropdown container (starts collapsed / invisible)
+local dropdown = Instance.new("Frame")
+dropdown.Name = "SettingsDropdown"
+dropdown.AnchorPoint = Vector2.new(1, 0)
+dropdown.Position = UDim2.new(1, 0, 0, 32) -- below the Bullet button, right-aligned
+dropdown.Size = UDim2.new(1, 0, 0, 0) -- grows on open
+dropdown.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+dropdown.BackgroundTransparency = 0.1
+dropdown.BorderSizePixel = 0
+dropdown.ClipsDescendants = true
+dropdown.Visible = false
+dropdown.ZIndex = 10
+dropdown.Parent = bulletBtn
+
+local dropdownCorner = Instance.new("UICorner", dropdown)
+dropdownCorner.CornerRadius = UDim.new(0, 6)
+
+local dropdownStroke = Instance.new("UIStroke", dropdown)
+dropdownStroke.Color = Color3.fromRGB(200, 200, 205)
+dropdownStroke.Thickness = 1.5
+
+-- Auto-Fire toggle inside the dropdown
+local autoFireBtn = Instance.new("TextButton")
+autoFireBtn.Name = "AutoFireBtn"
+autoFireBtn.Size = UDim2.new(1, -12, 0, 30)
+autoFireBtn.Position = UDim2.new(0, 6, 0, 6)
+autoFireBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+autoFireBtn.BackgroundTransparency = 0.25
+autoFireBtn.BorderSizePixel = 0
+autoFireBtn.Text = ""
+autoFireBtn.AutoButtonColor = false
+autoFireBtn.ZIndex = 11
+autoFireBtn.Parent = dropdown
+
+Instance.new("UICorner", autoFireBtn).CornerRadius = UDim.new(0, 4)
+
+local autoFireStroke = Instance.new("UIStroke", autoFireBtn)
+autoFireStroke.Color = Color3.fromRGB(180, 180, 190)
+autoFireStroke.Thickness = 1
+
+local autoFireLabel = Instance.new("TextLabel")
+autoFireLabel.Size = UDim2.new(1, -40, 1, 0)
+autoFireLabel.Position = UDim2.new(0, 10, 0, 0)
+autoFireLabel.BackgroundTransparency = 1
+autoFireLabel.Text = "Auto Fire"
+autoFireLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+autoFireLabel.Font = Enum.Font.GothamBold
+autoFireLabel.TextSize = 12
+autoFireLabel.TextXAlignment = Enum.TextXAlignment.Left
+autoFireLabel.ZIndex = 12
+autoFireLabel.Parent = autoFireBtn
+
+local autoFireCheckFrame = Instance.new("Frame")
+autoFireCheckFrame.Size = UDim2.new(0, 18, 0, 18)
+autoFireCheckFrame.Position = UDim2.new(1, -24, 0.5, -9)
+autoFireCheckFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+autoFireCheckFrame.BackgroundTransparency = 0.25
+autoFireCheckFrame.BorderSizePixel = 0
+autoFireCheckFrame.ZIndex = 12
+autoFireCheckFrame.Parent = autoFireBtn
+
+Instance.new("UICorner", autoFireCheckFrame).CornerRadius = UDim.new(0, 4)
+
+local autoFireCheckStroke = Instance.new("UIStroke", autoFireCheckFrame)
+autoFireCheckStroke.Color = Color3.fromRGB(200, 200, 205)
+autoFireCheckStroke.Thickness = 1.2
+
+local autoFireCheck = Instance.new("TextLabel")
+autoFireCheck.Size = UDim2.new(1, 0, 1, 0)
+autoFireCheck.BackgroundTransparency = 1
+autoFireCheck.Text = "✓"
+autoFireCheck.TextColor3 = Color3.fromRGB(255, 255, 255)
+autoFireCheck.Font = Enum.Font.GothamBold
+autoFireCheck.TextSize = 13
+autoFireCheck.TextTransparency = 0 -- ON by default
+autoFireCheck.ZIndex = 13
+autoFireCheck.Parent = autoFireCheckFrame
+
+-- Dropdown open/close animation
+local dropdownOpen = false
+
+local function setDropdown(open)
+	dropdownOpen = open
+	local targetSize = open and UDim2.new(1, 0, 0, 42) or UDim2.new(1, 0, 0, 0)
+	local targetTransparency = open and 0.1 or 1
+
+	if open then
+		dropdown.Visible = true
+	end
+
+	local sizeTween = TweenService:Create(dropdown, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+		Size = targetSize
+	})
+	local transTween = TweenService:Create(dropdown, TweenInfo.new(0.25), {
+		BackgroundTransparency = targetTransparency
+	})
+
+	sizeTween:Play()
+	transTween:Play()
+
+	if not open then
+		sizeTween.Completed:Connect(function()
+			if not dropdownOpen then
+				dropdown.Visible = false
+			end
+		end)
+	end
+
+	-- Animate gear rotation on open/close
+	local gearTween = TweenService:Create(gearBtn, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
+		Rotation = open and 90 or 0
+	})
+	gearTween:Play()
+end
+
+gearBtn.MouseButton1Click:Connect(function()
+	setDropdown(not dropdownOpen)
+end)
+
+-- Auto-Fire toggle click
+autoFireBtn.MouseButton1Click:Connect(function()
+	autoFireOn = not autoFireOn
+	if autoFireOn then
+		autoFireCheck.TextTransparency = 0
+		lastAutoFire = 0
+	else
+		autoFireCheck.TextTransparency = 1
+	end
+end)
 
 --==================================================================
 --  DRAGGING
@@ -522,11 +688,7 @@ local function ensureHighlight(char)
 		destroyHighlight()
 		return
 	end
-
-	if highlight and highlight.Parent == char then
-		return
-	end
-
+	if highlight and highlight.Parent == char then return end
 	destroyHighlight()
 
 	highlight = Instance.new("Highlight")
@@ -540,7 +702,6 @@ local function ensureHighlight(char)
 	highlight.Parent              = char
 end
 
--- color helper — RED at 0 HP
 local function colorFor(health, maxHealth)
 	if health <= 0 then
 		return Color3.fromRGB(235, 60, 60)
@@ -565,21 +726,10 @@ local function destroyBillboard()
 end
 
 local function ensureBillboard(char)
-	if not char then
-		destroyBillboard()
-		return
-	end
-
+	if not char then destroyBillboard() return end
 	local head = char:FindFirstChild("Head")
-	if not head then
-		destroyBillboard()
-		return
-	end
-
-	if billboard and billboard.Parent == head then
-		return
-	end
-
+	if not head then destroyBillboard() return end
+	if billboard and billboard.Parent == head then return end
 	destroyBillboard()
 
 	billboard = Instance.new("BillboardGui")
@@ -593,7 +743,6 @@ local function ensureBillboard(char)
 	billboard.Parent         = head
 
 	billboardLabel = Instance.new("TextLabel")
-	billboardLabel.Name                   = "InfoLabel"
 	billboardLabel.Size                   = UDim2.new(1, 0, 1, 0)
 	billboardLabel.BackgroundTransparency = 1
 	billboardLabel.Text                   = "Name: -- | Health: --"
@@ -602,22 +751,13 @@ local function ensureBillboard(char)
 	billboardLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
 	billboardLabel.Font                   = Enum.Font.GothamBold
 	billboardLabel.TextSize               = 14
-	billboardLabel.TextScaled             = false
 	billboardLabel.Parent                 = billboard
 end
 
 local function updateBillboard()
-	if not target then
-		destroyBillboard()
-		return
-	end
-
+	if not target then destroyBillboard() return end
 	local tChar = target.Character
-	if not tChar then
-		destroyBillboard()
-		return
-	end
-
+	if not tChar then destroyBillboard() return end
 	ensureBillboard(tChar)
 	if not billboardLabel then return end
 
@@ -625,14 +765,8 @@ local function updateBillboard()
 	local health = hum and math.floor(hum.Health + 0.5) or 0
 	local maxHealth = hum and hum.MaxHealth or 100
 
-	billboardLabel.Text = string.format(
-		"Name: %s | Health: %d",
-		target.DisplayName,
-		health
-	)
-
-	local c = colorFor(health, maxHealth)
-	billboardLabel.TextColor3 = c
+	billboardLabel.Text = string.format("Name: %s | Health: %d", target.DisplayName, health)
+	billboardLabel.TextColor3 = colorFor(health, maxHealth)
 end
 
 --==================================================================
@@ -649,19 +783,15 @@ local function updateVisuals()
 	local tChar  = target.Character
 	local myChar = LocalPlayer.Character
 
-	----------------------------------------------------- TRACER
 	if tChar and myChar then
 		local myHRP    = myChar:FindFirstChild("HumanoidRootPart")
 		local theirHRP = tChar:FindFirstChild("HumanoidRootPart")
-
 		if myHRP and theirHRP then
 			if not tracerPart then makeTracer() end
-
 			local from = myHRP.Position
 			local to   = theirHRP.Position
 			local dir  = to - from
 			local dist = dir.Magnitude
-
 			if dist > 0.01 then
 				tracerPart.Size         = Vector3.new(0.08, 0.08, dist)
 				tracerPart.CFrame       = CFrame.lookAt(from + dir * 0.5, to)
@@ -674,10 +804,8 @@ local function updateVisuals()
 		if tracerPart then tracerPart.Transparency = 1 end
 	end
 
-	----------------------------------------------------- HIGHLIGHT
 	if tChar then
 		ensureHighlight(tChar)
-
 		local hum = tChar:FindFirstChildOfClass("Humanoid")
 		if highlight and hum then
 			local c = colorFor(hum.Health, hum.MaxHealth)
@@ -688,7 +816,6 @@ local function updateVisuals()
 		destroyHighlight()
 	end
 
-	----------------------------------------------------- BILLBOARD
 	updateBillboard()
 end
 
@@ -698,7 +825,6 @@ end
 local function refreshView()
 	local cam = workspace.CurrentCamera
 	if not cam then return end
-
 	if viewOn and target and target.Character then
 		local hum = target.Character:FindFirstChildOfClass("Humanoid")
 		if hum then
@@ -706,12 +832,9 @@ local function refreshView()
 			return
 		end
 	end
-
 	local myChar = LocalPlayer.Character
 	local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
-	if myHum then
-		cam.CameraSubject = myHum
-	end
+	if myHum then cam.CameraSubject = myHum end
 end
 
 --==================================================================
@@ -722,29 +845,23 @@ local function selectPlayer(plr)
 		targetConn:Disconnect()
 		targetConn = nil
 	end
-
 	destroyHighlight()
 	destroyBillboard()
 	target = plr
 
-	-- Reset Bullet Toggle when target changes
 	bulletOn = false
 	if bulletCheck then bulletCheck.TextTransparency = 1 end
 
 	if plr then
 		nameLabel.Text       = string.format("%s  (@%s)", plr.DisplayName, plr.Name)
 		nameLabel.TextColor3 = Color3.fromRGB(110, 220, 160)
-
 		if plr.Character then
 			ensureHighlight(plr.Character)
 			ensureBillboard(plr.Character)
 		end
-
 		targetConn = plr.CharacterAdded:Connect(function()
 			task.wait(0.25)
-			if viewOn and target == plr then
-				refreshView()
-			end
+			if viewOn and target == plr then refreshView() end
 			if target == plr then
 				destroyHighlight()
 				destroyBillboard()
@@ -755,7 +872,6 @@ local function selectPlayer(plr)
 		nameLabel.Text       = "No player selected"
 		nameLabel.TextColor3 = Color3.fromRGB(170, 170, 190)
 	end
-
 	refreshView()
 	updateVisuals()
 end
@@ -765,11 +881,7 @@ end
 --==================================================================
 local function doSearch()
 	local q = string.lower(searchBox.Text)
-
-	if q == "" then
-		selectPlayer(nil)
-		return
-	end
+	if q == "" then selectPlayer(nil) return end
 
 	local found = nil
 	for _, plr in ipairs(Players:GetPlayers()) do
@@ -781,7 +893,6 @@ local function doSearch()
 			end
 		end
 	end
-
 	if found then
 		selectPlayer(found)
 	else
@@ -796,47 +907,27 @@ searchBox.FocusLost:Connect(doSearch)
 --  TOGGLE LOGIC
 --==================================================================
 
--- Spectate Toggle
 viewBtn.MouseButton1Click:Connect(function()
 	viewOn = not viewOn
-
-	if viewOn then
-		viewCheck.TextTransparency = 0
-	else
-		viewCheck.TextTransparency = 1
-	end
-
+	viewCheck.TextTransparency = viewOn and 0 or 1
 	refreshView()
 end)
 
--- Bullet Toggle (now enables auto-fire)
 bulletBtn.MouseButton1Click:Connect(function()
 	if not target then
 		nameLabel.Text       = "Select a player first"
 		nameLabel.TextColor3 = Color3.fromRGB(235, 180, 90)
 		return
 	end
-
 	bulletOn = not bulletOn
 	bulletTarget = target
-
-	if bulletOn then
-		bulletCheck.TextTransparency = 0
-		lastAutoFire = 0 -- fire immediately on enable
-	else
-		bulletCheck.TextTransparency = 1
-	end
+	bulletCheck.TextTransparency = bulletOn and 0 or 1
+	if bulletOn then lastAutoFire = 0 end
 end)
 
--- Auto Prediction Toggle
 autoPredictBtn.MouseButton1Click:Connect(function()
 	autoPredictOn = not autoPredictOn
-
-	if autoPredictOn then
-		autoPredictCheck.TextTransparency = 0
-	else
-		autoPredictCheck.TextTransparency = 1
-	end
+	autoPredictCheck.TextTransparency = autoPredictOn and 0 or 1
 end)
 
 --==================================================================
@@ -851,9 +942,7 @@ end)
 --  CLEANUP
 --==================================================================
 Players.PlayerRemoving:Connect(function(plr)
-	if target == plr then
-		selectPlayer(nil)
-	end
+	if target == plr then selectPlayer(nil) end
 	if bulletTarget == plr then
 		bulletTarget = nil
 		bulletOn     = false
