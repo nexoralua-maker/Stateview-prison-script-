@@ -7,7 +7,7 @@
 --  - Roblox Notification on script load
 --  - Renamed toggles: Spectate & Bullet
 --  - IMPROVED BULLET: Prediction + Hitbox targeting
---  - ADDED AUTO PREDICTION TOGGLE
+--  - ADDED AUTO PREDICTION TOGGLE (with slide animation)
 --  - BULLET TOGGLE NOW AUTO-FIRES (calls gun:Activate())
 --  - ADDED SETTINGS GEAR + ANIMATED DROPDOWN (Auto-Fire ON by default)
 --==================================================================
@@ -48,7 +48,7 @@ local viewOn       = false
 local bulletTarget = nil
 local bulletOn     = false
 local autoPredictOn = true
-local autoFireOn    = true -- Auto-fire ON by default
+local autoFireOn    = true
 
 local tracerPart   = nil
 local highlight    = nil
@@ -117,7 +117,6 @@ local function fireBullet(tool)
 				ping = pingValue / 1000
 			end
 		end
-
 		local predictionTime = ping + 0.05
 		predictedPos = targetPart.Position + (targetVel * predictionTime)
 	end
@@ -127,9 +126,7 @@ local function fireBullet(tool)
 
 	tool.Parent   = LocalPlayer.Backpack
 	hand.Anchored = false
-
 	tool.Grip     = calcGrip(hand.CFrame, predictedCF)
-
 	hand.Anchored = true
 	tool.Parent   = char
 
@@ -145,7 +142,7 @@ end
 --  AUTO-FIRE LOOP
 --==================================================================
 local function tryAutoFire()
-	if not autoFireOn then return end -- settings dropdown control
+	if not autoFireOn then return end
 	if not bulletOn then return end
 	if not bulletTarget then return end
 	if not bulletTarget.Character then return end
@@ -235,7 +232,6 @@ shadow.SliceCenter            = Rect.new(49, 49, 450, 450)
 shadow.ZIndex                 = 0
 shadow.Parent                 = gui
 
--- Dark translucent background (main frame)
 local main = Instance.new("Frame")
 main.Name             = "Main"
 main.AnchorPoint      = Vector2.new(0.5, 0.5)
@@ -245,7 +241,7 @@ main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 main.BackgroundTransparency = 0.15
 main.BorderSizePixel  = 0
 main.Active           = true
-main.ClipsDescendants = false -- allow dropdown to overflow
+main.ClipsDescendants = false
 main.ZIndex           = 1
 main.Parent           = gui
 
@@ -255,7 +251,6 @@ local mainStroke = Instance.new("UIStroke", main)
 mainStroke.Color     = Color3.fromRGB(60, 60, 65)
 mainStroke.Thickness = 1
 
--- title bar
 local title = Instance.new("TextLabel")
 title.Name             = "Title"
 title.Size             = UDim2.new(1, 0, 0, 28)
@@ -272,11 +267,7 @@ title.Parent           = main
 
 Instance.new("UICorner", title).CornerRadius = UDim.new(0, 10)
 
--- ============================================================
---  Death.Eye title
--- ============================================================
 local titleContainer = Instance.new("Frame")
-titleContainer.Name                   = "TitleContainer"
 titleContainer.Size                   = UDim2.new(1, -12, 1, 0)
 titleContainer.Position               = UDim2.new(0, 12, 0, 0)
 titleContainer.BackgroundTransparency = 1
@@ -327,7 +318,6 @@ eyeLabel.LayoutOrder            = 3
 eyeLabel.ZIndex                 = 3
 eyeLabel.Parent                 = titleContainer
 
--- search
 local searchBox = Instance.new("TextBox")
 searchBox.Name              = "SearchBox"
 searchBox.Size              = UDim2.new(1, -24, 0, 30)
@@ -346,7 +336,6 @@ searchBox.Parent            = main
 
 Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 6)
 
--- name label
 local nameLabel = Instance.new("TextLabel")
 nameLabel.Name                   = "NameLabel"
 nameLabel.Size                   = UDim2.new(1, -24, 0, 24)
@@ -362,7 +351,7 @@ nameLabel.ZIndex                 = 2
 nameLabel.Parent                 = main
 
 --============================================================
---  TOGGLE BUTTONS
+--  TOGGLE BUTTONS (Checkbox style)
 --============================================================
 local function createImageToggle(parent, textStr, yPos)
 	local btn = Instance.new("TextButton")
@@ -430,37 +419,132 @@ local function createImageToggle(parent, textStr, yPos)
 	return btn, checkLabel, cbFrame
 end
 
+--============================================================
+--  SLIDE TOGGLE (iOS-style with animated knob)
+--============================================================
+local function createSlideToggle(parent, textStr, yPos, defaultOn)
+	local btn = Instance.new("TextButton")
+	btn.Name = textStr:gsub("%s+", "") .. "Btn"
+	btn.Size = UDim2.new(1, -24, 0, 32)
+	btn.Position = UDim2.new(0, 12, 0, yPos)
+	btn.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+	btn.BackgroundTransparency = 0.25
+	btn.BorderSizePixel = 0
+	btn.Text = ""
+	btn.AutoButtonColor = false
+	btn.ZIndex = 2
+	btn.Parent = parent
+
+	local btnCorner = Instance.new("UICorner", btn)
+	btnCorner.CornerRadius = UDim.new(0, 6)
+
+	local btnStroke = Instance.new("UIStroke", btn)
+	btnStroke.Color = Color3.fromRGB(200, 200, 205)
+	btnStroke.Thickness = 1.5
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.new(1, -58, 1, 0)
+	label.Position = UDim2.new(0, 12, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = textStr
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.ZIndex = 3
+	label.Parent = btn
+
+	-- Pill-shaped track
+	local track = Instance.new("Frame")
+	track.Name = "Track"
+	track.Size = UDim2.new(0, 40, 0, 20)
+	track.Position = UDim2.new(1, -48, 0.5, -10)
+	track.BackgroundColor3 = Color3.fromRGB(50, 50, 58)
+	track.BorderSizePixel = 0
+	track.ZIndex = 3
+	track.Parent = btn
+
+	Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+
+	local trackStroke = Instance.new("UIStroke", track)
+	trackStroke.Color = Color3.fromRGB(120, 120, 130)
+	trackStroke.Thickness = 1
+
+	-- Animated knob (circle)
+	local knob = Instance.new("Frame")
+	knob.Name = "Knob"
+	knob.Size = UDim2.new(0, 14, 0, 14)
+	knob.Position = UDim2.new(0, 3, 0.5, -7) -- OFF position (left)
+	knob.BackgroundColor3 = Color3.fromRGB(220, 220, 230)
+	knob.BorderSizePixel = 0
+	knob.ZIndex = 4
+	knob.Parent = track
+
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+	local knobStroke = Instance.new("UIStroke", knob)
+	knobStroke.Color = Color3.fromRGB(255, 255, 255)
+	knobStroke.Thickness = 1
+	knobStroke.Transparency = 0.5
+
+	-- Set initial state
+	local isOn = defaultOn and true or false
+	if isOn then
+		knob.Position = UDim2.new(1, -17, 0.5, -7) -- ON position (right)
+		track.BackgroundColor3 = Color3.fromRGB(60, 140, 90)
+		trackStroke.Color = Color3.fromRGB(90, 200, 130)
+	end
+
+	-- Animate toggle
+	local function setState(state, instant)
+		isOn = state
+		local targetPos = state and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
+		local targetTrackColor = state and Color3.fromRGB(60, 140, 90) or Color3.fromRGB(50, 50, 58)
+		local targetStrokeColor = state and Color3.fromRGB(90, 200, 130) or Color3.fromRGB(120, 120, 130)
+
+		if instant then
+			knob.Position = targetPos
+			track.BackgroundColor3 = targetTrackColor
+			trackStroke.Color = targetStrokeColor
+		else
+			local info = TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+			TweenService:Create(knob, info, { Position = targetPos }):Play()
+			TweenService:Create(track, info, { BackgroundColor3 = targetTrackColor }):Play()
+			TweenService:Create(trackStroke, info, { Color = targetStrokeColor }):Play()
+		end
+	end
+
+	return btn, {
+		isOn = function() return isOn end,
+		setState = setState,
+	}
+end
+
 -- Create Spectate Toggle
 local viewBtn, viewCheck = createImageToggle(main, "Spectate", 102)
 
--- Create Bullet Toggle (returns cbFrame so we can place gear next to it)
+-- Create Bullet Toggle
 local bulletBtn, bulletCheck, bulletCheckFrame = createImageToggle(main, "Bullet", 142)
 
--- Create Auto Prediction Toggle
-local autoPredictBtn, autoPredictCheck = createImageToggle(main, "Auto Prediction", 182)
-autoPredictCheck.TextTransparency = 0
+-- Create Auto Prediction Toggle (SLIDE STYLE)
+local autoPredictBtn, autoPredictToggle = createSlideToggle(main, "Auto Prediction", 182, true)
 
 --==================================================================
---  SETTINGS GEAR + DROPDOWN (next to Bullet checkbox)
+--  SETTINGS GEAR + DROPDOWN
 --==================================================================
-
--- Gear icon — positioned side-by-side with the Bullet checkbox
 local gearBtn = Instance.new("ImageButton")
 gearBtn.Name = "SettingsGear"
 gearBtn.Size = UDim2.new(0, 20, 0, 20)
-gearBtn.Position = UDim2.new(1, -54, 0.5, -10) -- just left of the checkbox
+gearBtn.Position = UDim2.new(1, -54, 0.5, -10)
 gearBtn.BackgroundTransparency = 1
 gearBtn.Image = "rbxassetid://6031280882"
 gearBtn.ImageColor3 = Color3.fromRGB(200, 200, 210)
 gearBtn.AutoButtonColor = false
-gearBtn.ZIndex = 4
+gearBtn.ZIndex = 5
 gearBtn.Parent = bulletBtn
 
--- Make the checkbox not block the gear click
-bulletCheckFrame.ZIndex = 3
-gearBtn.ZIndex = 5
-
--- Rotate gear on hover (visual feedback)
 gearBtn.MouseEnter:Connect(function()
 	TweenService:Create(gearBtn, TweenInfo.new(0.2), {
 		ImageColor3 = Color3.fromRGB(255, 255, 255)
@@ -472,12 +556,11 @@ gearBtn.MouseLeave:Connect(function()
 	}):Play()
 end)
 
--- Dropdown container (starts collapsed / invisible)
 local dropdown = Instance.new("Frame")
 dropdown.Name = "SettingsDropdown"
 dropdown.AnchorPoint = Vector2.new(1, 0)
-dropdown.Position = UDim2.new(1, 0, 0, 32) -- below the Bullet button, right-aligned
-dropdown.Size = UDim2.new(1, 0, 0, 0) -- grows on open
+dropdown.Position = UDim2.new(1, 0, 0, 32)
+dropdown.Size = UDim2.new(1, 0, 0, 0)
 dropdown.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 dropdown.BackgroundTransparency = 0.1
 dropdown.BorderSizePixel = 0
@@ -486,14 +569,12 @@ dropdown.Visible = false
 dropdown.ZIndex = 10
 dropdown.Parent = bulletBtn
 
-local dropdownCorner = Instance.new("UICorner", dropdown)
-dropdownCorner.CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", dropdown).CornerRadius = UDim.new(0, 6)
 
 local dropdownStroke = Instance.new("UIStroke", dropdown)
 dropdownStroke.Color = Color3.fromRGB(200, 200, 205)
 dropdownStroke.Thickness = 1.5
 
--- Auto-Fire toggle inside the dropdown
 local autoFireBtn = Instance.new("TextButton")
 autoFireBtn.Name = "AutoFireBtn"
 autoFireBtn.Size = UDim2.new(1, -12, 0, 30)
@@ -546,11 +627,10 @@ autoFireCheck.Text = "✓"
 autoFireCheck.TextColor3 = Color3.fromRGB(255, 255, 255)
 autoFireCheck.Font = Enum.Font.GothamBold
 autoFireCheck.TextSize = 13
-autoFireCheck.TextTransparency = 0 -- ON by default
+autoFireCheck.TextTransparency = 0
 autoFireCheck.ZIndex = 13
 autoFireCheck.Parent = autoFireCheckFrame
 
--- Dropdown open/close animation
 local dropdownOpen = false
 
 local function setDropdown(open)
@@ -558,9 +638,7 @@ local function setDropdown(open)
 	local targetSize = open and UDim2.new(1, 0, 0, 42) or UDim2.new(1, 0, 0, 0)
 	local targetTransparency = open and 0.1 or 1
 
-	if open then
-		dropdown.Visible = true
-	end
+	if open then dropdown.Visible = true end
 
 	local sizeTween = TweenService:Create(dropdown, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 		Size = targetSize
@@ -574,32 +652,23 @@ local function setDropdown(open)
 
 	if not open then
 		sizeTween.Completed:Connect(function()
-			if not dropdownOpen then
-				dropdown.Visible = false
-			end
+			if not dropdownOpen then dropdown.Visible = false end
 		end)
 	end
 
-	-- Animate gear rotation on open/close
-	local gearTween = TweenService:Create(gearBtn, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
+	TweenService:Create(gearBtn, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
 		Rotation = open and 90 or 0
-	})
-	gearTween:Play()
+	}):Play()
 end
 
 gearBtn.MouseButton1Click:Connect(function()
 	setDropdown(not dropdownOpen)
 end)
 
--- Auto-Fire toggle click
 autoFireBtn.MouseButton1Click:Connect(function()
 	autoFireOn = not autoFireOn
-	if autoFireOn then
-		autoFireCheck.TextTransparency = 0
-		lastAutoFire = 0
-	else
-		autoFireCheck.TextTransparency = 1
-	end
+	autoFireCheck.TextTransparency = autoFireOn and 0 or 1
+	if autoFireOn then lastAutoFire = 0 end
 end)
 
 --==================================================================
@@ -649,10 +718,7 @@ end)
 --  TRACER
 --==================================================================
 local function destroyTracer()
-	if tracerPart then
-		tracerPart:Destroy()
-		tracerPart = nil
-	end
+	if tracerPart then tracerPart:Destroy() tracerPart = nil end
 end
 
 local function makeTracer()
@@ -677,17 +743,11 @@ end
 --  HIGHLIGHT
 --==================================================================
 local function destroyHighlight()
-	if highlight then
-		highlight:Destroy()
-		highlight = nil
-	end
+	if highlight then highlight:Destroy() highlight = nil end
 end
 
 local function ensureHighlight(char)
-	if not char then
-		destroyHighlight()
-		return
-	end
+	if not char then destroyHighlight() return end
 	if highlight and highlight.Parent == char then return end
 	destroyHighlight()
 
@@ -787,8 +847,7 @@ local function updateVisuals()
 		local myHRP    = myChar:FindFirstChild("HumanoidRootPart")
 		local theirHRP = tChar:FindFirstChild("HumanoidRootPart")
 		if myHRP and theirHRP then
-			if not tracerPart then makeTracer() end
-			local from = myHRP.Position
+			if not tracerPart then makeTracer() end			local from = myHRP.Position
 			local to   = theirHRP.Position
 			local dir  = to - from
 			local dist = dir.Magnitude
@@ -925,9 +984,10 @@ bulletBtn.MouseButton1Click:Connect(function()
 	if bulletOn then lastAutoFire = 0 end
 end)
 
+-- Auto Prediction - SLIDE toggle
 autoPredictBtn.MouseButton1Click:Connect(function()
 	autoPredictOn = not autoPredictOn
-	autoPredictCheck.TextTransparency = autoPredictOn and 0 or 1
+	autoPredictToggle.setState(autoPredictOn, false)
 end)
 
 --==================================================================
