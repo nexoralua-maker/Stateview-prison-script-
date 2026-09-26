@@ -5207,6 +5207,58 @@ gpAnimBtn.MouseButton1Click:Connect(function()
         loadstring(game:HttpGet("https://pastebin.com/raw/uByWcL9W", true))()
     end)
 end)
+
+-- ---- Chatlogs toggle button ----
+local chatlogsRow = Instance.new("Frame")
+chatlogsRow.Size = UDim2.new(1, 0, 0, 46)
+chatlogsRow.BackgroundColor3 = Color3.fromRGB(255, 175, 40)
+chatlogsRow.BackgroundTransparency = 0.35
+chatlogsRow.BorderSizePixel = 0
+chatlogsRow.LayoutOrder = 2
+chatlogsRow.Parent = funHolder
+
+local clCorner = Instance.new("UICorner")
+clCorner.CornerRadius = UDim.new(0, 8)
+clCorner.Parent = chatlogsRow
+
+local chatlogsLabel = Instance.new("TextLabel")
+chatlogsLabel.Size = UDim2.new(1, -110, 1, 0)
+chatlogsLabel.Position = UDim2.new(0, 12, 0, 0)
+chatlogsLabel.BackgroundTransparency = 1
+chatlogsLabel.Text = "Chatlogs"
+chatlogsLabel.TextColor3 = Color3.fromRGB(40, 25, 5)
+chatlogsLabel.Font = Enum.Font.GothamSemibold
+chatlogsLabel.TextSize = 15
+chatlogsLabel.TextXAlignment = Enum.TextXAlignment.Left
+chatlogsLabel.Parent = chatlogsRow
+
+local chatlogsToggle = Instance.new("TextButton")
+chatlogsToggle.Size = UDim2.new(0, 70, 0, 30)
+chatlogsToggle.Position = UDim2.new(1, -82, 0.5, -15)
+chatlogsToggle.BackgroundColor3 = Color3.fromRGB(80, 60, 20)
+chatlogsToggle.BorderSizePixel = 0
+chatlogsToggle.Text = "OFF"
+chatlogsToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+chatlogsToggle.Font = Enum.Font.GothamBold
+chatlogsToggle.TextSize = 13
+chatlogsToggle.AutoButtonColor = false
+chatlogsToggle.Parent = chatlogsRow
+
+local cltCorner = Instance.new("UICorner")
+cltCorner.CornerRadius = UDim.new(1, 0)
+cltCorner.Parent = chatlogsToggle
+
+local chatlogsEnabled = false
+chatlogsToggle.MouseButton1Click:Connect(function()
+    chatlogsEnabled = not chatlogsEnabled
+    chatlogsToggle.BackgroundColor3 = chatlogsEnabled and Color3.fromRGB(80, 220, 120) or Color3.fromRGB(80, 60, 20)
+    chatlogsToggle.Text = chatlogsEnabled and "ON" or "OFF"
+
+    pcall(function()
+        local TextChatService = game:GetService("TextChatService")
+        TextChatService.ChatWindowConfiguration.Enabled = chatlogsEnabled
+    end)
+end)
  
 -- ========== TAB SWITCHING ==========
 local function switchTab(tabName)
