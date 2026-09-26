@@ -7,9 +7,9 @@
 --  - Roblox Notification on script load
 --  - Renamed toggles: Spectate & Bullet
 --  - IMPROVED BULLET: Prediction + Hitbox targeting
---  - ADDED AUTO PREDICTION TOGGLE (with slide animation)
---  - BULLET TOGGLE NOW AUTO-FIRES (calls gun:Activate())
---  - SETTINGS GEAR pushes Auto Prediction DOWN to reveal Auto Fire toggle
+--  - Auto Prediction uses a SLIDE toggle (iOS style)
+--  - BULLET TOGGLE AUTO-FIRES (calls gun:Activate())
+--  - Settings gear expands the WHOLE GUI to reveal Auto Fire row
 --==================================================================
 
 local Players          = game:GetService("Players")
@@ -26,16 +26,13 @@ local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 --==================================================================
 task.spawn(function()
 	task.wait(1)
-	local success, err = pcall(function()
+	pcall(function()
 		StarterGui:SetCore("SendNotification", {
 			Title = "Death.Eye";
 			Text = "On top";
 			Duration = 5;
 		})
 	end)
-	if not success then
-		warn("Could not send Roblox notification: " .. tostring(err))
-	end
 end)
 
 --==================================================================
@@ -214,15 +211,17 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent         = PlayerGui
 
 --============================================================
---  SHADOW
+--  SHADOW + MAIN FRAME
 --============================================================
 local SHADOW_PADDING = 24
+local GUI_CLOSED_HEIGHT = 230
+local GUI_OPEN_HEIGHT   = 270
 
 local shadow = Instance.new("ImageLabel")
 shadow.Name                   = "Shadow"
 shadow.AnchorPoint            = Vector2.new(0.5, 0.5)
 shadow.Position               = UDim2.new(0.5, 0, 0.5, 6)
-shadow.Size                   = UDim2.new(0, 260 + SHADOW_PADDING * 2, 0, 230 + SHADOW_PADDING * 2)
+shadow.Size                   = UDim2.new(0, 260 + SHADOW_PADDING * 2, 0, GUI_CLOSED_HEIGHT + SHADOW_PADDING * 2)
 shadow.BackgroundTransparency = 1
 shadow.Image                  = "rbxassetid://6015897843"
 shadow.ImageColor3            = Color3.fromRGB(0, 0, 0)
@@ -236,7 +235,7 @@ local main = Instance.new("Frame")
 main.Name             = "Main"
 main.AnchorPoint      = Vector2.new(0.5, 0.5)
 main.Position         = UDim2.new(0.5, 0, 0.5, 0)
-main.Size             = UDim2.new(0, 260, 0, 230)
+main.Size             = UDim2.new(0, 260, 0, GUI_CLOSED_HEIGHT)
 main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 main.BackgroundTransparency = 0.15
 main.BorderSizePixel  = 0
@@ -351,7 +350,7 @@ nameLabel.ZIndex                 = 2
 nameLabel.Parent                 = main
 
 --============================================================
---  TOGGLE BUTTONS (Checkbox style)
+--  TOGGLE FACTORY (checkbox style with tiny box)
 --============================================================
 local function createImageToggle(parent, textStr, yPos)
 	local btn = Instance.new("TextButton")
@@ -419,126 +418,78 @@ local function createImageToggle(parent, textStr, yPos)
 	return btn, checkLabel, cbFrame
 end
 
---============================================================
---  SLIDE TOGGLE (iOS-style with animated knob)
---============================================================
-local function createSlideToggle(parent, textStr, yPos, defaultOn)
-	local btn = Instance.new("TextButton")
-	btn.Name = textStr:gsub("%s+", "") .. "Btn"
-	btn.Size = UDim2.new(1, -24, 0, 32)
-	btn.Position = UDim2.new(0, 12, 0, yPos)
-	btn.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
-	btn.BackgroundTransparency = 0.25
-	btn.BorderSizePixel = 0
-	btn.Text = ""
-	btn.AutoButtonColor = false
-	btn.ZIndex = 2
-	btn.Parent = parent
-
-	local btnCorner = Instance.new("UICorner", btn)
-	btnCorner.CornerRadius = UDim.new(0, 6)
-
-	local btnStroke = Instance.new("UIStroke", btn)
-	btnStroke.Color = Color3.fromRGB(200, 200, 205)
-	btnStroke.Thickness = 1.5
-
-	local label = Instance.new("TextLabel")
-	label.Name = "Label"
-	label.Size = UDim2.new(1, -58, 1, 0)
-	label.Position = UDim2.new(0, 12, 0, 0)
-	label.BackgroundTransparency = 1
-	label.Text = textStr
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 13
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.TextTruncate = Enum.TextTruncate.AtEnd
-	label.ZIndex = 3
-	label.Parent = btn
-
-	local track = Instance.new("Frame")
-	track.Name = "Track"
-	track.Size = UDim2.new(0, 40, 0, 20)
-	track.Position = UDim2.new(1, -48, 0.5, -10)
-	track.BackgroundColor3 = Color3.fromRGB(50, 50, 58)
-	track.BorderSizePixel = 0
-	track.ZIndex = 3
-	track.Parent = btn
-
-	Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-
-	local trackStroke = Instance.new("UIStroke", track)
-	trackStroke.Color = Color3.fromRGB(120, 120, 130)
-	trackStroke.Thickness = 1
-
-	local knob = Instance.new("Frame")
-	knob.Name = "Knob"
-	knob.Size = UDim2.new(0, 14, 0, 14)
-	knob.Position = UDim2.new(0, 3, 0.5, -7)
-	knob.BackgroundColor3 = Color3.fromRGB(220, 220, 230)
-	knob.BorderSizePixel = 0
-	knob.ZIndex = 4
-	knob.Parent = track
-
-	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-
-	local knobStroke = Instance.new("UIStroke", knob)
-	knobStroke.Color = Color3.fromRGB(255, 255, 255)
-	knobStroke.Thickness = 1
-	knobStroke.Transparency = 0.5
-
-	local isOn = defaultOn and true or false
-	if isOn then
-		knob.Position = UDim2.new(1, -17, 0.5, -7)
-		track.BackgroundColor3 = Color3.fromRGB(60, 140, 90)
-		trackStroke.Color = Color3.fromRGB(90, 200, 130)
-	end
-
-	local function setState(state, instant)
-		isOn = state
-		local targetPos = state and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
-		local targetTrackColor = state and Color3.fromRGB(60, 140, 90) or Color3.fromRGB(50, 50, 58)
-		local targetStrokeColor = state and Color3.fromRGB(90, 200, 130) or Color3.fromRGB(120, 120, 130)
-
-		if instant then
-			knob.Position = targetPos
-			track.BackgroundColor3 = targetTrackColor
-			trackStroke.Color = targetStrokeColor
-		else
-			local info = TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-			TweenService:Create(knob, info, { Position = targetPos }):Play()
-			TweenService:Create(track, info, { BackgroundColor3 = targetTrackColor }):Play()
-			TweenService:Create(trackStroke, info, { Color = targetStrokeColor }):Play()
-		end
-	end
-
-	return btn, {
-		isOn = function() return isOn end,
-		setState = setState,
-	}
-end
-
--- Create Spectate Toggle
+-- Create Spectate
 local viewBtn, viewCheck = createImageToggle(main, "Spectate", 102)
 
--- Create Bullet Toggle
+-- Create Bullet (returns cbFrame for gear placement)
 local bulletBtn, bulletCheck, bulletCheckFrame = createImageToggle(main, "Bullet", 142)
 
--- Create Auto Prediction Toggle (SLIDE STYLE)
-local autoPredictBtn, autoPredictToggle = createSlideToggle(main, "Auto Prediction", 182, true)
+-- Create Auto Prediction (checkbox style — we'll overlay a slide track)
+local autoPredictBtn, autoPredictCheck, autoPredictCheckFrame = createImageToggle(main, "Auto Prediction", 182)
+
+-- Hide the checkmark; add a slide track over the tiny box
+autoPredictCheck.TextTransparency = 1
+
+local apTrack = Instance.new("Frame")
+apTrack.Name = "SlideTrack"
+apTrack.Size = UDim2.new(0, 22, 0, 22)
+apTrack.Position = UDim2.new(1, -28, 0.5, -11)
+apTrack.BackgroundColor3 = Color3.fromRGB(60, 140, 90)
+apTrack.BorderSizePixel = 0
+apTrack.ZIndex = 5
+apTrack.Parent = autoPredictBtn
+
+Instance.new("UICorner", apTrack).CornerRadius = UDim.new(1, 0)
+
+local apTrackStroke = Instance.new("UIStroke", apTrack)
+apTrackStroke.Color = Color3.fromRGB(90, 200, 130)
+apTrackStroke.Thickness = 1.5
+
+local apKnob = Instance.new("Frame")
+apKnob.Name = "Knob"
+apKnob.Size = UDim2.new(0, 16, 0, 16)
+apKnob.Position = UDim2.new(1, -19, 0.5, -8)
+apKnob.BackgroundColor3 = Color3.fromRGB(240, 240, 245)
+apKnob.BorderSizePixel = 0
+apKnob.ZIndex = 6
+apKnob.Parent = apTrack
+
+Instance.new("UICorner", apKnob).CornerRadius = UDim.new(1, 0)
+
+local apKnobStroke = Instance.new("UIStroke", apKnob)
+apKnobStroke.Color = Color3.fromRGB(255, 255, 255)
+apKnobStroke.Thickness = 1
+apKnobStroke.Transparency = 0.4
+
+local function setApSlide(state, instant)
+	autoPredictOn = state
+	local targetPos = state and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+	local targetTrack = state and Color3.fromRGB(60, 140, 90) or Color3.fromRGB(50, 50, 58)
+	local targetStroke = state and Color3.fromRGB(90, 200, 130) or Color3.fromRGB(120, 120, 130)
+	local info = TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+
+	if instant then
+		apKnob.Position = targetPos
+		apTrack.BackgroundColor3 = targetTrack
+		apTrackStroke.Color = targetStroke
+	else
+		TweenService:Create(apKnob, info, { Position = targetPos }):Play()
+		TweenService:Create(apTrack, info, { BackgroundColor3 = targetTrack }):Play()
+		TweenService:Create(apTrackStroke, info, { Color = targetStroke }):Play()
+	end
+end
 
 --============================================================
---  AUTO FIRE TOGGLE (hidden initially, appears on dropdown open)
+--  AUTO FIRE ROW (hidden initially, revealed by gear)
 --============================================================
 local autoFireBtn, autoFireCheck, autoFireCheckFrame = createImageToggle(main, "Auto Fire", 222)
-autoFireCheck.TextTransparency = 0 -- ON by default
-autoFireBtn.BackgroundTransparency = 1 -- hidden look initially
+autoFireCheck.TextTransparency = 0
 autoFireBtn.Visible = false
--- Hide the checkbox too since the whole button is invisible
+autoFireBtn.BackgroundTransparency = 1
 autoFireCheckFrame.Visible = false
 
 --============================================================
---  SETTINGS GEAR (next to Bullet checkbox)
+--  SETTINGS GEAR
 --============================================================
 local gearBtn = Instance.new("ImageButton")
 gearBtn.Name = "SettingsGear"
@@ -563,42 +514,48 @@ gearBtn.MouseLeave:Connect(function()
 end)
 
 --==================================================================
---  DROPDOWN / ACCORDION LOGIC
+--  ACCORDION: GUI GROWS + AUTO PREDICTION SLIDES DOWN
 --==================================================================
 local dropdownOpen = false
 
--- Positions
-local AUTO_PREDICT_UP_POS   = UDim2.new(0, 12, 0, 182)   -- normal position
-local AUTO_PREDICT_DOWN_POS = UDim2.new(0, 12, 0, 222)   -- pushed down (reveals Auto Fire)
-local AUTO_FIRE_Y = 182                                   -- Auto Fire appears at the old Auto Prediction spot
+local AP_UP_Y    = 182
+local AP_DOWN_Y  = 222
+local AF_Y       = 182
 
 local function setDropdown(open)
 	dropdownOpen = open
-
-	local targetAutoPredictPos = open and AUTO_PREDICT_DOWN_POS or AUTO_PREDICT_UP_POS
-
 	local info = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-	-- Slide Auto Prediction down/up
-	TweenService:Create(autoPredictBtn, info, { Position = targetAutoPredictPos }):Play()
+	-- 1) Grow/shrink the main GUI (this is the "GUI moves" effect)
+	local targetHeight = open and GUI_OPEN_HEIGHT or GUI_CLOSED_HEIGHT
+	TweenService:Create(main, info, {
+		Size = UDim2.new(0, 260, 0, targetHeight)
+	}):Play()
+
+	-- 2) Grow/shrink the shadow to match
+	TweenService:Create(shadow, info, {
+		Size = UDim2.new(0, 260 + SHADOW_PADDING * 2, 0, targetHeight + SHADOW_PADDING * 2)
+	}):Play()
+
+	-- 3) Slide Auto Prediction down/up
+	TweenService:Create(autoPredictBtn, info, {
+		Position = UDim2.new(0, 12, 0, open and AP_DOWN_Y or AP_UP_Y)
+	}):Play()
 
 	if open then
-		-- Reveal Auto Fire at position 182
-		autoFireBtn.Position = UDim2.new(0, 12, 0, AUTO_FIRE_Y)
+		-- Show Auto Fire at Y 182
+		autoFireBtn.Position = UDim2.new(0, 12, 0, AF_Y)
 		autoFireBtn.Visible = true
-		autoFireBtn.BackgroundTransparency = 0.25
 		autoFireCheckFrame.Visible = true
-		-- fade in
 		autoFireBtn.BackgroundTransparency = 1
 		autoFireCheckFrame.BackgroundTransparency = 1
 		TweenService:Create(autoFireBtn, TweenInfo.new(0.25), { BackgroundTransparency = 0.25 }):Play()
 		TweenService:Create(autoFireCheckFrame, TweenInfo.new(0.25), { BackgroundTransparency = 0.25 }):Play()
 	else
-		-- Fade out then hide Auto Fire
-		local fadeTween = TweenService:Create(autoFireBtn, TweenInfo.new(0.2), { BackgroundTransparency = 1 })
+		local fade = TweenService:Create(autoFireBtn, TweenInfo.new(0.2), { BackgroundTransparency = 1 })
 		TweenService:Create(autoFireCheckFrame, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
-		fadeTween:Play()
-		fadeTween.Completed:Connect(function()
+		fade:Play()
+		fade.Completed:Connect(function()
 			if not dropdownOpen then
 				autoFireBtn.Visible = false
 				autoFireCheckFrame.Visible = false
@@ -606,7 +563,7 @@ local function setDropdown(open)
 		end)
 	end
 
-	-- Rotate gear
+	-- 4) Rotate gear
 	TweenService:Create(gearBtn, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
 		Rotation = open and 90 or 0
 	}):Play()
@@ -616,7 +573,6 @@ gearBtn.MouseButton1Click:Connect(function()
 	setDropdown(not dropdownOpen)
 end)
 
--- Auto Fire toggle click
 autoFireBtn.MouseButton1Click:Connect(function()
 	autoFireOn = not autoFireOn
 	autoFireCheck.TextTransparency = autoFireOn and 0 or 1
@@ -937,10 +893,8 @@ bulletBtn.MouseButton1Click:Connect(function()
 	if bulletOn then lastAutoFire = 0 end
 end)
 
--- Auto Prediction - SLIDE toggle
 autoPredictBtn.MouseButton1Click:Connect(function()
-	autoPredictOn = not autoPredictOn
-	autoPredictToggle.setState(autoPredictOn, false)
+	setApSlide(not autoPredictOn, false)
 end)
 
 --==================================================================
