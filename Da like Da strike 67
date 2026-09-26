@@ -2491,7 +2491,7 @@ local function buildCombatTab(frame)
     scroll.Parent = frame
 
     local holder = Instance.new("Frame")
-    holder.Size = UDim2.new(1, 0, 0, 700)
+    holder.Size = UDim2.new(1, 0, 0, 400)
     holder.BackgroundTransparency = 1
     holder.Parent = scroll
 
@@ -2548,7 +2548,7 @@ local function buildCombatTab(frame)
     end
 
     local function getClosestPlayer()
-    -- â­ If we already have a valid target, keep them â€” even if they
+    -- Ã¢Â­Â If we already have a valid target, keep them Ã¢â‚¬â€ even if they
     -- walk behind a wall. WallCheck only filters NEW targets.
     if saState.target and hasChar(saState.target) then
         return saState.target
@@ -3012,7 +3012,7 @@ end)
     end)
 
     -- ============================================================
--- KILL AURA (normal button — loads external script)
+-- KILL AURA (normal button â€” loads external script)
 -- ============================================================
 local killAuraBtn = Instance.new("TextButton")
 killAuraBtn.Size = UDim2.new(1, -10, 0, 46)
@@ -3041,45 +3041,9 @@ killAuraBtn.MouseButton1Click:Connect(function()
     -- Load external Kill Aura script
     local ok, err = pcall(function()
         loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Stateview-prison-script-/main/KILL%20AURA"))()
-    end
+    end)
     if not ok then
         warn("[Kill Aura] Failed to load: " .. tostring(err))
-    end
-end)
-
--- ============================================================
--- C SYNC (normal button — loads external script)
--- ============================================================
-local cSyncBtn = Instance.new("TextButton")
-cSyncBtn.Size = UDim2.new(1, -10, 0, 46)
-cSyncBtn.BackgroundColor3 = Color3.fromRGB(255, 140, 40)
-cSyncBtn.BorderSizePixel = 0
-cSyncBtn.Text = "C sync"
-cSyncBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-cSyncBtn.Font = Enum.Font.GothamBold
-cSyncBtn.TextSize = 15
-cSyncBtn.AutoButtonColor = false
-cSyncBtn.LayoutOrder = 11
-cSyncBtn.Parent = holder
-
-local csCorner = Instance.new("UICorner")
-csCorner.CornerRadius = UDim.new(0, 8)
-csCorner.Parent = cSyncBtn
-
-cSyncBtn.MouseButton1Click:Connect(function()
-    -- Flash feedback
-    cSyncBtn.BackgroundColor3 = Color3.fromRGB(255, 220, 100)
-    task.wait(0.15)
-    TweenService:Create(cSyncBtn, TweenInfo.new(0.3), {
-        BackgroundColor3 = Color3.fromRGB(255, 140, 40)
-    }):Play()
-
-    -- Load external C Link script
-    local ok, err = pcall(function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Stateview-prison-script-/main/C%20Link"))()
-    end
-    if not ok then
-        warn("[C sync] Failed to load: " .. tostring(err))
     end
 end)
 
@@ -3107,8 +3071,8 @@ combatFrame.Visible = false
 combatFrame.Parent = content
 contentFrames["Combat"] = combatFrame
 
-local cleanupCombat = buildCombatTab(combatFrame)
-
+local cleanupCombat = buildCombatTab(combatFrame)                       
+    
 -- ============================================================
 -- FLY MODULE (Universal Fly v4 â€” camera-pitch aware)
 -- ============================================================
