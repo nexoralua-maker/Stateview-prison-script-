@@ -1,18 +1,9 @@
 --==================================================================
 --  Death.Eye  -  View / Bullet GUI + Tracer + Health Highlight
---  - Draggable frame (fixed)
---  - TextBox  : partial player name search
---  - Label    : display name + @username
---  - Toggle   : View
---  - Button   : Bullet  (HEADSHOT auto-aim on viewed player)
---  - Tracer   : line from you -> target player (WHITE)
---  - Highlight: full-body outline on target player
---               green  = full / high health
---               yellow = medium health (21-50%)
---               red    = 1 - 20 health
---  - Billboard: floating text above target head
---               "Name: DisplayName | Health: XX"
---               text color MATCHES the highlight color
+--  - Draggable frame (normal behavior)
+--  - GUI has a REAL soft shadow (ImageLabel-based)
+--  - Red at 0 HP
+--  - Bullet uses Mouse.Hit metatable hook (aims at HEAD)
 --==================================================================
 
 local Players          = game:GetService("Players")
@@ -20,6 +11,7 @@ local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
+local Mouse       = LocalPlayer:GetMouse()
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 
 --==================================================================
@@ -39,19 +31,26 @@ local billboardLabel = nil
 local renderConn   = nil
 
 --==================================================================
---  BULLET CORE  (HEADSHOT AIM)
+--  BULLET CORE  (Mouse.Hit metatable hook, aims at HEAD)
 --==================================================================
--- Grip solver: computes the tool grip needed so the bullet exits
--- directly toward the target's HEAD position.
-local function calcGrip(handCF, targetPos)
-	-- Standard gun grip orientation: barrel points forward from hand
-	local baseGrip = CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)
+local Part = "Head"   -- aim part
 
-	-- Point the hand's look vector at the target position
-	local aimCF = CFrame.lookAt(handCF.Position, targetPos)
+local mt = getrawmetatable(game)
+setreadonly(mt, false)
+local old = mt.__index
+mt.__index = newcclosure(function(self, key)
+	if not checkcaller() and self == Mouse then
+		if key == "Hit" and bulletTarget and bulletTarget.Character then
+			local p = bulletTarget.Character:FindFirstChild(Part)
+			if p then return CFrame.new(p.Position) end
+		end
+	end
+	return old(self, key)
+end)
 
-	-- Combine: orientation from aim, offset from base grip
-	return (aimCF * baseGrip:ToObjectSpace(CFrame.new())):Inverse()
+local function offset(o, t)
+	local ao = o * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)
+	return ao:ToObjectSpace(t):inverse()
 end
 
 local function fireBullet(tool)
@@ -61,34 +60,21 @@ local function fireBullet(tool)
 	local tChar = bulletTarget.Character
 	if not char or not tChar then return end
 
-	local hand = char:FindFirstChild("RightHand") or char:FindFirstChild("LeftHand")
-	if not hand then return end
+	local tp = tChar:FindFirstChild(Part)
+	local rh = char:FindFirstChild("RightHand")
+	if not tp or not rh then return end
 
-	-- AIM AT HEAD (overpower accuracy)
-	local head = tChar:FindFirstChild("Head")
-	local hrp  = tChar:FindFirstChild("HumanoidRootPart")
-	local aimPart = head or hrp
-	if not aimPart then return end
+	local g = tool.Grip
 
-	local oldGrip = tool.Grip
-
-	tool.Parent   = LocalPlayer.Backpack
-	hand.Anchored = false
-
-	-- Aim directly at head position, lock hand, fire
-	local targetPos = aimPart.Position
-	tool.Grip       = calcGrip(hand.CFrame, targetPos)
-	hand.Anchored   = true
-	hand.CFrame     = CFrame.lookAt(hand.Position, targetPos)
-	tool.Parent     = char
+	tool.Parent = LocalPlayer.Backpack
+	tool.Grip   = offset(rh.CFrame, tp.CFrame)
+	tool.Parent = char
 
 	RunService.RenderStepped:Wait()
-	RunService.RenderStepped:Wait() -- extra frame for maximum sync
 
-	tool.Parent   = LocalPlayer.Backpack
-	hand.Anchored = false
-	tool.Grip     = oldGrip
-	tool.Parent   = char
+	tool.Parent = LocalPlayer.Backpack
+	tool.Grip   = g
+	tool.Parent = char
 end
 
 --==================================================================
@@ -136,15 +122,36 @@ gui.IgnoreGuiInset = true
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent         = PlayerGui
 
+--============================================================
+--  SHADOW  (ImageLabel — real soft drop shadow)
+--============================================================
+local SHADOW_PADDING = 24
+
+local shadow = Instance.new("ImageLabel")
+shadow.Name                   = "Shadow"
+shadow.AnchorPoint            = Vector2.new(0.5, 0.5)
+shadow.Position               = UDim2.new(0.5, 0, 0.5, 6)
+shadow.Size                   = UDim2.new(0, 260 + SHADOW_PADDING * 2, 0, 190 + SHADOW_PADDING * 2)
+shadow.BackgroundTransparency = 1
+shadow.Image                  = "rbxassetid://6015897843"
+shadow.ImageColor3            = Color3.fromRGB(0, 0, 0)
+shadow.ImageTransparency      = 0.35
+shadow.ScaleType              = Enum.ScaleType.Slice
+shadow.SliceCenter            = Rect.new(49, 49, 450, 450)
+shadow.ZIndex                 = 0
+shadow.Parent                 = gui
+
+-- Dark translucent background (main frame)
 local main = Instance.new("Frame")
 main.Name             = "Main"
 main.AnchorPoint      = Vector2.new(0.5, 0.5)
 main.Position         = UDim2.new(0.5, 0, 0.5, 0)
 main.Size             = UDim2.new(0, 260, 0, 190)
 main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
-main.BackgroundTransparency = 0.25
+main.BackgroundTransparency = 0.15
 main.BorderSizePixel  = 0
 main.Active           = true
+main.ZIndex           = 1
 main.Parent           = gui
 
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
@@ -153,6 +160,7 @@ local mainStroke = Instance.new("UIStroke", main)
 mainStroke.Color     = Color3.fromRGB(60, 60, 65)
 mainStroke.Thickness = 1
 
+-- title bar (drag handle)
 local title = Instance.new("TextLabel")
 title.Name             = "Title"
 title.Size             = UDim2.new(1, 0, 0, 28)
@@ -164,6 +172,7 @@ title.TextColor3       = Color3.fromRGB(235, 235, 245)
 title.Font             = Enum.Font.GothamBold
 title.TextSize         = 13
 title.Active           = true
+title.ZIndex           = 2
 title.Parent           = main
 
 Instance.new("UICorner", title).CornerRadius = UDim.new(0, 10)
@@ -176,6 +185,7 @@ titleContainer.Name                   = "TitleContainer"
 titleContainer.Size                   = UDim2.new(1, -12, 1, 0)
 titleContainer.Position               = UDim2.new(0, 12, 0, 0)
 titleContainer.BackgroundTransparency = 1
+titleContainer.ZIndex                 = 3
 titleContainer.Parent                 = title
 
 local titleLayout = Instance.new("UIListLayout")
@@ -196,6 +206,7 @@ deathLabel.TextColor3             = Color3.fromRGB(220, 40, 40)
 deathLabel.Font                   = Enum.Font.GothamBold
 deathLabel.TextSize               = 13
 deathLabel.LayoutOrder            = 1
+deathLabel.ZIndex                 = 3
 deathLabel.Parent                 = titleContainer
 
 local dotLabel = Instance.new("TextLabel")
@@ -208,6 +219,7 @@ dotLabel.TextColor3             = Color3.fromRGB(235, 235, 245)
 dotLabel.Font                   = Enum.Font.GothamBold
 dotLabel.TextSize               = 13
 dotLabel.LayoutOrder            = 2
+dotLabel.ZIndex                 = 3
 dotLabel.Parent                 = titleContainer
 
 local eyeLabel = Instance.new("TextLabel")
@@ -220,8 +232,10 @@ eyeLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
 eyeLabel.Font                   = Enum.Font.GothamBold
 eyeLabel.TextSize               = 13
 eyeLabel.LayoutOrder            = 3
+eyeLabel.ZIndex                 = 3
 eyeLabel.Parent                 = titleContainer
 
+-- search
 local searchBox = Instance.new("TextBox")
 searchBox.Name              = "SearchBox"
 searchBox.Size              = UDim2.new(1, -24, 0, 30)
@@ -235,10 +249,12 @@ searchBox.TextColor3        = Color3.fromRGB(232, 232, 242)
 searchBox.PlaceholderColor3 = Color3.fromRGB(128, 128, 148)
 searchBox.Font              = Enum.Font.Gotham
 searchBox.TextSize          = 13
+searchBox.ZIndex            = 2
 searchBox.Parent            = main
 
 Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 6)
 
+-- name label
 local nameLabel = Instance.new("TextLabel")
 nameLabel.Name                   = "NameLabel"
 nameLabel.Size                   = UDim2.new(1, -24, 0, 24)
@@ -250,8 +266,10 @@ nameLabel.TextXAlignment         = Enum.TextXAlignment.Left
 nameLabel.Font                   = Enum.Font.Gotham
 nameLabel.TextSize               = 13
 nameLabel.TextTruncate           = Enum.TextTruncate.AtEnd
+nameLabel.ZIndex                 = 2
 nameLabel.Parent                 = main
 
+-- view toggle
 local viewBtn = Instance.new("TextButton")
 viewBtn.Name             = "ViewButton"
 viewBtn.Size             = UDim2.new(1, -24, 0, 32)
@@ -262,26 +280,29 @@ viewBtn.Text             = "View: OFF"
 viewBtn.TextColor3       = Color3.fromRGB(235, 235, 245)
 viewBtn.Font             = Enum.Font.GothamMedium
 viewBtn.TextSize         = 13
+viewBtn.ZIndex           = 2
 viewBtn.Parent           = main
 
 Instance.new("UICorner", viewBtn).CornerRadius = UDim.new(0, 6)
 
+-- bullet button
 local bulletBtn = Instance.new("TextButton")
 bulletBtn.Name             = "BulletButton"
 bulletBtn.Size             = UDim2.new(1, -24, 0, 32)
 bulletBtn.Position         = UDim2.new(0, 12, 0, 142)
 bulletBtn.BackgroundColor3 = Color3.fromRGB(150, 55, 55)
 bulletBtn.BorderSizePixel  = 0
-bulletBtn.Text             = "Bullet (Headshot)"
+bulletBtn.Text             = "Bullet"
 bulletBtn.TextColor3       = Color3.fromRGB(255, 240, 240)
 bulletBtn.Font             = Enum.Font.GothamMedium
 bulletBtn.TextSize         = 13
+bulletBtn.ZIndex           = 2
 bulletBtn.Parent           = main
 
 Instance.new("UICorner", bulletBtn).CornerRadius = UDim.new(0, 6)
 
 --==================================================================
---  DRAGGING
+--  DRAGGING  (normal behavior)
 --==================================================================
 local dragging   = false
 local dragStart  = nil
@@ -292,6 +313,11 @@ local function updateDrag(input)
 	main.Position = UDim2.new(
 		startPos.X.Scale, startPos.X.Offset + delta.X,
 		startPos.Y.Scale, startPos.Y.Offset + delta.Y
+	)
+	-- keep shadow in sync
+	shadow.Position = UDim2.new(
+		main.Position.X.Scale, main.Position.X.Offset,
+		main.Position.Y.Scale, main.Position.Y.Offset + 6
 	)
 end
 
@@ -320,7 +346,7 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 --==================================================================
---  TRACER  (WHITE)
+--  TRACER
 --==================================================================
 local function destroyTracer()
 	if tracerPart then
@@ -348,7 +374,7 @@ local function makeTracer()
 end
 
 --==================================================================
---  FULL-PLAYER HIGHLIGHT
+--  HIGHLIGHT
 --==================================================================
 local function destroyHighlight()
 	if highlight then
@@ -380,15 +406,16 @@ local function ensureHighlight(char)
 	highlight.Parent              = char
 end
 
+-- color helper — RED at 0 HP
 local function colorFor(health, maxHealth)
 	if health <= 0 then
-		return Color3.fromRGB(90, 90, 100)
+		return Color3.fromRGB(235, 60, 60)            -- dead / 0 HP -> RED
 	elseif health <= 20 then
-		return Color3.fromRGB(235, 60, 60)
+		return Color3.fromRGB(235, 60, 60)            -- 1-20  -> RED
 	elseif health <= maxHealth * 0.5 then
-		return Color3.fromRGB(240, 210, 60)
+		return Color3.fromRGB(240, 210, 60)           -- medium -> YELLOW
 	else
-		return Color3.fromRGB(60, 220, 90)
+		return Color3.fromRGB(60, 220, 90)            -- full/high -> GREEN
 	end
 end
 
@@ -654,13 +681,14 @@ bulletBtn.MouseButton1Click:Connect(function()
 		return
 	end
 
+	-- Set bulletTarget to the searched target and enable bullet
 	bulletTarget = target
 	bulletOn     = true
 
-	bulletBtn.Text             = "Headshot ✓ " .. target.Name
+	bulletBtn.Text             = "Bullet  ✓  " .. target.Name
 	bulletBtn.BackgroundColor3 = Color3.fromRGB(60, 160, 90)
 	task.delay(1, function()
-		bulletBtn.Text             = "Bullet (Headshot)"
+		bulletBtn.Text             = "Bullet"
 		bulletBtn.BackgroundColor3 = Color3.fromRGB(150, 55, 55)
 	end)
 end)
