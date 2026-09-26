@@ -1,21 +1,39 @@
 --==================================================================
 --  Death.Eye  -  View / Bullet GUI + Tracer + Health Highlight
---  - Draggable frame
---  - Real soft shadow
+--  - Draggable frame (normal, original behavior)
+--  - GUI has a REAL soft shadow (ImageLabel-based)
 --  - Red at 0 HP
---  - Bullet uses Mouse.Hit metatable hook (aims at HEAD)
---  - Aimlock toggle button (locks camera to target Head)
+--  - Toggle buttons redesigned to match the provided image exactly
+--  - Roblox Notification on script load
 --==================================================================
 
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local Workspace        = game:GetService("Workspace")
+local StarterGui       = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
-local Mouse       = LocalPlayer:GetMouse()
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
-local Camera      = Workspace.CurrentCamera
+
+--==================================================================
+--  ROBLOX NOTIFICATION ON LOAD
+--==================================================================
+task.spawn(function()
+	-- Wait a tiny bit to ensure the CoreGui is fully loaded
+	task.wait(1)
+	
+	local success, err = pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = "Death.Eye"; -- The bold top text
+			Text = "On top";     -- The text below
+			Duration = 5;        -- How long it stays on screen (seconds)
+		})
+	end)
+	
+	if not success then
+		warn("Could not send Roblox notification: " .. tostring(err))
+	end
+end)
 
 --==================================================================
 --  STATE
@@ -27,8 +45,6 @@ local viewOn       = false
 local bulletTarget = nil
 local bulletOn     = false
 
-local aimlockOn    = false   -- NEW
-
 local tracerPart   = nil
 local highlight    = nil
 local billboard    = nil
@@ -36,26 +52,10 @@ local billboardLabel = nil
 local renderConn   = nil
 
 --==================================================================
---  BULLET CORE  (Mouse.Hit metatable hook, aims at HEAD)
+--  BULLET CORE
 --==================================================================
-local Part = "Head"   -- aim part
-
-local mt = getrawmetatable(game)
-setreadonly(mt, false)
-local old = mt.__index
-mt.__index = newcclosure(function(self, key)
-	if not checkcaller() and self == Mouse then
-		if key == "Hit" and bulletTarget and bulletTarget.Character then
-			local p = bulletTarget.Character:FindFirstChild(Part)
-			if p then return CFrame.new(p.Position) end
-		end
-	end
-	return old(self, key)
-end)
-
-local function offset(o, t)
-	local ao = o * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)
-	return ao:ToObjectSpace(t):inverse()
+local function calcGrip(handCF, rootCF)
+	return (handCF * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)):ToObjectSpace(rootCF):Inverse()
 end
 
 local function fireBullet(tool)
@@ -65,21 +65,24 @@ local function fireBullet(tool)
 	local tChar = bulletTarget.Character
 	if not char or not tChar then return end
 
-	local tp = tChar:FindFirstChild(Part)
-	local rh = char:FindFirstChild("RightHand")
-	if not tp or not rh then return end
+	local hand = char:FindFirstChild("RightHand")
+	local hrp  = tChar:FindFirstChild("HumanoidRootPart")
+	if not hand or not hrp then return end
 
-	local g = tool.Grip
+	local oldGrip = tool.Grip
 
-	tool.Parent = LocalPlayer.Backpack
-	tool.Grip   = offset(rh.CFrame, tp.CFrame)
-	tool.Parent = char
+	tool.Parent   = LocalPlayer.Backpack
+	hand.Anchored = false
+	tool.Grip     = calcGrip(hand.CFrame, hrp.CFrame)
+	hand.Anchored = true
+	tool.Parent   = char
 
 	RunService.RenderStepped:Wait()
 
-	tool.Parent = LocalPlayer.Backpack
-	tool.Grip   = g
-	tool.Parent = char
+	tool.Parent   = LocalPlayer.Backpack
+	hand.Anchored = false
+	tool.Grip     = oldGrip
+	tool.Parent   = char
 end
 
 --==================================================================
@@ -118,70 +121,6 @@ if LocalPlayer.Character then watchCharacter(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(watchCharacter)
 
 --==================================================================
---  AIMLOCK CORE  (uses `target` from the search box)
---==================================================================
-local AimConfig = {
-	AimPart    = "Head",
-	Smoothness = 0.25,
-	MaxDistance = 500,
-	Prediction = 0.165,
-	FOV        = 150,
-	TeamCheck  = false,
-	WallCheck  = false,
-}
-
-local function getAimPart(character)
-	if not character then return nil end
-	return character:FindFirstChild(AimConfig.AimPart)
-		or character:FindFirstChild("HumanoidRootPart")
-		or character:FindFirstChildWhichIsA("BasePart")
-end
-
-local function isVisible(part)
-	if not AimConfig.WallCheck then return true end
-	local origin = Camera.CFrame.Position
-	local dir = (part.Position - origin)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { LocalPlayer.Character }
-	local result = Workspace:Raycast(origin, dir, params)
-	if result and not result.Instance:IsDescendantOf(part.Parent) then
-		return false
-	end
-	return true
-end
-
-local function getPredictedPosition(part)
-	if AimConfig.Prediction <= 0 then return part.Position end
-	return part.Position + (part.AssemblyLinearVelocity * AimConfig.Prediction)
-end
-
--- Aimlock camera loop (only runs when aimlockOn and target exists)
-RunService.RenderStepped:Connect(function()
-	if not aimlockOn then return end
-	if not target or not target.Character then return end
-
-	local part = getAimPart(target.Character)
-	if not part then return end
-
-	-- distance check
-	local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	if myRoot and (myRoot.Position - part.Position).Magnitude > AimConfig.MaxDistance then
-		return
-	end
-
-	local aimPos = getPredictedPosition(part)
-	local camPos = Camera.CFrame.Position
-	local lookCF = CFrame.lookAt(camPos, aimPos)
-
-	if AimConfig.Smoothness <= 0 then
-		Camera.CFrame = lookCF
-	else
-		Camera.CFrame = Camera.CFrame:Lerp(lookCF, 1 - AimConfig.Smoothness)
-	end
-end)
-
---==================================================================
 --  GUI
 --==================================================================
 local gui = Instance.new("ScreenGui")
@@ -192,7 +131,7 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent         = PlayerGui
 
 --============================================================
---  SHADOW  (ImageLabel — real soft drop shadow)
+--  SHADOW
 --============================================================
 local SHADOW_PADDING = 24
 
@@ -200,7 +139,7 @@ local shadow = Instance.new("ImageLabel")
 shadow.Name                   = "Shadow"
 shadow.AnchorPoint            = Vector2.new(0.5, 0.5)
 shadow.Position               = UDim2.new(0.5, 0, 0.5, 6)
-shadow.Size                   = UDim2.new(0, 260 + SHADOW_PADDING * 2, 0, 220 + SHADOW_PADDING * 2)
+shadow.Size                   = UDim2.new(0, 260 + SHADOW_PADDING * 2, 0, 190 + SHADOW_PADDING * 2)
 shadow.BackgroundTransparency = 1
 shadow.Image                  = "rbxassetid://6015897843"
 shadow.ImageColor3            = Color3.fromRGB(0, 0, 0)
@@ -210,12 +149,12 @@ shadow.SliceCenter            = Rect.new(49, 49, 450, 450)
 shadow.ZIndex                 = 0
 shadow.Parent                 = gui
 
--- Dark translucent background (main frame) — taller to fit new button
+-- Dark translucent background (main frame)
 local main = Instance.new("Frame")
 main.Name             = "Main"
 main.AnchorPoint      = Vector2.new(0.5, 0.5)
 main.Position         = UDim2.new(0.5, 0, 0.5, 0)
-main.Size             = UDim2.new(0, 260, 0, 220)   -- was 190, +30 for Aimlock
+main.Size             = UDim2.new(0, 260, 0, 190)
 main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 main.BackgroundTransparency = 0.15
 main.BorderSizePixel  = 0
@@ -233,7 +172,7 @@ mainStroke.Thickness = 1
 local title = Instance.new("TextLabel")
 title.Name             = "Title"
 title.Size             = UDim2.new(1, 0, 0, 28)
-title.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+title.BackgroundColor3 = Color3.fromRGB(25, 25, 30) 
 title.BorderSizePixel  = 0
 title.Text             = ""
 title.TextXAlignment   = Enum.TextXAlignment.Left
@@ -338,56 +277,83 @@ nameLabel.TextTruncate           = Enum.TextTruncate.AtEnd
 nameLabel.ZIndex                 = 2
 nameLabel.Parent                 = main
 
--- view toggle
-local viewBtn = Instance.new("TextButton")
-viewBtn.Name             = "ViewButton"
-viewBtn.Size             = UDim2.new(1, -24, 0, 32)
-viewBtn.Position         = UDim2.new(0, 12, 0, 102)
-viewBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-viewBtn.BorderSizePixel  = 0
-viewBtn.Text             = "View: OFF"
-viewBtn.TextColor3       = Color3.fromRGB(235, 235, 245)
-viewBtn.Font             = Enum.Font.GothamMedium
-viewBtn.TextSize         = 13
-viewBtn.ZIndex           = 2
-viewBtn.Parent           = main
+--============================================================
+--  NEW TOGGLE BUTTONS (Matching Image Exactly)
+--============================================================
+local function createImageToggle(parent, textStr, yPos)
+	local btn = Instance.new("TextButton")
+	btn.Name = textStr:gsub("%s+", "") .. "Btn"
+	btn.Size = UDim2.new(1, -24, 0, 32)
+	btn.Position = UDim2.new(0, 12, 0, yPos)
+	btn.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+	btn.BackgroundTransparency = 0.25
+	btn.BorderSizePixel = 0
+	btn.Text = ""
+	btn.AutoButtonColor = false
+	btn.ZIndex = 2
+	btn.Parent = parent
 
-Instance.new("UICorner", viewBtn).CornerRadius = UDim.new(0, 6)
+	local btnCorner = Instance.new("UICorner", btn)
+	btnCorner.CornerRadius = UDim.new(0, 6)
 
--- bullet button
-local bulletBtn = Instance.new("TextButton")
-bulletBtn.Name             = "BulletButton"
-bulletBtn.Size             = UDim2.new(1, -24, 0, 32)
-bulletBtn.Position         = UDim2.new(0, 12, 0, 142)
-bulletBtn.BackgroundColor3 = Color3.fromRGB(150, 55, 55)
-bulletBtn.BorderSizePixel  = 0
-bulletBtn.Text             = "Bullet"
-bulletBtn.TextColor3       = Color3.fromRGB(255, 240, 240)
-bulletBtn.Font             = Enum.Font.GothamMedium
-bulletBtn.TextSize         = 13
-bulletBtn.ZIndex           = 2
-bulletBtn.Parent           = main
+	local btnStroke = Instance.new("UIStroke", btn)
+	btnStroke.Color = Color3.fromRGB(200, 200, 205)
+	btnStroke.Thickness = 1.5
 
-Instance.new("UICorner", bulletBtn).CornerRadius = UDim.new(0, 6)
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.new(1, -44, 1, 0)
+	label.Position = UDim2.new(0, 12, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = textStr
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.ZIndex = 3
+	label.Parent = btn
 
--- AIMLOCK button (NEW)
-local aimlockBtn = Instance.new("TextButton")
-aimlockBtn.Name             = "AimlockButton"
-aimlockBtn.Size             = UDim2.new(1, -24, 0, 32)
-aimlockBtn.Position         = UDim2.new(0, 12, 0, 182)
-aimlockBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
-aimlockBtn.BorderSizePixel  = 0
-aimlockBtn.Text             = "Aimlock: OFF"
-aimlockBtn.TextColor3       = Color3.fromRGB(235, 235, 245)
-aimlockBtn.Font             = Enum.Font.GothamMedium
-aimlockBtn.TextSize         = 13
-aimlockBtn.ZIndex           = 2
-aimlockBtn.Parent           = main
+	local cbFrame = Instance.new("Frame")
+	cbFrame.Name = "CheckFrame"
+	cbFrame.Size = UDim2.new(0, 22, 0, 22)
+	cbFrame.Position = UDim2.new(1, -28, 0.5, -11)
+	cbFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+	cbFrame.BackgroundTransparency = 0.25
+	cbFrame.BorderSizePixel = 0
+	cbFrame.ZIndex = 3
+	cbFrame.Parent = btn
 
-Instance.new("UICorner", aimlockBtn).CornerRadius = UDim.new(0, 6)
+	local cbCorner = Instance.new("UICorner", cbFrame)
+	cbCorner.CornerRadius = UDim.new(0, 6)
+
+	local cbStroke = Instance.new("UIStroke", cbFrame)
+	cbStroke.Color = Color3.fromRGB(200, 200, 205)
+	cbStroke.Thickness = 1.5
+
+	local checkLabel = Instance.new("TextLabel")
+	checkLabel.Name = "Check"
+	checkLabel.Size = UDim2.new(1, 0, 1, 0)
+	checkLabel.BackgroundTransparency = 1
+	checkLabel.Text = "✓"
+	checkLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	checkLabel.Font = Enum.Font.GothamBold
+	checkLabel.TextSize = 15
+	checkLabel.TextTransparency = 1 -- Default hidden (OFF state)
+	checkLabel.ZIndex = 4
+	checkLabel.Parent = cbFrame
+
+	return btn, checkLabel
+end
+
+-- Create KO Notification Toggle (Replaces View Button)
+local viewBtn, viewCheck = createImageToggle(main, "KO Notification", 102)
+
+-- Create Warning Notif... Toggle (Replaces Bullet Button)
+local bulletBtn, bulletCheck = createImageToggle(main, "Warning Notif...", 142)
 
 --==================================================================
---  DRAGGING
+--  DRAGGING  (original simple behavior)
 --==================================================================
 local dragging   = false
 local dragStart  = nil
@@ -399,6 +365,7 @@ local function updateDrag(input)
 		startPos.X.Scale, startPos.X.Offset + delta.X,
 		startPos.Y.Scale, startPos.Y.Offset + delta.Y
 	)
+	-- keep shadow in sync
 	shadow.Position = UDim2.new(
 		main.Position.X.Scale, main.Position.X.Offset,
 		main.Position.Y.Scale, main.Position.Y.Offset + 6
@@ -493,13 +460,13 @@ end
 -- color helper — RED at 0 HP
 local function colorFor(health, maxHealth)
 	if health <= 0 then
-		return Color3.fromRGB(235, 60, 60)
+		return Color3.fromRGB(235, 60, 60)            -- dead / 0 HP -> RED
 	elseif health <= 20 then
-		return Color3.fromRGB(235, 60, 60)
+		return Color3.fromRGB(235, 60, 60)            -- 1-20  -> RED
 	elseif health <= maxHealth * 0.5 then
-		return Color3.fromRGB(240, 210, 60)
+		return Color3.fromRGB(240, 210, 60)           -- medium -> YELLOW
 	else
-		return Color3.fromRGB(60, 220, 90)
+		return Color3.fromRGB(60, 220, 90)            -- full/high -> GREEN
 	end
 end
 
@@ -649,9 +616,6 @@ local function refreshView()
 	local cam = workspace.CurrentCamera
 	if not cam then return end
 
-	-- If aimlock is on, don't let view override camera
-	if aimlockOn then return end
-
 	if viewOn and target and target.Character then
 		local hum = target.Character:FindFirstChildOfClass("Humanoid")
 		if hum then
@@ -679,6 +643,10 @@ local function selectPlayer(plr)
 	destroyHighlight()
 	destroyBillboard()
 	target = plr
+
+	-- Reset Bullet Toggle when target changes
+	bulletOn = false
+	if bulletCheck then bulletCheck.TextTransparency = 1 end
 
 	if plr then
 		nameLabel.Text       = string.format("%s  (@%s)", plr.DisplayName, plr.Name)
@@ -742,25 +710,23 @@ end
 searchBox.FocusLost:Connect(doSearch)
 
 --==================================================================
---  VIEW TOGGLE
+--  TOGGLE LOGIC (Updated for new visual buttons)
 --==================================================================
+
+-- View Toggle (KO Notification)
 viewBtn.MouseButton1Click:Connect(function()
 	viewOn = not viewOn
 
 	if viewOn then
-		viewBtn.Text             = "View: ON"
-		viewBtn.BackgroundColor3 = Color3.fromRGB(40, 130, 90)
+		viewCheck.TextTransparency = 0 -- Show Checkmark
 	else
-		viewBtn.Text             = "View: OFF"
-		viewBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+		viewCheck.TextTransparency = 1 -- Hide Checkmark
 	end
 
 	refreshView()
 end)
 
---==================================================================
---  BULLET BUTTON
---==================================================================
+-- Bullet Toggle (Warning Notif...)
 bulletBtn.MouseButton1Click:Connect(function()
 	if not target then
 		nameLabel.Text       = "Select a player first"
@@ -768,35 +734,13 @@ bulletBtn.MouseButton1Click:Connect(function()
 		return
 	end
 
+	bulletOn = not bulletOn
 	bulletTarget = target
-	bulletOn     = true
 
-	bulletBtn.Text             = "Bullet  ✓  " .. target.Name
-	bulletBtn.BackgroundColor3 = Color3.fromRGB(60, 160, 90)
-	task.delay(1, function()
-		bulletBtn.Text             = "Bullet"
-		bulletBtn.BackgroundColor3 = Color3.fromRGB(150, 55, 55)
-	end)
-end)
-
---==================================================================
---  AIMLOCK BUTTON
---==================================================================
-aimlockBtn.MouseButton1Click:Connect(function()
-	if not target then
-		nameLabel.Text       = "Select a player first"
-		nameLabel.TextColor3 = Color3.fromRGB(235, 180, 90)
-		return
-	end
-
-	aimlockOn = not aimlockOn
-
-	if aimlockOn then
-		aimlockBtn.Text             = "Aimlock: ON"
-		aimlockBtn.BackgroundColor3 = Color3.fromRGB(70, 130, 200)
+	if bulletOn then
+		bulletCheck.TextTransparency = 0 -- Show Checkmark
 	else
-		aimlockBtn.Text             = "Aimlock: OFF"
-		aimlockBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
+		bulletCheck.TextTransparency = 1 -- Hide Checkmark
 	end
 end)
 
@@ -811,13 +755,11 @@ renderConn = RunService.RenderStepped:Connect(updateVisuals)
 Players.PlayerRemoving:Connect(function(plr)
 	if target == plr then
 		selectPlayer(nil)
-		aimlockOn = false
-		aimlockBtn.Text             = "Aimlock: OFF"
-		aimlockBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
 	end
 	if bulletTarget == plr then
 		bulletTarget = nil
 		bulletOn     = false
+		if bulletCheck then bulletCheck.TextTransparency = 1 end
 	end
 end)
 
