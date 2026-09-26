@@ -12,6 +12,7 @@
 --  - Settings gear expands the WHOLE GUI to reveal Auto Fire row
 --  - Tracer now connects visually with the target highlight
 --  - TRACER COLOR MATCHES HIGHLIGHT COLOR (green/yellow/red by health)
+--  - FIXED: Bullet toggle now survives target rejoin/respawn
 --==================================================================
 
 local Players          = game:GetService("Players")
@@ -42,6 +43,7 @@ end)
 --==================================================================
 local target       = nil
 local targetConn   = nil
+local targetCharConn = nil
 local viewOn       = false
 
 local bulletTarget = nil
@@ -87,8 +89,32 @@ local function getEquippedGun()
 	return tool
 end
 
+--==================================================================
+--  BULLET TARGET VALIDATION
+--==================================================================
+local function isValidBulletTarget()
+	if not bulletTarget then return false end
+	if not bulletTarget.Parent then return false end
+	local char = bulletTarget.Character
+	if not char then return false end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then return false end
+	return true
+end
+
+--==================================================================
+--  FIRE BULLET
+--==================================================================
 local function fireBullet(tool)
 	if not bulletOn or not bulletTarget then return end
+
+	-- Bail out cleanly if the target left the game
+	if not bulletTarget.Parent then
+		bulletOn = false
+		bulletTarget = nil
+		if bulletCheck then bulletCheck.TextTransparency = 1 end
+		return
+	end
 
 	local char  = LocalPlayer.Character
 	local tChar = bulletTarget.Character
@@ -143,8 +169,7 @@ end
 local function tryAutoFire()
 	if not autoFireOn then return end
 	if not bulletOn then return end
-	if not bulletTarget then return end
-	if not bulletTarget.Character then return end
+	if not isValidBulletTarget() then return end
 
 	local tChar = bulletTarget.Character
 	local hum = tChar:FindFirstChildOfClass("Humanoid")
@@ -580,7 +605,7 @@ local function makeTracer()
 	tracerPart.CanTouch      = false
 	tracerPart.CastShadow    = false
 	tracerPart.Material      = Enum.Material.Neon
-	tracerPart.Color         = Color3.fromRGB(60, 220, 90) -- will be overwritten each frame
+	tracerPart.Color         = Color3.fromRGB(60, 220, 90)
 	tracerPart.Transparency  = 0.35
 	tracerPart.Size          = Vector3.new(0.08, 0.08, 1)
 	tracerPart.TopSurface    = Enum.SurfaceType.Smooth
@@ -692,8 +717,6 @@ local function updateVisuals()
 	local tChar  = target.Character
 	local myChar = LocalPlayer.Character
 
-	-- Compute health color ONCE per frame so tracer + highlight + billboard
-	-- all share the exact same color.
 	local sharedColor = Color3.fromRGB(60, 220, 90)
 	if tChar then
 		local hum = tChar:FindFirstChildOfClass("Humanoid")
@@ -725,7 +748,6 @@ local function updateVisuals()
 				tracerPart.Size         = Vector3.new(0.08, 0.08, dist + overlap)
 				tracerPart.CFrame       = CFrame.lookAt(from + dir * 0.5, to)
 				tracerPart.Transparency = 0.35
-				-- COLOR MATCHES HIGHLIGHT
 				tracerPart.Color        = sharedColor
 			end
 		else
@@ -739,7 +761,6 @@ local function updateVisuals()
 	if tChar then
 		ensureHighlight(tChar)
 		if highlight then
-			-- COLOR MATCHES TRACER
 			highlight.OutlineColor = sharedColor
 			highlight.FillColor    = sharedColor
 		end
@@ -773,34 +794,59 @@ local function refreshView()
 end
 
 --==================================================================
---  SELECT PLAYER
+--  SELECT PLAYER (FIXED - handles rejoin/respawn)
 --==================================================================
 local function selectPlayer(plr)
 	if targetConn then
 		targetConn:Disconnect()
 		targetConn = nil
 	end
+	if targetCharConn then
+		targetCharConn:Disconnect()
+		targetCharConn = nil
+	end
+
 	destroyHighlight()
 	destroyBillboard()
 	target = plr
 
+	-- Reset bullet state cleanly
 	bulletOn = false
+	bulletTarget = nil
 	if bulletCheck then bulletCheck.TextTransparency = 1 end
 
 	if plr then
 		nameLabel.Text       = string.format("%s  (@%s)", plr.DisplayName, plr.Name)
 		nameLabel.TextColor3 = Color3.fromRGB(110, 220, 160)
+
 		if plr.Character then
 			ensureHighlight(plr.Character)
 			ensureBillboard(plr.Character)
 		end
-		targetConn = plr.CharacterAdded:Connect(function()
+
+		-- Fired whenever the TARGET respawns / rejoins
+		targetCharConn = plr.CharacterAdded:Connect(function(newChar)
 			task.wait(0.25)
-			if viewOn and target == plr then refreshView() end
-			if target == plr then
-				destroyHighlight()
-				destroyBillboard()
-				updateVisuals()
+			if target ~= plr then return end
+
+			-- Refresh visuals for new character
+			destroyHighlight()
+			destroyBillboard()
+			updateVisuals()
+
+			-- Rebind bullet target to the fresh player object
+			if bulletOn then
+				bulletTarget = plr
+				lastAutoFire = 0
+			end
+
+			if viewOn then refreshView() end
+		end)
+
+		-- Detect character removal (death / leave)
+		targetConn = plr.CharacterRemoving:Connect(function()
+			if bulletTarget == plr then
+				lastAutoFire = 0
 			end
 		end)
 	else
@@ -848,16 +894,32 @@ viewBtn.MouseButton1Click:Connect(function()
 	refreshView()
 end)
 
+-- FIXED: Bullet toggle re-validates the target on every click
 bulletBtn.MouseButton1Click:Connect(function()
-	if not target then
+	if not target or not target.Parent then
 		nameLabel.Text       = "Select a player first"
 		nameLabel.TextColor3 = Color3.fromRGB(235, 180, 90)
 		return
 	end
+
 	bulletOn = not bulletOn
-	bulletTarget = target
+
+	if bulletOn then
+		-- Always bind fresh reference
+		bulletTarget = target
+
+		-- Warn if the target hasn't spawned yet
+		if not bulletTarget.Character then
+			nameLabel.Text       = "Waiting for target to spawn..."
+			nameLabel.TextColor3 = Color3.fromRGB(235, 180, 90)
+		end
+
+		lastAutoFire = 0
+	else
+		bulletTarget = nil
+	end
+
 	bulletCheck.TextTransparency = bulletOn and 0 or 1
-	if bulletOn then lastAutoFire = 0 end
 end)
 
 autoPredictBtn.MouseButton1Click:Connect(function()
@@ -890,4 +952,6 @@ gui.Destroying:Connect(function()
 	destroyHighlight()
 	destroyBillboard()
 	if renderConn then renderConn:Disconnect() end
+	if targetConn then targetConn:Disconnect() end
+	if targetCharConn then targetCharConn:Disconnect() end
 end)
