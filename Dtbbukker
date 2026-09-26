@@ -8,6 +8,7 @@
 --  - Renamed toggles: Spectate & Bullet
 --  - IMPROVED BULLET: Prediction + Hitbox targeting
 --  - ADDED AUTO PREDICTION TOGGLE
+--  - Bullet toggle now AUTO-FIRES (calls gun:Activate() automatically)
 --==================================================================
 
 local Players          = game:GetService("Players")
@@ -52,6 +53,9 @@ local billboard    = nil
 local billboardLabel = nil
 local renderConn   = nil
 
+local AUTO_FIRE_DELAY = 0.1 -- seconds between auto-fires (adjust as needed)
+local lastAutoFire    = 0
+
 --==================================================================
 --  IMPROVED BULLET CORE
 --==================================================================
@@ -93,45 +97,73 @@ local function fireBullet(tool)
 	-- Auto Prediction Calculation
 	local predictedPos = targetPart.Position
 	if autoPredictOn then
-		-- Calculate ping based on local player's network stats
-		local ping = 0.1 -- Default fallback
+		local ping = 0.1
 		local stats = game:GetService("Stats")
 		if stats and stats.Network and stats.Network.ServerStatsItem then
 			local pingValue = stats.Network.ServerStatsItem["Data Ping"]:GetValue()
 			if pingValue then
-				ping = pingValue / 1000 -- Convert ms to seconds
+				ping = pingValue / 1000
 			end
 		end
-		
-		-- Apply a small buffer to the ping to ensure the prediction is not too short
-		local predictionTime = ping + 0.05 
-		
-		-- Predict where they will be
+		local predictionTime = ping + 0.05
 		predictedPos = targetPart.Position + (targetVel * predictionTime)
 	end
 
 	local predictedCF = CFrame.new(predictedPos)
 	local oldGrip = tool.Grip
 
-	-- Temporarily move tool to backpack to change grip without visual glitch
 	tool.Parent   = LocalPlayer.Backpack
 	hand.Anchored = false
-	
-	-- Calculate the new grip to aim at the predicted position
 	tool.Grip     = calcGrip(hand.CFrame, predictedCF)
-	
 	hand.Anchored = true
 	tool.Parent   = char
 
-	-- Wait for the next frame to ensure the server registers the new CFrame
 	RunService.RenderStepped:Wait()
 
-	-- Restore original grip and state
 	tool.Parent   = LocalPlayer.Backpack
 	hand.Anchored = false
 	tool.Grip     = oldGrip
 	tool.Parent   = char
 end
+
+--==================================================================
+--  AUTO-FIRE LOOP (Bullet Toggle)
+--==================================================================
+-- Automatically calls gun:Activate() while Bullet toggle is ON
+-- and a valid target is selected.
+--==================================================================
+local function getEquippedGun()
+	local char = LocalPlayer.Character
+	if not char then return nil end
+	local tool = char:FindFirstChildWhichIsA("Tool")
+	if not tool then return nil end
+	if not tool:FindFirstChild("Handle") then return nil end
+	return tool
+end
+
+local autoFireConn = RunService.Heartbeat:Connect(function()
+	if not bulletOn then return end
+	if not bulletTarget then return end
+	if tick() - lastAutoFire < AUTO_FIRE_DELAY then return end
+
+	-- Validate target is still alive
+	local tChar = bulletTarget.Character
+	if not tChar then return end
+	local tHum = tChar:FindFirstChildOfClass("Humanoid")
+	if not tHum or tHum.Health <= 0 then return end
+
+	-- Get our equipped gun
+	local gun = getEquippedGun()
+	if not gun then return end
+
+	lastAutoFire = tick()
+
+	-- Fire the gun — this triggers the Activated event, which
+	-- our hookTool() catches and redirects via fireBullet()
+	pcall(function()
+		gun:Activate()
+	end)
+end)
 
 --==================================================================
 --  TOOL HOOKING
@@ -202,7 +234,7 @@ local main = Instance.new("Frame")
 main.Name             = "Main"
 main.AnchorPoint      = Vector2.new(0.5, 0.5)
 main.Position         = UDim2.new(0.5, 0, 0.5, 0)
-main.Size             = UDim2.new(0, 260, 0, 230) -- Increased height for new button
+main.Size             = UDim2.new(0, 260, 0, 230)
 main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 main.BackgroundTransparency = 0.15
 main.BorderSizePixel  = 0
@@ -326,7 +358,7 @@ nameLabel.ZIndex                 = 2
 nameLabel.Parent                 = main
 
 --============================================================
---  NEW TOGGLE BUTTONS (Matching Image Exactly)
+--  TOGGLE BUTTONS (Matching Image Exactly)
 --============================================================
 local function createImageToggle(parent, textStr, yPos)
 	local btn = Instance.new("TextButton")
@@ -383,11 +415,11 @@ local function createImageToggle(parent, textStr, yPos)
 	checkLabel.Name = "Check"
 	checkLabel.Size = UDim2.new(1, 0, 1, 0)
 	checkLabel.BackgroundTransparency = 1
-	checkLabel.Text = "âœ“"
+	checkLabel.Text = "✓"
 	checkLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	checkLabel.Font = Enum.Font.GothamBold
 	checkLabel.TextSize = 15
-	checkLabel.TextTransparency = 1 -- Default hidden (OFF state)
+	checkLabel.TextTransparency = 1
 	checkLabel.ZIndex = 4
 	checkLabel.Parent = cbFrame
 
@@ -402,7 +434,7 @@ local bulletBtn, bulletCheck = createImageToggle(main, "Bullet", 142)
 
 -- Create Auto Prediction Toggle
 local autoPredictBtn, autoPredictCheck = createImageToggle(main, "Auto Prediction", 182)
-autoPredictCheck.TextTransparency = 0 -- Default ON
+autoPredictCheck.TextTransparency = 0
 
 --==================================================================
 --  DRAGGING
@@ -508,7 +540,7 @@ local function ensureHighlight(char)
 	highlight.Parent              = char
 end
 
--- color helper â€” RED at 0 HP
+-- color helper — RED at 0 HP
 local function colorFor(health, maxHealth)
 	if health <= 0 then
 		return Color3.fromRGB(235, 60, 60)
@@ -777,7 +809,7 @@ viewBtn.MouseButton1Click:Connect(function()
 	refreshView()
 end)
 
--- Bullet Toggle
+-- Bullet Toggle (now enables auto-fire)
 bulletBtn.MouseButton1Click:Connect(function()
 	if not target then
 		nameLabel.Text       = "Select a player first"
@@ -790,6 +822,7 @@ bulletBtn.MouseButton1Click:Connect(function()
 
 	if bulletOn then
 		bulletCheck.TextTransparency = 0
+		lastAutoFire = 0 -- fire immediately on enable
 	else
 		bulletCheck.TextTransparency = 1
 	end
@@ -800,16 +833,19 @@ autoPredictBtn.MouseButton1Click:Connect(function()
 	autoPredictOn = not autoPredictOn
 
 	if autoPredictOn then
-		autoPredictCheck.TextTransparency = 0 -- Show Checkmark
+		autoPredictCheck.TextTransparency = 0
 	else
-		autoPredictCheck.TextTransparency = 1 -- Hide Checkmark
+		autoPredictCheck.TextTransparency = 1
 	end
 end)
 
 --==================================================================
 --  RENDER LOOP
 --==================================================================
-renderConn = RunService.RenderStepped:Connect(updateVisuals)
+renderConn = RunService.RenderStepped:Connect(function()
+	updateVisuals()
+	tryAutoFire()
+end)
 
 --==================================================================
 --  CLEANUP
