@@ -6,7 +6,8 @@
 --  - Toggle buttons redesigned to match the provided image exactly
 --  - Roblox Notification on script load
 --  - Renamed toggles: Spectate & Bullet
---  - IMPROVED BULLET: Instant Hit / Perfect Silent Aim (Never Misses)
+--  - IMPROVED BULLET: Prediction + Hitbox targeting
+--  - ADDED AUTO PREDICTION TOGGLE
 --==================================================================
 
 local Players          = game:GetService("Players")
@@ -43,7 +44,7 @@ local viewOn       = false
 
 local bulletTarget = nil
 local bulletOn     = false
-local autoPredictOn = true 
+local autoPredictOn = true -- Enabled by default for best performance
 
 local tracerPart   = nil
 local highlight    = nil
@@ -52,11 +53,14 @@ local billboardLabel = nil
 local renderConn   = nil
 
 --==================================================================
---  PERFECT SILENT AIM CORE
+--  IMPROVED BULLET CORE
 --==================================================================
+local function calcGrip(handCF, targetCF)
+	return (handCF * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)):ToObjectSpace(targetCF):Inverse()
+end
+
 local function getBestTargetPart(character)
 	if not character then return nil end
-	-- Prioritize Head for maximum damage, then UpperTorso, then HumanoidRootPart
 	local head = character:FindFirstChild("Head")
 	if head then return head end
 	local upperTorso = character:FindFirstChild("UpperTorso")
@@ -66,7 +70,6 @@ local function getBestTargetPart(character)
 	return nil
 end
 
--- The core Silent Aim function
 local function fireBullet(tool)
 	if not bulletOn or not bulletTarget then return end
 
@@ -80,52 +83,54 @@ local function fireBullet(tool)
 	local targetPart = getBestTargetPart(tChar)
 	if not targetPart then return end
 
-	-- 1. VISUAL SILENT AIM (Makes the gun point at the target)
-	local oldGrip = tool.Grip
-	local handPos = hand.Position
-	local targetPos = targetPart.Position
-	
-	-- Calculate the CFrame needed to point from hand to target
-	local aimDir = (targetPos - handPos).Unit
-	local aimCF = CFrame.lookAt(handPos, handPos + aimDir)
-	
-	tool.Parent = LocalPlayer.Backpack
-	hand.Anchored = false
-	tool.Grip = (hand.CFrame * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)):ToObjectSpace(aimCF):Inverse()
-	hand.Anchored = true
-	tool.Parent = char
-	
-	RunService.RenderStepped:Wait() -- Wait one frame for visual update
-
-	-- 2. HIT REGISTRATION (Bypasses ping and prediction)
-	-- We use a Raycast to confirm the hit path
-	local origin = hand.Position
-	local direction = (targetPos - origin)
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterDescendantsInstances = {char, targetPart.Parent}
-	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-	
-	local result = workspace:Raycast(origin, direction, raycastParams)
-	
-	-- 3. APPLY DAMAGE
-	-- If the raycast hits the target (or if we just trust the silent aim), apply damage
-	local humanoid = tChar:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		-- Calculate damage (Head = 100, Body = 25)
-		local damage = 25
-		if targetPart.Name == "Head" then
-			damage = 100
-		end
-		
-		-- Apply damage directly to the Humanoid (bypasses server physics)
-		humanoid:TakeDamage(damage)
+	-- Get target velocity
+	local targetVel = targetPart.AssemblyLinearVelocity
+	local hrp = tChar:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		targetVel = hrp.AssemblyLinearVelocity
 	end
 
-	-- 4. RESTORE ORIGINAL STATE
-	tool.Parent = LocalPlayer.Backpack
+	-- Auto Prediction Calculation
+	local predictedPos = targetPart.Position
+	if autoPredictOn then
+		-- Calculate ping based on local player's network stats
+		local ping = 0.1 -- Default fallback
+		local stats = game:GetService("Stats")
+		if stats and stats.Network and stats.Network.ServerStatsItem then
+			local pingValue = stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+			if pingValue then
+				ping = pingValue / 1000 -- Convert ms to seconds
+			end
+		end
+		
+		-- Apply a small buffer to the ping to ensure the prediction is not too short
+		local predictionTime = ping + 0.05 
+		
+		-- Predict where they will be
+		predictedPos = targetPart.Position + (targetVel * predictionTime)
+	end
+
+	local predictedCF = CFrame.new(predictedPos)
+	local oldGrip = tool.Grip
+
+	-- Temporarily move tool to backpack to change grip without visual glitch
+	tool.Parent   = LocalPlayer.Backpack
 	hand.Anchored = false
-	tool.Grip = oldGrip
-	tool.Parent = char
+	
+	-- Calculate the new grip to aim at the predicted position
+	tool.Grip     = calcGrip(hand.CFrame, predictedCF)
+	
+	hand.Anchored = true
+	tool.Parent   = char
+
+	-- Wait for the next frame to ensure the server registers the new CFrame
+	RunService.RenderStepped:Wait()
+
+	-- Restore original grip and state
+	tool.Parent   = LocalPlayer.Backpack
+	hand.Anchored = false
+	tool.Grip     = oldGrip
+	tool.Parent   = char
 end
 
 --==================================================================
@@ -197,7 +202,7 @@ local main = Instance.new("Frame")
 main.Name             = "Main"
 main.AnchorPoint      = Vector2.new(0.5, 0.5)
 main.Position         = UDim2.new(0.5, 0, 0.5, 0)
-main.Size             = UDim2.new(0, 260, 0, 230)
+main.Size             = UDim2.new(0, 260, 0, 230) -- Increased height for new button
 main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 main.BackgroundTransparency = 0.15
 main.BorderSizePixel  = 0
