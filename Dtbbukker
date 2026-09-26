@@ -7,6 +7,7 @@
 --  - Roblox Notification on script load
 --  - Renamed toggles: Spectate & Bullet
 --  - IMPROVED BULLET: Prediction + Hitbox targeting
+--  - ADDED AUTO PREDICTION TOGGLE
 --==================================================================
 
 local Players          = game:GetService("Players")
@@ -43,6 +44,7 @@ local viewOn       = false
 
 local bulletTarget = nil
 local bulletOn     = false
+local autoPredictOn = true -- Enabled by default for best performance
 
 local tracerPart   = nil
 local highlight    = nil
@@ -53,12 +55,10 @@ local renderConn   = nil
 --==================================================================
 --  IMPROVED BULLET CORE
 --==================================================================
--- Calculates the grip needed to aim the tool at a specific point
 local function calcGrip(handCF, targetCF)
 	return (handCF * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)):ToObjectSpace(targetCF):Inverse()
 end
 
--- Gets the best target position (Head > UpperTorso > HumanoidRootPart)
 local function getBestTargetPart(character)
 	if not character then return nil end
 	local head = character:FindFirstChild("Head")
@@ -83,17 +83,34 @@ local function fireBullet(tool)
 	local targetPart = getBestTargetPart(tChar)
 	if not targetPart then return end
 
-	-- Get target velocity for prediction
+	-- Get target velocity
 	local targetVel = targetPart.AssemblyLinearVelocity
 	local hrp = tChar:FindFirstChild("HumanoidRootPart")
 	if hrp then
 		targetVel = hrp.AssemblyLinearVelocity
 	end
 
-	-- Simple prediction: aim where they will be in 0.1 seconds
-	local predictedPos = targetPart.Position + (targetVel * 0.1)
-	local predictedCF = CFrame.new(predictedPos)
+	-- Auto Prediction Calculation
+	local predictedPos = targetPart.Position
+	if autoPredictOn then
+		-- Calculate ping based on local player's network stats
+		local ping = 0.1 -- Default fallback
+		local stats = game:GetService("Stats")
+		if stats and stats.Network and stats.Network.ServerStatsItem then
+			local pingValue = stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+			if pingValue then
+				ping = pingValue / 1000 -- Convert ms to seconds
+			end
+		end
+		
+		-- Apply a small buffer to the ping to ensure the prediction is not too short
+		local predictionTime = ping + 0.05 
+		
+		-- Predict where they will be
+		predictedPos = targetPart.Position + (targetVel * predictionTime)
+	end
 
+	local predictedCF = CFrame.new(predictedPos)
 	local oldGrip = tool.Grip
 
 	-- Temporarily move tool to backpack to change grip without visual glitch
@@ -170,7 +187,7 @@ local shadow = Instance.new("ImageLabel")
 shadow.Name                   = "Shadow"
 shadow.AnchorPoint            = Vector2.new(0.5, 0.5)
 shadow.Position               = UDim2.new(0.5, 0, 0.5, 6)
-shadow.Size                   = UDim2.new(0, 260 + SHADOW_PADDING * 2, 0, 190 + SHADOW_PADDING * 2)
+shadow.Size                   = UDim2.new(0, 260 + SHADOW_PADDING * 2, 0, 230 + SHADOW_PADDING * 2)
 shadow.BackgroundTransparency = 1
 shadow.Image                  = "rbxassetid://6015897843"
 shadow.ImageColor3            = Color3.fromRGB(0, 0, 0)
@@ -185,7 +202,7 @@ local main = Instance.new("Frame")
 main.Name             = "Main"
 main.AnchorPoint      = Vector2.new(0.5, 0.5)
 main.Position         = UDim2.new(0.5, 0, 0.5, 0)
-main.Size             = UDim2.new(0, 260, 0, 190)
+main.Size             = UDim2.new(0, 260, 0, 230) -- Increased height for new button
 main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 main.BackgroundTransparency = 0.15
 main.BorderSizePixel  = 0
@@ -382,6 +399,10 @@ local viewBtn, viewCheck = createImageToggle(main, "Spectate", 102)
 
 -- Create Bullet Toggle
 local bulletBtn, bulletCheck = createImageToggle(main, "Bullet", 142)
+
+-- Create Auto Prediction Toggle
+local autoPredictBtn, autoPredictCheck = createImageToggle(main, "Auto Prediction", 182)
+autoPredictCheck.TextTransparency = 0 -- Default ON
 
 --==================================================================
 --  DRAGGING
@@ -771,6 +792,17 @@ bulletBtn.MouseButton1Click:Connect(function()
 		bulletCheck.TextTransparency = 0
 	else
 		bulletCheck.TextTransparency = 1
+	end
+end)
+
+-- Auto Prediction Toggle
+autoPredictBtn.MouseButton1Click:Connect(function()
+	autoPredictOn = not autoPredictOn
+
+	if autoPredictOn then
+		autoPredictCheck.TextTransparency = 0 -- Show Checkmark
+	else
+		autoPredictCheck.TextTransparency = 1 -- Hide Checkmark
 	end
 end)
 
