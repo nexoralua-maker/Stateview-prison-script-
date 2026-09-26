@@ -2491,9 +2491,10 @@ local function buildCombatTab(frame)
     scroll.Parent = frame
 
     local holder = Instance.new("Frame")
-    holder.Size = UDim2.new(1, 0, 0, 400)
-    holder.BackgroundTransparency = 1
-    holder.Parent = scroll
+holder.Size = UDim2.new(1, 0, 0, 0)
+holder.AutomaticSize = Enum.AutomaticSize.Y
+holder.BackgroundTransparency = 1
+holder.Parent = scroll
 
     local layout = Instance.new("UIListLayout")
     layout.Padding = UDim.new(0, 8)
