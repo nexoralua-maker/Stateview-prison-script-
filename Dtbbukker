@@ -8,12 +8,16 @@
 --  - Renamed toggles: Spectate & Bullet
 --  - IMPROVED BULLET: Prediction + Hitbox targeting
 --  - ADDED AUTO PREDICTION TOGGLE
+--  - MERGED: TriggerBot (silent aim + grip aim + wall check)
 --==================================================================
 
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local StarterGui       = game:GetService("StarterGui")
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
+local UserInputService   = game:GetService("UserInputService")
+local StarterGui         = game:GetService("StarterGui")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local GuiService         = game:GetService("GuiService")
+local Stats              = game:GetService("Stats")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
@@ -53,88 +57,248 @@ local billboardLabel = nil
 local renderConn   = nil
 
 --==================================================================
---  IMPROVED BULLET CORE
+--  BULLET CONFIG
 --==================================================================
+local BulletConfig = {
+	AimRadius     = 20,
+	FireDelay     = 0.08,
+	Prediction    = 0.155,
+	SilentAim     = true,   -- Fire remote with predicted position
+	GripAim       = true,   -- Use original tool.Grip re-aim method
+	VisibleCheck  = false,
+	IgnoreKnocked = true,
+	HitPart       = "Head",
+}
+
+local lastShot   = 0
+local mainRemote = ReplicatedStorage:FindFirstChild("MAINEVENT")
+	or ReplicatedStorage:FindFirstChild("MainEvent")
+
+--==================================================================
+--  WALL CHECK MODULE
+--==================================================================
+local WallCheck = { enabled = false }
+
+function WallCheck.setEnabled(state)
+	WallCheck.enabled = state and true or false
+	print("[WallCheck] " .. (WallCheck.enabled and "ON" or "OFF"))
+end
+
+function WallCheck.isBlocked(plr)
+	if not WallCheck.enabled then return false end
+	if not plr or not plr.Character then return true end
+	local myChar = LocalPlayer.Character
+	if not myChar then return true end
+
+	local myHrp  = myChar:FindFirstChild("HumanoidRootPart")
+	local tgtHrp = plr.Character:FindFirstChild("HumanoidRootPart")
+	if not myHrp or not tgtHrp then return true end
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { myChar, plr.Character }
+	params.IgnoreWater = true
+
+	local dir = (tgtHrp.Position - myHrp.Position)
+	local hit = workspace:Raycast(myHrp.Position, dir, params)
+	return hit ~= nil
+end
+
+--==================================================================
+--  BULLET HELPERS
+--==================================================================
+local function hasChar(p)
+	return p and p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+end
+
+local function isKnocked(p)
+	if not hasChar(p) then return false end
+	local be = p.Character:FindFirstChild("BodyEffects")
+	if not be then return false end
+	local ko = be:FindFirstChild("K.O")
+	return ko and ko.Value or false
+end
+
+local function getEquippedGun()
+	if not LocalPlayer.Character then return nil end
+	local tool = LocalPlayer.Character:FindFirstChildWhichIsA("Tool")
+	if not tool then return nil end
+	if not tool:FindFirstChild("Handle") then return nil end
+	return tool
+end
+
+local function getAimRay()
+	local shiftOn = UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
+	local cam = workspace.CurrentCamera
+	if shiftOn then
+		return cam.CFrame.Position, cam.CFrame.LookVector
+	end
+	local mousePos = UserInputService:GetMouseLocation()
+	local inset = GuiService:GetGuiInset()
+	local ray = cam:ViewportPointToRay(mousePos.X - inset.X, mousePos.Y - inset.Y)
+	return ray.Origin, ray.Direction
+end
+
+--============================================================
+--  TARGET PART SELECTION (hitbox priority)
+--============================================================
+local function getBestTargetPart(character)
+	if not character then return nil end
+	local order = { BulletConfig.HitPart, "Head", "UpperTorso", "HumanoidRootPart" }
+	for _, name in ipairs(order) do
+		local part = character:FindFirstChild(name)
+		if part then return part end
+	end
+	return nil
+end
+
+--============================================================
+--  GRIP AIM (original method — server-side tool aim)
+--============================================================
 local function calcGrip(handCF, targetCF)
 	return (handCF * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)):ToObjectSpace(targetCF):Inverse()
 end
 
-local function getBestTargetPart(character)
-	if not character then return nil end
-	local head = character:FindFirstChild("Head")
-	if head then return head end
-	local upperTorso = character:FindFirstChild("UpperTorso")
-	if upperTorso then return upperTorso end
-	local hrp = character:FindFirstChild("HumanoidRootPart")
-	if hrp then return hrp end
-	return nil
-end
-
-local function fireBullet(tool)
-	if not bulletOn or not bulletTarget then return end
-
-	local char  = LocalPlayer.Character
-	local tChar = bulletTarget.Character
-	if not char or not tChar then return end
-
+local function gripAimAt(tool, aimPos)
+	local char = LocalPlayer.Character
+	if not char then return end
 	local hand = char:FindFirstChild("RightHand")
 	if not hand then return end
 
-	local targetPart = getBestTargetPart(tChar)
-	if not targetPart then return end
-
-	-- Get target velocity
-	local targetVel = targetPart.AssemblyLinearVelocity
-	local hrp = tChar:FindFirstChild("HumanoidRootPart")
-	if hrp then
-		targetVel = hrp.AssemblyLinearVelocity
-	end
-
-	-- Auto Prediction Calculation
-	local predictedPos = targetPart.Position
-	if autoPredictOn then
-		-- Calculate ping based on local player's network stats
-		local ping = 0.1 -- Default fallback
-		local stats = game:GetService("Stats")
-		if stats and stats.Network and stats.Network.ServerStatsItem then
-			local pingValue = stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-			if pingValue then
-				ping = pingValue / 1000 -- Convert ms to seconds
-			end
-		end
-		
-		-- Apply a small buffer to the ping to ensure the prediction is not too short
-		local predictionTime = ping + 0.05 
-		
-		-- Predict where they will be
-		predictedPos = targetPart.Position + (targetVel * predictionTime)
-	end
-
-	local predictedCF = CFrame.new(predictedPos)
 	local oldGrip = tool.Grip
-
-	-- Temporarily move tool to backpack to change grip without visual glitch
 	tool.Parent   = LocalPlayer.Backpack
 	hand.Anchored = false
-	
-	-- Calculate the new grip to aim at the predicted position
-	tool.Grip     = calcGrip(hand.CFrame, predictedCF)
-	
+	tool.Grip     = calcGrip(hand.CFrame, CFrame.new(aimPos))
 	hand.Anchored = true
 	tool.Parent   = char
 
-	-- Wait for the next frame to ensure the server registers the new CFrame
 	RunService.RenderStepped:Wait()
 
-	-- Restore original grip and state
 	tool.Parent   = LocalPlayer.Backpack
 	hand.Anchored = false
 	tool.Grip     = oldGrip
 	tool.Parent   = char
 end
 
+--============================================================
+--  PREDICTION
+--============================================================
+local function predictPosition(part, hrp)
+	local vel = part.AssemblyLinearVelocity
+	if hrp then vel = hrp.AssemblyLinearVelocity end
+
+	local predictionTime = BulletConfig.Prediction
+
+	if autoPredictOn then
+		local ping = 0.1
+		if Stats and Stats.Network and Stats.Network.ServerStatsItem then
+			local pv = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+			if pv then ping = pv / 1000 end
+		end
+		predictionTime = ping + 0.05
+	end
+
+	-- Vertical damping (from TriggerBot) for more accurate arc
+	local v = Vector3.new(vel.X, vel.Y * 0.35, vel.Z)
+	return part.Position + v * predictionTime
+end
+
+--============================================================
+--  SILENT AIM REMOTE FIRE
+--============================================================
+local function silentFire(predicted)
+	if not BulletConfig.SilentAim or not mainRemote then return end
+	pcall(function() mainRemote:FireServer("MOUSE", predicted) end)
+	pcall(function() mainRemote:FireServer("MousePos", predicted) end)
+	pcall(function() mainRemote:FireServer("UpdateMousePosI", predicted) end)
+	pcall(function() mainRemote:FireServer("UpdateMousePos", predicted) end)
+
+	if _G.SilentAimPrediction and _G.SilentAimPrediction.state then
+		pcall(function()
+			_G.SilentAimPrediction.state.predicted_position = predicted
+			_G.SilentAimPrediction.state.target = bulletTarget
+			_G.SilentAimPrediction.state.isTargetting = true
+		end)
+	end
+end
+
+--============================================================
+--  MAIN FIRE
+--============================================================
+local function fireBullet(tool)
+	if not bulletOn or not bulletTarget then return end
+	if tick() - lastShot < BulletConfig.FireDelay then return end
+
+	local char  = LocalPlayer.Character
+	local tChar = bulletTarget.Character
+	if not char or not tChar then return end
+
+	if WallCheck.isBlocked(bulletTarget) then return end
+	if BulletConfig.IgnoreKnocked and isKnocked(bulletTarget) then return end
+
+	local targetPart = getBestTargetPart(tChar)
+	if not targetPart then return end
+
+	local hrp = tChar:FindFirstChild("HumanoidRootPart")
+	local predicted = predictPosition(targetPart, hrp)
+
+	lastShot = tick()
+
+	-- 1) Silent-aim remote (fires server-side raycast at predicted pos)
+	silentFire(predicted)
+
+	-- 2) Grip re-aim (visual/physical tool aim)
+	if BulletConfig.GripAim and tool then
+		gripAimAt(tool, predicted)
+	end
+end
+
+--============================================================
+--  TRIGGERBOT — get player under crosshair
+--============================================================
+local function getAimedPlayer()
+	local origin, dir = getAimRay()
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local filter = {}
+	if LocalPlayer.Character then table.insert(filter, LocalPlayer.Character) end
+	params.FilterDescendantsInstances = filter
+	params.IgnoreWater = true
+
+	local hit = workspace:Raycast(origin, dir.Unit * 1000, params)
+	if hit and hit.Instance then
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= LocalPlayer and hasChar(p) and hit.Instance:IsDescendantOf(p.Character) then
+				if BulletConfig.IgnoreKnocked and isKnocked(p) then return nil end
+				if WallCheck.isBlocked(p) then return nil end
+				return p
+			end
+		end
+	end
+	return nil
+end
+
+--============================================================
+--  TRIGGERBOT LOOP (auto-fires when crosshair on selected target)
+--============================================================
+task.spawn(function()
+	RunService.Heartbeat:Connect(function()
+		if not bulletOn then return end
+		if not bulletTarget then return end
+		if tick() - lastShot < BulletConfig.FireDelay then return end
+
+		local gun = getEquippedGun()
+		if not gun then return end
+
+		local aimed = getAimedPlayer()
+		if aimed ~= bulletTarget then return end
+
+		fireBullet(gun)
+	end)
+end)
+
 --==================================================================
---  TOOL HOOKING
+--  TOOL HOOKING (manual click fire)
 --==================================================================
 local toolConns = {}
 
@@ -220,7 +384,7 @@ mainStroke.Thickness = 1
 local title = Instance.new("TextLabel")
 title.Name             = "Title"
 title.Size             = UDim2.new(1, 0, 0, 28)
-title.BackgroundColor3 = Color3.fromRGB(25, 25, 30) 
+title.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 title.BorderSizePixel  = 0
 title.Text             = ""
 title.TextXAlignment   = Enum.TextXAlignment.Left
