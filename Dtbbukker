@@ -7,9 +7,11 @@
 --  - Roblox Notification on script load
 --  - Renamed toggles: Spectate & Bullet
 --  - IMPROVED BULLET: Prediction + Hitbox targeting
---  - Auto Prediction uses a SLIDE toggle (iOS style)
+--  - Auto Prediction uses normal checkbox (matches others)
 --  - BULLET TOGGLE AUTO-FIRES (calls gun:Activate())
 --  - Settings gear expands the WHOLE GUI to reveal Auto Fire row
+--  - Tracer now connects visually with the target highlight
+--  - TRACER COLOR MATCHES HIGHLIGHT COLOR (green/yellow/red by health)
 --==================================================================
 
 local Players          = game:GetService("Players")
@@ -350,7 +352,7 @@ nameLabel.ZIndex                 = 2
 nameLabel.Parent                 = main
 
 --============================================================
---  TOGGLE FACTORY (checkbox style with tiny box)
+--  TOGGLE FACTORY
 --============================================================
 local function createImageToggle(parent, textStr, yPos)
 	local btn = Instance.new("TextButton")
@@ -418,69 +420,13 @@ local function createImageToggle(parent, textStr, yPos)
 	return btn, checkLabel, cbFrame
 end
 
--- Create Spectate
 local viewBtn, viewCheck = createImageToggle(main, "Spectate", 102)
-
--- Create Bullet (returns cbFrame for gear placement)
 local bulletBtn, bulletCheck, bulletCheckFrame = createImageToggle(main, "Bullet", 142)
-
--- Create Auto Prediction (checkbox style — we'll overlay a slide track)
-local autoPredictBtn, autoPredictCheck, autoPredictCheckFrame = createImageToggle(main, "Auto Prediction", 182)
-
--- Hide the checkmark; add a slide track over the tiny box
-autoPredictCheck.TextTransparency = 1
-
-local apTrack = Instance.new("Frame")
-apTrack.Name = "SlideTrack"
-apTrack.Size = UDim2.new(0, 22, 0, 22)
-apTrack.Position = UDim2.new(1, -28, 0.5, -11)
-apTrack.BackgroundColor3 = Color3.fromRGB(60, 140, 90)
-apTrack.BorderSizePixel = 0
-apTrack.ZIndex = 5
-apTrack.Parent = autoPredictBtn
-
-Instance.new("UICorner", apTrack).CornerRadius = UDim.new(1, 0)
-
-local apTrackStroke = Instance.new("UIStroke", apTrack)
-apTrackStroke.Color = Color3.fromRGB(90, 200, 130)
-apTrackStroke.Thickness = 1.5
-
-local apKnob = Instance.new("Frame")
-apKnob.Name = "Knob"
-apKnob.Size = UDim2.new(0, 16, 0, 16)
-apKnob.Position = UDim2.new(1, -19, 0.5, -8)
-apKnob.BackgroundColor3 = Color3.fromRGB(240, 240, 245)
-apKnob.BorderSizePixel = 0
-apKnob.ZIndex = 6
-apKnob.Parent = apTrack
-
-Instance.new("UICorner", apKnob).CornerRadius = UDim.new(1, 0)
-
-local apKnobStroke = Instance.new("UIStroke", apKnob)
-apKnobStroke.Color = Color3.fromRGB(255, 255, 255)
-apKnobStroke.Thickness = 1
-apKnobStroke.Transparency = 0.4
-
-local function setApSlide(state, instant)
-	autoPredictOn = state
-	local targetPos = state and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
-	local targetTrack = state and Color3.fromRGB(60, 140, 90) or Color3.fromRGB(50, 50, 58)
-	local targetStroke = state and Color3.fromRGB(90, 200, 130) or Color3.fromRGB(120, 120, 130)
-	local info = TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-
-	if instant then
-		apKnob.Position = targetPos
-		apTrack.BackgroundColor3 = targetTrack
-		apTrackStroke.Color = targetStroke
-	else
-		TweenService:Create(apKnob, info, { Position = targetPos }):Play()
-		TweenService:Create(apTrack, info, { BackgroundColor3 = targetTrack }):Play()
-		TweenService:Create(apTrackStroke, info, { Color = targetStroke }):Play()
-	end
-end
+local autoPredictBtn, autoPredictCheck = createImageToggle(main, "Auto Prediction", 182)
+autoPredictCheck.TextTransparency = 0 -- ON by default
 
 --============================================================
---  AUTO FIRE ROW (hidden initially, revealed by gear)
+--  AUTO FIRE ROW
 --============================================================
 local autoFireBtn, autoFireCheck, autoFireCheckFrame = createImageToggle(main, "Auto Fire", 222)
 autoFireCheck.TextTransparency = 0
@@ -514,7 +460,7 @@ gearBtn.MouseLeave:Connect(function()
 end)
 
 --==================================================================
---  ACCORDION: GUI GROWS + AUTO PREDICTION SLIDES DOWN
+--  ACCORDION
 --==================================================================
 local dropdownOpen = false
 
@@ -526,24 +472,20 @@ local function setDropdown(open)
 	dropdownOpen = open
 	local info = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-	-- 1) Grow/shrink the main GUI (this is the "GUI moves" effect)
 	local targetHeight = open and GUI_OPEN_HEIGHT or GUI_CLOSED_HEIGHT
 	TweenService:Create(main, info, {
 		Size = UDim2.new(0, 260, 0, targetHeight)
 	}):Play()
 
-	-- 2) Grow/shrink the shadow to match
 	TweenService:Create(shadow, info, {
 		Size = UDim2.new(0, 260 + SHADOW_PADDING * 2, 0, targetHeight + SHADOW_PADDING * 2)
 	}):Play()
 
-	-- 3) Slide Auto Prediction down/up
 	TweenService:Create(autoPredictBtn, info, {
 		Position = UDim2.new(0, 12, 0, open and AP_DOWN_Y or AP_UP_Y)
 	}):Play()
 
 	if open then
-		-- Show Auto Fire at Y 182
 		autoFireBtn.Position = UDim2.new(0, 12, 0, AF_Y)
 		autoFireBtn.Visible = true
 		autoFireCheckFrame.Visible = true
@@ -563,7 +505,6 @@ local function setDropdown(open)
 		end)
 	end
 
-	-- 4) Rotate gear
 	TweenService:Create(gearBtn, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
 		Rotation = open and 90 or 0
 	}):Play()
@@ -639,7 +580,7 @@ local function makeTracer()
 	tracerPart.CanTouch      = false
 	tracerPart.CastShadow    = false
 	tracerPart.Material      = Enum.Material.Neon
-	tracerPart.Color         = Color3.fromRGB(255, 255, 255)
+	tracerPart.Color         = Color3.fromRGB(60, 220, 90) -- will be overwritten each frame
 	tracerPart.Transparency  = 0.35
 	tracerPart.Size          = Vector3.new(0.08, 0.08, 1)
 	tracerPart.TopSurface    = Enum.SurfaceType.Smooth
@@ -751,19 +692,41 @@ local function updateVisuals()
 	local tChar  = target.Character
 	local myChar = LocalPlayer.Character
 
+	-- Compute health color ONCE per frame so tracer + highlight + billboard
+	-- all share the exact same color.
+	local sharedColor = Color3.fromRGB(60, 220, 90)
+	if tChar then
+		local hum = tChar:FindFirstChildOfClass("Humanoid")
+		if hum then
+			sharedColor = colorFor(hum.Health, hum.MaxHealth)
+		end
+	end
+
+	----------------------------------------------------- TRACER
 	if tChar and myChar then
-		local myHRP    = myChar:FindFirstChild("HumanoidRootPart")
-		local theirHRP = tChar:FindFirstChild("HumanoidRootPart")
+		local myHRP     = myChar:FindFirstChild("HumanoidRootPart")
+		local theirHRP  = tChar:FindFirstChild("HumanoidRootPart")
+		local theirHead = tChar:FindFirstChild("Head")
+
 		if myHRP and theirHRP then
 			if not tracerPart then makeTracer() end
+
 			local from = myHRP.Position
-			local to   = theirHRP.Position
+			local to = theirHRP.Position
+			if theirHead then
+				to = theirHRP.Position:Lerp(theirHead.Position, 0.5)
+			end
+
 			local dir  = to - from
 			local dist = dir.Magnitude
+
 			if dist > 0.01 then
-				tracerPart.Size         = Vector3.new(0.08, 0.08, dist)
+				local overlap = 0.5
+				tracerPart.Size         = Vector3.new(0.08, 0.08, dist + overlap)
 				tracerPart.CFrame       = CFrame.lookAt(from + dir * 0.5, to)
 				tracerPart.Transparency = 0.35
+				-- COLOR MATCHES HIGHLIGHT
+				tracerPart.Color        = sharedColor
 			end
 		else
 			if tracerPart then tracerPart.Transparency = 1 end
@@ -772,18 +735,22 @@ local function updateVisuals()
 		if tracerPart then tracerPart.Transparency = 1 end
 	end
 
+	----------------------------------------------------- HIGHLIGHT
 	if tChar then
 		ensureHighlight(tChar)
-		local hum = tChar:FindFirstChildOfClass("Humanoid")
-		if highlight and hum then
-			local c = colorFor(hum.Health, hum.MaxHealth)
-			highlight.OutlineColor = c
-			highlight.FillColor    = c
+		if highlight then
+			-- COLOR MATCHES TRACER
+			highlight.OutlineColor = sharedColor
+			highlight.FillColor    = sharedColor
 		end
 	else
 		destroyHighlight()
 	end
 
+	----------------------------------------------------- BILLBOARD
+	if billboardLabel then
+		billboardLabel.TextColor3 = sharedColor
+	end
 	updateBillboard()
 end
 
@@ -894,7 +861,8 @@ bulletBtn.MouseButton1Click:Connect(function()
 end)
 
 autoPredictBtn.MouseButton1Click:Connect(function()
-	setApSlide(not autoPredictOn, false)
+	autoPredictOn = not autoPredictOn
+	autoPredictCheck.TextTransparency = autoPredictOn and 0 or 1
 end)
 
 --==================================================================
