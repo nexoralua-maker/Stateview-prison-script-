@@ -8,7 +8,8 @@
 --  - Renamed toggles: Spectate & Bullet
 --  - IMPROVED BULLET: Prediction + Hitbox targeting
 --  - ADDED AUTO PREDICTION TOGGLE
---  - ADDED AUTO FIRE TOGGLE (fires when spectating + target visible)
+--  - ADDED AUTO FIRE TOGGLE (uses Bullet logic when Bullet is ON)
+--  - TRACER NOW CONNECTS TO HIGHLIGHT (aims at target part)
 --==================================================================
 
 local Players          = game:GetService("Players")
@@ -30,7 +31,7 @@ task.spawn(function()
 			Text = "On top";
 			Duration = 5;
 		})
-	end)
+	end
 	if not success then
 		warn("Could not send Roblox notification: " .. tostring(err))
 	end
@@ -45,8 +46,8 @@ local viewOn       = false
 
 local bulletTarget = nil
 local bulletOn     = false
-local autoPredictOn = true -- Enabled by default for best performance
-local autoFireOn    = false -- Auto fire when spectating
+local autoPredictOn = true
+local autoFireOn    = false
 
 local tracerPart   = nil
 local highlight    = nil
@@ -72,11 +73,14 @@ local function getBestTargetPart(character)
 	return nil
 end
 
-local function fireBullet(tool)
-	if not bulletOn or not bulletTarget then return end
+local function fireBullet(tool, explicitTarget)
+	if not bulletOn and not explicitTarget then return end
+
+	local useTarget = explicitTarget or bulletTarget
+	if not useTarget then return end
 
 	local char  = LocalPlayer.Character
-	local tChar = bulletTarget.Character
+	local tChar = useTarget.Character
 	if not char or not tChar then return end
 
 	local hand = char:FindFirstChild("RightHand")
@@ -85,14 +89,12 @@ local function fireBullet(tool)
 	local targetPart = getBestTargetPart(tChar)
 	if not targetPart then return end
 
-	-- Get target velocity
 	local targetVel = targetPart.AssemblyLinearVelocity
 	local hrp = tChar:FindFirstChild("HumanoidRootPart")
 	if hrp then
 		targetVel = hrp.AssemblyLinearVelocity
 	end
 
-	-- Auto Prediction Calculation
 	local predictedPos = targetPart.Position
 	if autoPredictOn then
 		local ping = 0.1
@@ -103,8 +105,8 @@ local function fireBullet(tool)
 				ping = pingValue / 1000
 			end
 		end
-		
-		local predictionTime = ping + 0.05 
+
+		local predictionTime = ping + 0.05
 		predictedPos = targetPart.Position + (targetVel * predictionTime)
 	end
 
@@ -126,7 +128,7 @@ local function fireBullet(tool)
 end
 
 --==================================================================
---  AUTO FIRE CORE (fires when spectating + crosshair on target)
+--  AUTO FIRE HELPERS
 --==================================================================
 local lastAutoFire = 0
 local AUTO_FIRE_DELAY = 0.08
@@ -149,7 +151,6 @@ local function isTargetVisible()
 	local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
 	if not myHRP or not tHRP then return false end
 
-	-- Raycast to check visibility
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { char, target.Character }
@@ -157,7 +158,7 @@ local function isTargetVisible()
 
 	local dir = tHRP.Position - myHRP.Position
 	local hit = workspace:Raycast(myHRP.Position, dir, params)
-	return hit == nil -- No obstruction
+	return hit == nil
 end
 
 local function getAimedPlayer()
@@ -169,7 +170,9 @@ local function getAimedPlayer()
 
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { LocalPlayer.Character }
+	local filter = {}
+	if LocalPlayer.Character then table.insert(filter, LocalPlayer.Character) end
+	params.FilterDescendantsInstances = filter
 	params.IgnoreWater = true
 
 	local hit = workspace:Raycast(origin, direction * 1000, params)
@@ -247,12 +250,11 @@ shadow.SliceCenter            = Rect.new(49, 49, 450, 450)
 shadow.ZIndex                 = 0
 shadow.Parent                 = gui
 
--- Dark translucent background (main frame)
 local main = Instance.new("Frame")
 main.Name             = "Main"
 main.AnchorPoint      = Vector2.new(0.5, 0.5)
 main.Position         = UDim2.new(0.5, 0, 0.5, 0)
-main.Size             = UDim2.new(0, 260, 0, 270) -- Increased height for Auto Fire button
+main.Size             = UDim2.new(0, 260, 0, 270)
 main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 main.BackgroundTransparency = 0.15
 main.BorderSizePixel  = 0
@@ -266,11 +268,10 @@ local mainStroke = Instance.new("UIStroke", main)
 mainStroke.Color     = Color3.fromRGB(60, 60, 65)
 mainStroke.Thickness = 1
 
--- title bar (drag handle)
 local title = Instance.new("TextLabel")
 title.Name             = "Title"
 title.Size             = UDim2.new(1, 0, 0, 28)
-title.BackgroundColor3 = Color3.fromRGB(25, 25, 30) 
+title.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 title.BorderSizePixel  = 0
 title.Text             = ""
 title.TextXAlignment   = Enum.TextXAlignment.Left
@@ -283,9 +284,6 @@ title.Parent           = main
 
 Instance.new("UICorner", title).CornerRadius = UDim.new(0, 10)
 
--- ============================================================
---  Death.Eye title with colored parts
--- ============================================================
 local titleContainer = Instance.new("Frame")
 titleContainer.Name                   = "TitleContainer"
 titleContainer.Size                   = UDim2.new(1, -12, 1, 0)
@@ -341,7 +339,6 @@ eyeLabel.LayoutOrder            = 3
 eyeLabel.ZIndex                 = 3
 eyeLabel.Parent                 = titleContainer
 
--- search
 local searchBox = Instance.new("TextBox")
 searchBox.Name              = "SearchBox"
 searchBox.Size              = UDim2.new(1, -24, 0, 30)
@@ -360,7 +357,6 @@ searchBox.Parent            = main
 
 Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 6)
 
--- name label
 local nameLabel = Instance.new("TextLabel")
 nameLabel.Name                   = "NameLabel"
 nameLabel.Size                   = UDim2.new(1, -24, 0, 24)
@@ -375,9 +371,6 @@ nameLabel.TextTruncate           = Enum.TextTruncate.AtEnd
 nameLabel.ZIndex                 = 2
 nameLabel.Parent                 = main
 
---============================================================
---  NEW TOGGLE BUTTONS (Matching Image Exactly)
---============================================================
 local function createImageToggle(parent, textStr, yPos)
 	local btn = Instance.new("TextButton")
 	btn.Name = textStr:gsub("%s+", "") .. "Btn"
@@ -437,24 +430,17 @@ local function createImageToggle(parent, textStr, yPos)
 	checkLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	checkLabel.Font = Enum.Font.GothamBold
 	checkLabel.TextSize = 15
-	checkLabel.TextTransparency = 1 -- Default hidden (OFF state)
+	checkLabel.TextTransparency = 1
 	checkLabel.ZIndex = 4
 	checkLabel.Parent = cbFrame
 
 	return btn, checkLabel
 end
 
--- Create Spectate Toggle
 local viewBtn, viewCheck = createImageToggle(main, "Spectate", 102)
-
--- Create Bullet Toggle
 local bulletBtn, bulletCheck = createImageToggle(main, "Bullet", 142)
-
--- Create Auto Prediction Toggle
 local autoPredictBtn, autoPredictCheck = createImageToggle(main, "Auto Prediction", 182)
-autoPredictCheck.TextTransparency = 0 -- Default ON
-
--- Create Auto Fire Toggle
+autoPredictCheck.TextTransparency = 0
 local autoFireBtn, autoFireCheck = createImageToggle(main, "Auto Fire", 222)
 
 --==================================================================
@@ -561,7 +547,6 @@ local function ensureHighlight(char)
 	highlight.Parent              = char
 end
 
--- color helper — RED at 0 HP
 local function colorFor(health, maxHealth)
 	if health <= 0 then
 		return Color3.fromRGB(235, 60, 60)
@@ -671,15 +656,17 @@ local function updateVisuals()
 	local myChar = LocalPlayer.Character
 
 	----------------------------------------------------- TRACER
+	-- Now connects to the same body part the highlight wraps around,
+	-- so the tracer line "attaches" to the highlight visually.
 	if tChar and myChar then
 		local myHRP    = myChar:FindFirstChild("HumanoidRootPart")
-		local theirHRP = tChar:FindFirstChild("HumanoidRootPart")
+		local targetPart = getBestTargetPart(tChar) -- Head > UpperTorso > HRP
 
-		if myHRP and theirHRP then
+		if myHRP and targetPart then
 			if not tracerPart then makeTracer() end
 
 			local from = myHRP.Position
-			local to   = theirHRP.Position
+			local to   = targetPart.Position
 			local dir  = to - from
 			local dist = dir.Magnitude
 
@@ -687,6 +674,12 @@ local function updateVisuals()
 				tracerPart.Size         = Vector3.new(0.08, 0.08, dist)
 				tracerPart.CFrame       = CFrame.lookAt(from + dir * 0.5, to)
 				tracerPart.Transparency = 0.35
+
+				-- Match tracer color to the highlight/health color
+				local hum = tChar:FindFirstChildOfClass("Humanoid")
+				if hum then
+					tracerPart.Color = colorFor(hum.Health, hum.MaxHealth)
+				end
 			end
 		else
 			if tracerPart then tracerPart.Transparency = 1 end
@@ -749,17 +742,21 @@ RunService.Heartbeat:Connect(function()
 	local gun = getEquippedTool()
 	if not gun then return end
 
-	-- Check if spectated target is in crosshair and visible
 	local aimedPlayer = getAimedPlayer()
 	if aimedPlayer ~= target then return end
 	if not isTargetVisible() then return end
 
 	lastAutoFire = now
 
-	-- Fire the gun
-	pcall(function()
-		gun:Activate()
-	end)
+	if bulletOn then
+		task.spawn(function()
+			fireBullet(gun, target)
+		end)
+	else
+		pcall(function()
+			gun:Activate()
+		end)
+	end
 end)
 
 --==================================================================
@@ -775,7 +772,6 @@ local function selectPlayer(plr)
 	destroyBillboard()
 	target = plr
 
-	-- Reset Bullet Toggle when target changes
 	bulletOn = false
 	if bulletCheck then bulletCheck.TextTransparency = 1 end
 
@@ -844,7 +840,6 @@ searchBox.FocusLost:Connect(doSearch)
 --  TOGGLE LOGIC
 --==================================================================
 
--- Spectate Toggle
 viewBtn.MouseButton1Click:Connect(function()
 	viewOn = not viewOn
 
@@ -857,7 +852,6 @@ viewBtn.MouseButton1Click:Connect(function()
 	refreshView()
 end)
 
--- Bullet Toggle
 bulletBtn.MouseButton1Click:Connect(function()
 	if not target then
 		nameLabel.Text       = "Select a player first"
@@ -875,7 +869,6 @@ bulletBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Auto Prediction Toggle
 autoPredictBtn.MouseButton1Click:Connect(function()
 	autoPredictOn = not autoPredictOn
 
@@ -886,7 +879,6 @@ autoPredictBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Auto Fire Toggle
 autoFireBtn.MouseButton1Click:Connect(function()
 	if not target then
 		nameLabel.Text       = "Select a player first"
