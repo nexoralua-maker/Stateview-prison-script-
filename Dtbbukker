@@ -5,6 +5,7 @@
 --  - Red at 0 HP
 --  - Toggle buttons redesigned to match the provided image exactly
 --  - Roblox Notification on script load
+--  - Renamed toggles: Spectate & Bullet
 --==================================================================
 
 local Players          = game:GetService("Players")
@@ -346,11 +347,11 @@ local function createImageToggle(parent, textStr, yPos)
 	return btn, checkLabel
 end
 
--- Create KO Notification Toggle (Replaces View Button)
-local viewBtn, viewCheck = createImageToggle(main, "KO Notification", 102)
+-- Create Spectate Toggle (Replaces View Button)
+local viewBtn, viewCheck = createImageToggle(main, "Spectate", 102)
 
--- Create Warning Notif... Toggle (Replaces Bullet Button)
-local bulletBtn, bulletCheck = createImageToggle(main, "Warning Notif...", 142)
+-- Create Bullet Toggle (Replaces Bullet Button)
+local bulletBtn, bulletCheck = createImageToggle(main, "Bullet", 142)
 
 --==================================================================
 --  DRAGGING  (original simple behavior)
@@ -713,7 +714,7 @@ searchBox.FocusLost:Connect(doSearch)
 --  TOGGLE LOGIC (Updated for new visual buttons)
 --==================================================================
 
--- View Toggle (KO Notification)
+-- View Toggle (Spectate)
 viewBtn.MouseButton1Click:Connect(function()
 	viewOn = not viewOn
 
@@ -726,7 +727,7 @@ viewBtn.MouseButton1Click:Connect(function()
 	refreshView()
 end)
 
--- Bullet Toggle (Warning Notif...)
+-- Bullet Toggle (Bullet)
 bulletBtn.MouseButton1Click:Connect(function()
 	if not target then
 		nameLabel.Text       = "Select a player first"
