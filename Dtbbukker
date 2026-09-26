@@ -1,17 +1,24 @@
 --==================================================================
---  View / Bullet GUI + White Tracer + Highlight + Aimlock
---  (Fixed: Reload + Ammo replication preserved)
+--  View / Bullet GUI + Tracer + Health Highlight  (FANCY EDITION)
+--  - Draggable frame (transparent main background)
+--  - TextBox  : partial player name search
+--  - Label    : display name + @username
+--  - Toggle   : View
+--  - Button   : Bullet  (runs bullet function on viewed player)
+--  - Tracer   : line from you -> target player (WHITE)
+--  - Highlight: full-body outline on target player
+--               green  = full / high health
+--               yellow = medium health (21-50%)
+--               red    = 1 - 20 health
 --==================================================================
 
-local Players           = game:GetService("Players")
-local RunService        = game:GetService("RunService")
-local UserInputService  = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace         = game:GetService("Workspace")
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
-local camera      = Workspace.CurrentCamera
 
 --==================================================================
 --  STATE
@@ -28,197 +35,13 @@ local highlight    = nil
 local renderConn   = nil
 
 --==================================================================
---  AIMLOCK CONFIG (no keybinds)
+--  BULLET CORE
 --==================================================================
-local AIM = {
-	Prediction    = 0.134,
-	IgnoreKnocked = true,
-	IgnoreGrabbed = true,
-	WallCheck     = false,
-}
-
-local AimState = {
-	enabled            = false,
-	predicted_position = Vector3.new(0, 0, 0),
-}
-
---==================================================================
---  GAME SUPPORT TABLE
---==================================================================
-local GAME_SUPPORT = {
-	[2788229376]  = { Remote = "MainEvent", Argument = "UpdateMousePosI" },
-	[12238627497] = { Remote = "MainEvent", Argument = "UpdateMousePos"  },
-	[5602055394]  = { Remote = "MAINEVENT", Argument = "MousePos"        },
-	[17403265390] = { Remote = "MAINEVENT", Argument = "MOUSE"           },
-	[17403166075] = { Remote = "MAINEVENT", Argument = "MOUSE"           },
-	[18111448661] = { Remote = "MAINEVENT", Argument = "MOUSE"           },
-	[15186202290] = { Remote = "MAINEVENT", Argument = "MOUSE"           },
-	[11143225577] = { Remote = "MAINEVENT", Argument = "UpdateMousePos"  },
-	[15763494605] = { Remote = "MAINEVENT", Argument = "MOUSE"           },
-	[15166543806] = { Remote = "MAINEVENT", Argument = "MoonUpdateMousePos" },
-	[17897702920] = { Remote = "MainEvent", Argument = "UpdateMousePos"  },
-	[16033173781] = { Remote = "MainEvent", Argument = "UpdateMousePos1" },
-	[7213786345]  = { Remote = "MainEvent", Argument = "UpdateMousePosI" },
-	[9825515356]  = { Remote = "MainEvent", Argument = "MousePosUpdate"  },
-	[16859411452] = { Remote = "MainEvent", Argument = "UpdateMousePos"  },
-	[14277620939] = { Remote = "MainEvent", Argument = "UpdateMousePos"  },
-}
-
-local function autoDetectRemote()
-	local names = { "MainEvent", "MAINEVENT", "Main", "Remote", "Remotes" }
-	for _, n in ipairs(names) do
-		local r = ReplicatedStorage:FindFirstChild(n)
-		if r and r:IsA("RemoteEvent") then return r, n end
-		local folder = ReplicatedStorage:FindFirstChild("Remotes")
-		if folder then
-			local r2 = folder:FindFirstChild(n)
-			if r2 and r2:IsA("RemoteEvent") then return r2, n end
-		end
-	end
-end
-
-local gameConfig = GAME_SUPPORT[game.PlaceId]
-local remote, mouseArgument
-if gameConfig then
-	remote = ReplicatedStorage:FindFirstChild(gameConfig.Remote)
-	mouseArgument = gameConfig.Argument
-else
-	remote, mouseArgument = autoDetectRemote()
-	mouseArgument = mouseArgument or "MOUSE"
-end
-
---==================================================================
---  AIMLOCK HELPERS
---==================================================================
-local function hasCharacter(p)
-	return p and p.Character and p.Character:FindFirstChild("Humanoid") ~= nil
-end
-
-local function isKnocked(p)
-	if not hasCharacter(p) then return false end
-	local be = p.Character:FindFirstChild("BodyEffects")
-	if not be then return false end
-	local ko = be:FindFirstChild("K.O")
-	return ko and ko.Value or false
-end
-
-local function isGrabbed(p)
-	if not hasCharacter(p) then return false end
-	return p.Character:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
-end
-
-local function isBlockedByWall(p)
-	if not AIM.WallCheck then return false end
-	if not hasCharacter(LocalPlayer) or not hasCharacter(p) then return true end
-	local myHrp  = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	local tgtHrp = p.Character:FindFirstChild("HumanoidRootPart")
-	if not myHrp or not tgtHrp then return true end
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { LocalPlayer.Character, p.Character }
-	params.IgnoreWater = true
-	local hit = Workspace:Raycast(myHrp.Position, tgtHrp.Position - myHrp.Position, params)
-	return hit ~= nil
-end
-
-local function isInAir(p)
-	if not hasCharacter(p) then return false end
-	local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-	return hrp and math.abs(hrp.AssemblyLinearVelocity.Y) > 1 or false
-end
-
---==================================================================
---  AIM TARGET VALIDATION
---==================================================================
-local function aimTargetValid()
-	local p = bulletTarget
-	if not p or p == LocalPlayer then return false end
-	if not hasCharacter(p) then return false end
-	if AIM.IgnoreKnocked and isKnocked(p) then return false end
-	if AIM.IgnoreGrabbed and isGrabbed(p) then return false end
-	if isBlockedByWall(p) then return false end
-	return true
-end
-
-local function getPredictedPosition()
-	local t = bulletTarget
-	if not t or not hasCharacter(t) then return Vector3.new(0, 0, 0) end
-
-	local head = t.Character:FindFirstChild("Head")
-		or t.Character:FindFirstChild("HumanoidRootPart")
-	if not head then return Vector3.new(0, 0, 0) end
-
-	local hrp = t.Character:FindFirstChild("HumanoidRootPart")
-	local velocity = hrp and hrp.AssemblyLinearVelocity or Vector3.new(0, 0, 0)
-
-	if isInAir(t) then
-		velocity = Vector3.new(velocity.X, math.abs(velocity.Y * 0.2), velocity.Z)
-	end
-
-	return head.Position + velocity * AIM.Prediction
-end
-
---==================================================================
---  SILENT AIM HOOK (executor only)
---==================================================================
-local hookOk = pcall(function()
-	local oldNamecall
-	oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-		local method = getnamecallmethod()
-		local args = { ... }
-
-		if not checkcaller()
-			and method == "FireServer"
-			and typeof(args[1]) == "string"
-			and typeof(args[2]) == "Vector3"
-			and AimState.enabled
-			and bulletTarget
-			and aimTargetValid() then
-
-			args[2] = AimState.predicted_position
-		end
-
-		return oldNamecall(self, table.unpack(args))
-	end))
-end)
-
-if not hookOk then
-	warn("[Aimlock] Silent-aim hook unavailable (not in an executor).")
-end
-
---==================================================================
---  BACKUP: fire remote with predicted pos (does NOT move the tool)
---==================================================================
-local function hookGun(character)
-	if not character then return end
-	character.ChildAdded:Connect(function(tool)
-		if not tool:IsA("Tool") then return end
-		tool.Activated:Connect(function()
-			if AimState.enabled and bulletTarget and aimTargetValid()
-				and remote and mouseArgument then
-				pcall(function()
-					remote:FireServer(mouseArgument, AimState.predicted_position)
-				end)
-			end
-		end)
-	end)
-end
-
-if LocalPlayer.Character then hookGun(LocalPlayer.Character) end
-LocalPlayer.CharacterAdded:Connect(hookGun)
-
---==================================================================
---  BULLET CORE  (FIXED — safe, non-destructive)
---  Only runs on tool activation, restores hand + tool cleanly.
---==================================================================
-local bulletBusy = false
-
 local function calcGrip(handCF, rootCF)
 	return (handCF * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)):ToObjectSpace(rootCF):Inverse()
 end
 
 local function fireBullet(tool)
-	if bulletBusy then return end
 	if not bulletOn or not bulletTarget then return end
 
 	local char  = LocalPlayer.Character
@@ -229,27 +52,20 @@ local function fireBullet(tool)
 	local hrp  = tChar:FindFirstChild("HumanoidRootPart")
 	if not hand or not hrp then return end
 
-	bulletBusy = true
+	local oldGrip = tool.Grip
 
-	local oldGrip      = tool.Grip
-	local wasAnchored  = hand.Anchored
-	local oldParent    = tool.Parent
-
-	-- aim-grip sequence (does NOT touch Backpack)
+	tool.Parent   = LocalPlayer.Backpack
 	hand.Anchored = false
 	tool.Grip     = calcGrip(hand.CFrame, hrp.CFrame)
 	hand.Anchored = true
+	tool.Parent   = char
 
 	RunService.RenderStepped:Wait()
 
-	-- restore everything exactly as it was
+	tool.Parent   = LocalPlayer.Backpack
+	hand.Anchored = false
 	tool.Grip     = oldGrip
-	hand.Anchored = wasAnchored
-	if oldParent and tool.Parent ~= oldParent then
-		tool.Parent = oldParent
-	end
-
-	bulletBusy = false
+	tool.Parent   = char
 end
 
 --==================================================================
@@ -288,7 +104,7 @@ if LocalPlayer.Character then watchCharacter(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(watchCharacter)
 
 --==================================================================
---  GUI
+--  GUI  (FANCY + TRANSPARENT BACKGROUND)
 --==================================================================
 local gui = Instance.new("ScreenGui")
 gui.Name           = "ViewBulletGui"
@@ -297,106 +113,224 @@ gui.IgnoreGuiInset = true
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent         = PlayerGui
 
+-- Outer wrapper (fully transparent, no border) -- acts as the shadow/glow container
 local main = Instance.new("Frame")
-main.Name             = "Main"
-main.AnchorPoint      = Vector2.new(0.5, 0.5)
-main.Position         = UDim2.new(0.5, 0, 0.5, 0)
-main.Size             = UDim2.new(0, 260, 0, 190)
-main.BackgroundColor3 = Color3.fromRGB(28, 28, 34)
-main.BorderSizePixel  = 0
-main.Active           = true
-main.Parent           = gui
+main.Name                   = "Main"
+main.AnchorPoint            = Vector2.new(0.5, 0.5)
+main.Position               = UDim2.new(0.5, 0, 0.5, 0)
+main.Size                   = UDim2.new(0, 268, 0, 214)
+main.BackgroundTransparency = 1          -- TRANSPARENT MAIN BACKGROUND
+main.BorderSizePixel        = 0
+main.Active                 = true
+main.Parent                 = gui
 
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
+-- Outer glow (soft blue halo behind the panel)
+local glow = Instance.new("Frame", main)
+glow.Name                   = "Glow"
+glow.AnchorPoint            = Vector2.new(0.5, 0.5)
+glow.Position               = UDim2.new(0.5, 0, 0.5, 0)
+glow.Size                   = UDim2.new(1, 12, 1, 12)
+glow.BackgroundColor3       = Color3.fromRGB(90, 140, 255)
+glow.BackgroundTransparency = 0.85
+glow.BorderSizePixel        = 0
+glow.ZIndex                 = 0
+Instance.new("UICorner", glow).CornerRadius = UDim.new(0, 18)
 
-local mainStroke = Instance.new("UIStroke", main)
-mainStroke.Color     = Color3.fromRGB(75, 75, 92)
-mainStroke.Thickness = 1
+-- Content panel (this is the visible rounded box)
+local panel = Instance.new("Frame", main)
+panel.Name                   = "Panel"
+panel.AnchorPoint            = Vector2.new(0.5, 0.5)
+panel.Position               = UDim2.new(0.5, 0, 0.5, 0)
+panel.Size                   = UDim2.new(1, 0, 1, 0)
+panel.BackgroundColor3       = Color3.fromRGB(22, 24, 34)
+panel.BackgroundTransparency = 0.08      -- slight transparency for glassy look
+panel.BorderSizePixel        = 0
+panel.ZIndex                 = 1
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 14)
 
--- title bar
+local panelStroke = Instance.new("UIStroke", panel)
+panelStroke.Color           = Color3.fromRGB(90, 120, 200)
+panelStroke.Thickness       = 1.2
+panelStroke.Transparency    = 0.35
+panelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+-- Top gradient accent bar
+local accent = Instance.new("Frame", panel)
+accent.Name                   = "Accent"
+accent.Size                   = UDim2.new(1, 0, 0, 4)
+accent.Position               = UDim2.new(0, 0, 0, 0)
+accent.BackgroundColor3       = Color3.fromRGB(90, 140, 255)
+accent.BorderSizePixel        = 0
+accent.ZIndex                 = 2
+Instance.new("UICorner", accent).CornerRadius = UDim.new(0, 14)
+
+local accentGrad = Instance.new("UIGradient", accent)
+accentGrad.Color = ColorSequence.new{
+	ColorSequenceKeypoint.new(0,   Color3.fromRGB(90, 140, 255)),
+	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(160, 90, 255)),
+	ColorSequenceKeypoint.new(1,   Color3.fromRGB(90, 200, 255)),
+}
+
+--==================================================================
+--  TITLE BAR  (drag handle)
+--==================================================================
 local title = Instance.new("TextLabel")
-title.Name             = "Title"
-title.Size             = UDim2.new(1, 0, 0, 28)
-title.BackgroundColor3 = Color3.fromRGB(42, 42, 52)
-title.BorderSizePixel  = 0
-title.Text             = "   View / Bullet"
-title.TextXAlignment   = Enum.TextXAlignment.Left
-title.TextColor3       = Color3.fromRGB(235, 235, 245)
-title.Font             = Enum.Font.GothamBold
-title.TextSize         = 13
-title.Active           = true
-title.Parent           = main
+title.Name                   = "Title"
+title.Size                   = UDim2.new(1, 0, 0, 34)
+title.Position               = UDim2.new(0, 0, 0, 4)
+title.BackgroundTransparency = 1
+title.Text                   = "  ✦  VIEW / BULLET"
+title.TextXAlignment         = Enum.TextXAlignment.Left
+title.TextColor3             = Color3.fromRGB(235, 240, 255)
+title.Font                   = Enum.Font.GothamBold
+title.TextSize               = 13
+title.Active                 = true
+title.ZIndex                 = 3
+title.Parent                 = panel
 
-Instance.new("UICorner", title).CornerRadius = UDim.new(0, 10)
+-- little status dot
+local dot = Instance.new("Frame", panel)
+dot.Name             = "Dot"
+dot.Size             = UDim2.new(0, 8, 0, 8)
+dot.Position         = UDim2.new(1, -22, 0, 17)
+dot.BackgroundColor3 = Color3.fromRGB(110, 220, 160)
+dot.BorderSizePixel  = 0
+dot.ZIndex           = 4
+Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
--- search
+local dotStroke = Instance.new("UIStroke", dot)
+dotStroke.Color     = Color3.fromRGB(110, 220, 160)
+dotStroke.Thickness = 1
+dotStroke.Transparency = 0.4
+
+--==================================================================
+--  SEARCH BOX
+--==================================================================
 local searchBox = Instance.new("TextBox")
 searchBox.Name              = "SearchBox"
-searchBox.Size              = UDim2.new(1, -24, 0, 30)
-searchBox.Position          = UDim2.new(0, 12, 0, 36)
-searchBox.BackgroundColor3  = Color3.fromRGB(48, 48, 58)
+searchBox.Size              = UDim2.new(1, -24, 0, 32)
+searchBox.Position          = UDim2.new(0, 12, 0, 44)
+searchBox.BackgroundColor3  = Color3.fromRGB(38, 42, 56)
+searchBox.BackgroundTransparency = 0.15
 searchBox.BorderSizePixel   = 0
-searchBox.PlaceholderText   = "Partial player name..."
+searchBox.PlaceholderText   = "  🔍  Partial player name..."
 searchBox.Text              = ""
 searchBox.ClearTextOnFocus  = false
-searchBox.TextColor3        = Color3.fromRGB(232, 232, 242)
-searchBox.PlaceholderColor3 = Color3.fromRGB(128, 128, 148)
+searchBox.TextColor3        = Color3.fromRGB(232, 236, 248)
+searchBox.PlaceholderColor3 = Color3.fromRGB(130, 138, 160)
 searchBox.Font              = Enum.Font.Gotham
 searchBox.TextSize          = 13
-searchBox.Parent            = main
+searchBox.ZIndex            = 3
+searchBox.Parent            = panel
 
-Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 8)
 
--- name label
+local searchStroke = Instance.new("UIStroke", searchBox)
+searchStroke.Color        = Color3.fromRGB(70, 80, 110)
+searchStroke.Thickness    = 1
+searchStroke.Transparency = 0.3
+
+--==================================================================
+--  NAME LABEL
+--==================================================================
 local nameLabel = Instance.new("TextLabel")
 nameLabel.Name                   = "NameLabel"
-nameLabel.Size                   = UDim2.new(1, -24, 0, 24)
-nameLabel.Position               = UDim2.new(0, 12, 0, 72)
+nameLabel.Size                   = UDim2.new(1, -24, 0, 22)
+nameLabel.Position               = UDim2.new(0, 12, 0, 82)
 nameLabel.BackgroundTransparency = 1
 nameLabel.Text                   = "No player selected"
-nameLabel.TextColor3             = Color3.fromRGB(170, 170, 190)
+nameLabel.TextColor3             = Color3.fromRGB(150, 158, 180)
 nameLabel.TextXAlignment         = Enum.TextXAlignment.Left
 nameLabel.Font                   = Enum.Font.Gotham
-nameLabel.TextSize               = 13
+nameLabel.TextSize               = 12
 nameLabel.TextTruncate           = Enum.TextTruncate.AtEnd
-nameLabel.Parent                 = main
+nameLabel.ZIndex                 = 3
+nameLabel.Parent                 = panel
 
--- view toggle
+--==================================================================
+--  BUTTON HELPER  (hover + click effects)
+--==================================================================
+local function styleButton(btn, baseColor, hoverColor, textColor)
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+
+	local stroke = Instance.new("UIStroke", btn)
+	stroke.Color        = baseColor
+	stroke.Thickness    = 1
+	stroke.Transparency = 0.4
+
+	btn.BackgroundColor3 = baseColor
+	btn.TextColor3       = textColor or Color3.fromRGB(235, 240, 255)
+
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.18), {
+			BackgroundColor3 = hoverColor
+		}):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.18), {
+			Transparency = 0
+		}):Play()
+	end)
+
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.18), {
+			BackgroundColor3 = btn:GetAttribute("BaseColor") or baseColor
+		}):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.18), {
+			Transparency = 0.4
+		}):Play()
+	end)
+
+	btn:SetAttribute("BaseColor", baseColor)
+	return stroke
+end
+
+--==================================================================
+--  VIEW TOGGLE
+--==================================================================
 local viewBtn = Instance.new("TextButton")
 viewBtn.Name             = "ViewButton"
 viewBtn.Size             = UDim2.new(1, -24, 0, 32)
-viewBtn.Position         = UDim2.new(0, 12, 0, 102)
-viewBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 76)
+viewBtn.Position         = UDim2.new(0, 12, 0, 110)
+viewBtn.BackgroundColor3 = Color3.fromRGB(46, 52, 72)
 viewBtn.BorderSizePixel  = 0
-viewBtn.Text             = "View: OFF"
-viewBtn.TextColor3       = Color3.fromRGB(235, 235, 245)
+viewBtn.Text             = "👁  View: OFF"
 viewBtn.Font             = Enum.Font.GothamMedium
 viewBtn.TextSize         = 13
-viewBtn.Parent           = main
+viewBtn.AutoButtonColor  = false
+viewBtn.ZIndex           = 3
+viewBtn.Parent           = panel
+styleButton(viewBtn, Color3.fromRGB(46, 52, 72), Color3.fromRGB(60, 70, 100))
 
-Instance.new("UICorner", viewBtn).CornerRadius = UDim.new(0, 6)
-
--- bullet button
+--==================================================================
+--  BULLET BUTTON
+--==================================================================
 local bulletBtn = Instance.new("TextButton")
 bulletBtn.Name             = "BulletButton"
-bulletBtn.Size             = UDim2.new(1, -24, 0, 32)
-bulletBtn.Position         = UDim2.new(0, 12, 0, 142)
-bulletBtn.BackgroundColor3 = Color3.fromRGB(150, 55, 55)
+bulletBtn.Size             = UDim2.new(1, -24, 0, 34)
+bulletBtn.Position         = UDim2.new(0, 12, 0, 152)
+bulletBtn.BackgroundColor3 = Color3.fromRGB(160, 55, 70)
 bulletBtn.BorderSizePixel  = 0
-bulletBtn.Text             = "Bullet"
-bulletBtn.TextColor3       = Color3.fromRGB(255, 240, 240)
+bulletBtn.Text             = "💥  Bullet"
 bulletBtn.Font             = Enum.Font.GothamMedium
 bulletBtn.TextSize         = 13
-bulletBtn.Parent           = main
-
-Instance.new("UICorner", bulletBtn).CornerRadius = UDim.new(0, 6)
+bulletBtn.AutoButtonColor  = false
+bulletBtn.ZIndex           = 3
+bulletBtn.Parent           = panel
+styleButton(bulletBtn, Color3.fromRGB(160, 55, 70), Color3.fromRGB(200, 75, 95))
 
 --==================================================================
 --  DRAGGING
 --==================================================================
-local dragging  = false
-local dragStart = nil
-local startPos  = nil
+local dragging   = false
+local dragStart  = nil
+local startPos   = nil
+
+local function updateDrag(input)
+	local delta = input.Position - dragStart
+	main.Position = UDim2.new(
+		startPos.X.Scale, startPos.X.Offset + delta.X,
+		startPos.Y.Scale, startPos.Y.Offset + delta.Y
+	)
+end
 
 title.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -418,16 +352,12 @@ UserInputService.InputChanged:Connect(function(input)
 	if not dragging then return end
 	if input.UserInputType == Enum.UserInputType.MouseMovement
 	or input.UserInputType == Enum.UserInputType.Touch then
-		local delta = input.Position - dragStart
-		main.Position = UDim2.new(
-			startPos.X.Scale, startPos.X.Offset + delta.X,
-			startPos.Y.Scale, startPos.Y.Offset + delta.Y
-		)
+		updateDrag(input)
 	end
 end)
 
 --==================================================================
---  TRACER (WHITE)
+--  TRACER  (WHITE)
 --==================================================================
 local function destroyTracer()
 	if tracerPart then
@@ -447,7 +377,7 @@ local function makeTracer()
 	tracerPart.CastShadow    = false
 	tracerPart.Material      = Enum.Material.Neon
 	tracerPart.Color         = Color3.fromRGB(255, 255, 255)
-	tracerPart.Transparency  = 0.15
+	tracerPart.Transparency  = 0.35
 	tracerPart.Size          = Vector3.new(0.08, 0.08, 1)
 	tracerPart.TopSurface    = Enum.SurfaceType.Smooth
 	tracerPart.BottomSurface = Enum.SurfaceType.Smooth
@@ -469,7 +399,11 @@ local function ensureHighlight(char)
 		destroyHighlight()
 		return
 	end
-	if highlight and highlight.Parent == char then return end
+
+	if highlight and highlight.Parent == char then
+		return
+	end
+
 	destroyHighlight()
 
 	highlight = Instance.new("Highlight")
@@ -508,20 +442,23 @@ local function updateVisuals()
 	local tChar  = target.Character
 	local myChar = LocalPlayer.Character
 
+	----------------------------------------------------- TRACER
 	if tChar and myChar then
 		local myHRP    = myChar:FindFirstChild("HumanoidRootPart")
 		local theirHRP = tChar:FindFirstChild("HumanoidRootPart")
 
 		if myHRP and theirHRP then
 			if not tracerPart then makeTracer() end
+
 			local from = myHRP.Position
 			local to   = theirHRP.Position
 			local dir  = to - from
 			local dist = dir.Magnitude
+
 			if dist > 0.01 then
 				tracerPart.Size         = Vector3.new(0.08, 0.08, dist)
 				tracerPart.CFrame       = CFrame.lookAt(from + dir * 0.5, to)
-				tracerPart.Transparency = 0.15
+				tracerPart.Transparency = 0.35
 			end
 		else
 			if tracerPart then tracerPart.Transparency = 1 end
@@ -530,8 +467,10 @@ local function updateVisuals()
 		if tracerPart then tracerPart.Transparency = 1 end
 	end
 
+	----------------------------------------------------- HIGHLIGHT
 	if tChar then
 		ensureHighlight(tChar)
+
 		local hum = tChar:FindFirstChildOfClass("Humanoid")
 		if highlight and hum then
 			local c = colorFor(hum.Health, hum.MaxHealth)
@@ -578,14 +517,18 @@ local function selectPlayer(plr)
 	target = plr
 
 	if plr then
-		nameLabel.Text       = string.format("%s  (@%s)", plr.DisplayName, plr.Name)
+		nameLabel.Text       = string.format("  %s  (@%s)", plr.DisplayName, plr.Name)
 		nameLabel.TextColor3 = Color3.fromRGB(110, 220, 160)
 
-		if plr.Character then ensureHighlight(plr.Character) end
+		if plr.Character then
+			ensureHighlight(plr.Character)
+		end
 
 		targetConn = plr.CharacterAdded:Connect(function()
 			task.wait(0.25)
-			if viewOn and target == plr then refreshView() end
+			if viewOn and target == plr then
+				refreshView()
+			end
 			if target == plr then
 				destroyHighlight()
 				updateVisuals()
@@ -593,7 +536,7 @@ local function selectPlayer(plr)
 		end)
 	else
 		nameLabel.Text       = "No player selected"
-		nameLabel.TextColor3 = Color3.fromRGB(170, 170, 190)
+		nameLabel.TextColor3 = Color3.fromRGB(150, 158, 180)
 	end
 
 	refreshView()
@@ -605,10 +548,12 @@ end
 --==================================================================
 local function doSearch()
 	local q = string.lower(searchBox.Text)
+
 	if q == "" then
 		selectPlayer(nil)
 		return
 	end
+
 	local found = nil
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= LocalPlayer then
@@ -619,10 +564,11 @@ local function doSearch()
 			end
 		end
 	end
+
 	if found then
 		selectPlayer(found)
 	else
-		nameLabel.Text       = 'No match for "' .. searchBox.Text .. '"'
+		nameLabel.Text       = '  No match for "' .. searchBox.Text .. '"'
 		nameLabel.TextColor3 = Color3.fromRGB(235, 110, 110)
 	end
 end
@@ -634,60 +580,67 @@ searchBox.FocusLost:Connect(doSearch)
 --==================================================================
 viewBtn.MouseButton1Click:Connect(function()
 	viewOn = not viewOn
+
 	if viewOn then
-		viewBtn.Text             = "View: ON"
-		viewBtn.BackgroundColor3 = Color3.fromRGB(40, 130, 90)
+		viewBtn.Text = "👁  View: ON"
+		viewBtn:SetAttribute("BaseColor", Color3.fromRGB(40, 130, 90))
+		TweenService:Create(viewBtn, TweenInfo.new(0.2), {
+			BackgroundColor3 = Color3.fromRGB(40, 130, 90)
+		}):Play()
 	else
-		viewBtn.Text             = "View: OFF"
-		viewBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 76)
+		viewBtn.Text = "👁  View: OFF"
+		viewBtn:SetAttribute("BaseColor", Color3.fromRGB(46, 52, 72))
+		TweenService:Create(viewBtn, TweenInfo.new(0.2), {
+			BackgroundColor3 = Color3.fromRGB(46, 52, 72)
+		}):Play()
 	end
+
 	refreshView()
 end)
 
 --==================================================================
---  BULLET BUTTON  (only marks target + enables aimlock)
+--  BULLET BUTTON
 --==================================================================
 bulletBtn.MouseButton1Click:Connect(function()
 	if not target then
-		nameLabel.Text       = "Select a player first"
+		nameLabel.Text       = "  ⚠  Select a player first"
 		nameLabel.TextColor3 = Color3.fromRGB(235, 180, 90)
 		return
 	end
 
-	bulletTarget     = target
-	bulletOn         = true
-	AimState.enabled = true
+	bulletTarget = target
+	bulletOn     = true
 
-	bulletBtn.Text             = "Bullet  ✓  " .. target.Name
-	bulletBtn.BackgroundColor3 = Color3.fromRGB(60, 160, 90)
-	task.delay(1.2, function()
-		bulletBtn.Text             = "Bullet"
-		bulletBtn.BackgroundColor3 = Color3.fromRGB(150, 55, 55)
+	bulletBtn.Text = "💥  Bullet  ✓  " .. target.Name
+	bulletBtn:SetAttribute("BaseColor", Color3.fromRGB(60, 160, 90))
+	TweenService:Create(bulletBtn, TweenInfo.new(0.2), {
+		BackgroundColor3 = Color3.fromRGB(60, 160, 90)
+	}):Play()
+
+	task.delay(1, function()
+		bulletBtn.Text = "💥  Bullet"
+		bulletBtn:SetAttribute("BaseColor", Color3.fromRGB(160, 55, 70))
+		TweenService:Create(bulletBtn, TweenInfo.new(0.2), {
+			BackgroundColor3 = Color3.fromRGB(160, 55, 70)
+		}):Play()
 	end)
 end)
 
 --==================================================================
 --  RENDER LOOP
 --==================================================================
-renderConn = RunService.RenderStepped:Connect(function()
-	updateVisuals()
-
-	if AimState.enabled and bulletTarget and aimTargetValid() then
-		AimState.predicted_position = getPredictedPosition()
-	elseif AimState.enabled then
-		AimState.predicted_position = Vector3.new(0, 0, 0)
-	end
-end)
+renderConn = RunService.RenderStepped:Connect(updateVisuals)
 
 --==================================================================
 --  CLEANUP
 --==================================================================
 Players.PlayerRemoving:Connect(function(plr)
-	if target == plr then selectPlayer(nil) end
+	if target == plr then
+		selectPlayer(nil)
+	end
 	if bulletTarget == plr then
-		bulletTarget     = nil
-		bulletOn         = false
-		AimState.enabled = false
+		bulletTarget = nil
+		bulletOn     = false
 	end
 end)
 
