@@ -9,7 +9,7 @@
 --  - IMPROVED BULLET: Prediction + Hitbox targeting
 --  - ADDED AUTO PREDICTION TOGGLE (with slide animation)
 --  - BULLET TOGGLE NOW AUTO-FIRES (calls gun:Activate())
---  - ADDED SETTINGS GEAR + ANIMATED DROPDOWN (Auto-Fire ON by default)
+--  - SETTINGS GEAR pushes Auto Prediction DOWN to reveal Auto Fire toggle
 --==================================================================
 
 local Players          = game:GetService("Players")
@@ -456,7 +456,6 @@ local function createSlideToggle(parent, textStr, yPos, defaultOn)
 	label.ZIndex = 3
 	label.Parent = btn
 
-	-- Pill-shaped track
 	local track = Instance.new("Frame")
 	track.Name = "Track"
 	track.Size = UDim2.new(0, 40, 0, 20)
@@ -472,11 +471,10 @@ local function createSlideToggle(parent, textStr, yPos, defaultOn)
 	trackStroke.Color = Color3.fromRGB(120, 120, 130)
 	trackStroke.Thickness = 1
 
-	-- Animated knob (circle)
 	local knob = Instance.new("Frame")
 	knob.Name = "Knob"
 	knob.Size = UDim2.new(0, 14, 0, 14)
-	knob.Position = UDim2.new(0, 3, 0.5, -7) -- OFF position (left)
+	knob.Position = UDim2.new(0, 3, 0.5, -7)
 	knob.BackgroundColor3 = Color3.fromRGB(220, 220, 230)
 	knob.BorderSizePixel = 0
 	knob.ZIndex = 4
@@ -489,15 +487,13 @@ local function createSlideToggle(parent, textStr, yPos, defaultOn)
 	knobStroke.Thickness = 1
 	knobStroke.Transparency = 0.5
 
-	-- Set initial state
 	local isOn = defaultOn and true or false
 	if isOn then
-		knob.Position = UDim2.new(1, -17, 0.5, -7) -- ON position (right)
+		knob.Position = UDim2.new(1, -17, 0.5, -7)
 		track.BackgroundColor3 = Color3.fromRGB(60, 140, 90)
 		trackStroke.Color = Color3.fromRGB(90, 200, 130)
 	end
 
-	-- Animate toggle
 	local function setState(state, instant)
 		isOn = state
 		local targetPos = state and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
@@ -531,9 +527,19 @@ local bulletBtn, bulletCheck, bulletCheckFrame = createImageToggle(main, "Bullet
 -- Create Auto Prediction Toggle (SLIDE STYLE)
 local autoPredictBtn, autoPredictToggle = createSlideToggle(main, "Auto Prediction", 182, true)
 
---==================================================================
---  SETTINGS GEAR + DROPDOWN
---==================================================================
+--============================================================
+--  AUTO FIRE TOGGLE (hidden initially, appears on dropdown open)
+--============================================================
+local autoFireBtn, autoFireCheck, autoFireCheckFrame = createImageToggle(main, "Auto Fire", 222)
+autoFireCheck.TextTransparency = 0 -- ON by default
+autoFireBtn.BackgroundTransparency = 1 -- hidden look initially
+autoFireBtn.Visible = false
+-- Hide the checkbox too since the whole button is invisible
+autoFireCheckFrame.Visible = false
+
+--============================================================
+--  SETTINGS GEAR (next to Bullet checkbox)
+--============================================================
 local gearBtn = Instance.new("ImageButton")
 gearBtn.Name = "SettingsGear"
 gearBtn.Size = UDim2.new(0, 20, 0, 20)
@@ -556,107 +562,52 @@ gearBtn.MouseLeave:Connect(function()
 	}):Play()
 end)
 
-local dropdown = Instance.new("Frame")
-dropdown.Name = "SettingsDropdown"
-dropdown.AnchorPoint = Vector2.new(1, 0)
-dropdown.Position = UDim2.new(1, 0, 0, 32)
-dropdown.Size = UDim2.new(1, 0, 0, 0)
-dropdown.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-dropdown.BackgroundTransparency = 0.1
-dropdown.BorderSizePixel = 0
-dropdown.ClipsDescendants = true
-dropdown.Visible = false
-dropdown.ZIndex = 10
-dropdown.Parent = bulletBtn
-
-Instance.new("UICorner", dropdown).CornerRadius = UDim.new(0, 6)
-
-local dropdownStroke = Instance.new("UIStroke", dropdown)
-dropdownStroke.Color = Color3.fromRGB(200, 200, 205)
-dropdownStroke.Thickness = 1.5
-
-local autoFireBtn = Instance.new("TextButton")
-autoFireBtn.Name = "AutoFireBtn"
-autoFireBtn.Size = UDim2.new(1, -12, 0, 30)
-autoFireBtn.Position = UDim2.new(0, 6, 0, 6)
-autoFireBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
-autoFireBtn.BackgroundTransparency = 0.25
-autoFireBtn.BorderSizePixel = 0
-autoFireBtn.Text = ""
-autoFireBtn.AutoButtonColor = false
-autoFireBtn.ZIndex = 11
-autoFireBtn.Parent = dropdown
-
-Instance.new("UICorner", autoFireBtn).CornerRadius = UDim.new(0, 4)
-
-local autoFireStroke = Instance.new("UIStroke", autoFireBtn)
-autoFireStroke.Color = Color3.fromRGB(180, 180, 190)
-autoFireStroke.Thickness = 1
-
-local autoFireLabel = Instance.new("TextLabel")
-autoFireLabel.Size = UDim2.new(1, -40, 1, 0)
-autoFireLabel.Position = UDim2.new(0, 10, 0, 0)
-autoFireLabel.BackgroundTransparency = 1
-autoFireLabel.Text = "Auto Fire"
-autoFireLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-autoFireLabel.Font = Enum.Font.GothamBold
-autoFireLabel.TextSize = 12
-autoFireLabel.TextXAlignment = Enum.TextXAlignment.Left
-autoFireLabel.ZIndex = 12
-autoFireLabel.Parent = autoFireBtn
-
-local autoFireCheckFrame = Instance.new("Frame")
-autoFireCheckFrame.Size = UDim2.new(0, 18, 0, 18)
-autoFireCheckFrame.Position = UDim2.new(1, -24, 0.5, -9)
-autoFireCheckFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
-autoFireCheckFrame.BackgroundTransparency = 0.25
-autoFireCheckFrame.BorderSizePixel = 0
-autoFireCheckFrame.ZIndex = 12
-autoFireCheckFrame.Parent = autoFireBtn
-
-Instance.new("UICorner", autoFireCheckFrame).CornerRadius = UDim.new(0, 4)
-
-local autoFireCheckStroke = Instance.new("UIStroke", autoFireCheckFrame)
-autoFireCheckStroke.Color = Color3.fromRGB(200, 200, 205)
-autoFireCheckStroke.Thickness = 1.2
-
-local autoFireCheck = Instance.new("TextLabel")
-autoFireCheck.Size = UDim2.new(1, 0, 1, 0)
-autoFireCheck.BackgroundTransparency = 1
-autoFireCheck.Text = "✓"
-autoFireCheck.TextColor3 = Color3.fromRGB(255, 255, 255)
-autoFireCheck.Font = Enum.Font.GothamBold
-autoFireCheck.TextSize = 13
-autoFireCheck.TextTransparency = 0
-autoFireCheck.ZIndex = 13
-autoFireCheck.Parent = autoFireCheckFrame
-
+--==================================================================
+--  DROPDOWN / ACCORDION LOGIC
+--==================================================================
 local dropdownOpen = false
+
+-- Positions
+local AUTO_PREDICT_UP_POS   = UDim2.new(0, 12, 0, 182)   -- normal position
+local AUTO_PREDICT_DOWN_POS = UDim2.new(0, 12, 0, 222)   -- pushed down (reveals Auto Fire)
+local AUTO_FIRE_Y = 182                                   -- Auto Fire appears at the old Auto Prediction spot
 
 local function setDropdown(open)
 	dropdownOpen = open
-	local targetSize = open and UDim2.new(1, 0, 0, 42) or UDim2.new(1, 0, 0, 0)
-	local targetTransparency = open and 0.1 or 1
 
-	if open then dropdown.Visible = true end
+	local targetAutoPredictPos = open and AUTO_PREDICT_DOWN_POS or AUTO_PREDICT_UP_POS
 
-	local sizeTween = TweenService:Create(dropdown, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-		Size = targetSize
-	})
-	local transTween = TweenService:Create(dropdown, TweenInfo.new(0.25), {
-		BackgroundTransparency = targetTransparency
-	})
+	local info = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
-	sizeTween:Play()
-	transTween:Play()
+	-- Slide Auto Prediction down/up
+	TweenService:Create(autoPredictBtn, info, { Position = targetAutoPredictPos }):Play()
 
-	if not open then
-		sizeTween.Completed:Connect(function()
-			if not dropdownOpen then dropdown.Visible = false end
+	if open then
+		-- Reveal Auto Fire at position 182
+		autoFireBtn.Position = UDim2.new(0, 12, 0, AUTO_FIRE_Y)
+		autoFireBtn.Visible = true
+		autoFireBtn.BackgroundTransparency = 0.25
+		autoFireCheckFrame.Visible = true
+		-- fade in
+		autoFireBtn.BackgroundTransparency = 1
+		autoFireCheckFrame.BackgroundTransparency = 1
+		TweenService:Create(autoFireBtn, TweenInfo.new(0.25), { BackgroundTransparency = 0.25 }):Play()
+		TweenService:Create(autoFireCheckFrame, TweenInfo.new(0.25), { BackgroundTransparency = 0.25 }):Play()
+	else
+		-- Fade out then hide Auto Fire
+		local fadeTween = TweenService:Create(autoFireBtn, TweenInfo.new(0.2), { BackgroundTransparency = 1 })
+		TweenService:Create(autoFireCheckFrame, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
+		fadeTween:Play()
+		fadeTween.Completed:Connect(function()
+			if not dropdownOpen then
+				autoFireBtn.Visible = false
+				autoFireCheckFrame.Visible = false
+			end
 		end)
 	end
 
-	TweenService:Create(gearBtn, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
+	-- Rotate gear
+	TweenService:Create(gearBtn, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
 		Rotation = open and 90 or 0
 	}):Play()
 end
@@ -665,6 +616,7 @@ gearBtn.MouseButton1Click:Connect(function()
 	setDropdown(not dropdownOpen)
 end)
 
+-- Auto Fire toggle click
 autoFireBtn.MouseButton1Click:Connect(function()
 	autoFireOn = not autoFireOn
 	autoFireCheck.TextTransparency = autoFireOn and 0 or 1
@@ -847,7 +799,8 @@ local function updateVisuals()
 		local myHRP    = myChar:FindFirstChild("HumanoidRootPart")
 		local theirHRP = tChar:FindFirstChild("HumanoidRootPart")
 		if myHRP and theirHRP then
-			if not tracerPart then makeTracer() end			local from = myHRP.Position
+			if not tracerPart then makeTracer() end
+			local from = myHRP.Position
 			local to   = theirHRP.Position
 			local dir  = to - from
 			local dist = dir.Magnitude
