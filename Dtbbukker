@@ -1,5 +1,6 @@
 --==================================================================
---  View / Bullet GUI + Tracer (WHITE) + Highlight + AIMLOCK
+--  View / Bullet GUI + White Tracer + Highlight + Aimlock
+--  (Fixed: Reload + Ammo replication preserved)
 --==================================================================
 
 local Players           = game:GetService("Players")
@@ -127,7 +128,7 @@ local function isInAir(p)
 end
 
 --==================================================================
---  AIMLOCK TARGET (uses bulletTarget — no keybinds)
+--  AIM TARGET VALIDATION
 --==================================================================
 local function aimTargetValid()
 	local p = bulletTarget
@@ -186,7 +187,7 @@ if not hookOk then
 end
 
 --==================================================================
---  BACKUP: fire remote on tool activate
+--  BACKUP: fire remote with predicted pos (does NOT move the tool)
 --==================================================================
 local function hookGun(character)
 	if not character then return end
@@ -207,13 +208,17 @@ if LocalPlayer.Character then hookGun(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(hookGun)
 
 --==================================================================
---  BULLET CORE
+--  BULLET CORE  (FIXED — safe, non-destructive)
+--  Only runs on tool activation, restores hand + tool cleanly.
 --==================================================================
+local bulletBusy = false
+
 local function calcGrip(handCF, rootCF)
 	return (handCF * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)):ToObjectSpace(rootCF):Inverse()
 end
 
 local function fireBullet(tool)
+	if bulletBusy then return end
 	if not bulletOn or not bulletTarget then return end
 
 	local char  = LocalPlayer.Character
@@ -224,20 +229,27 @@ local function fireBullet(tool)
 	local hrp  = tChar:FindFirstChild("HumanoidRootPart")
 	if not hand or not hrp then return end
 
-	local oldGrip = tool.Grip
+	bulletBusy = true
 
-	tool.Parent   = LocalPlayer.Backpack
+	local oldGrip      = tool.Grip
+	local wasAnchored  = hand.Anchored
+	local oldParent    = tool.Parent
+
+	-- aim-grip sequence (does NOT touch Backpack)
 	hand.Anchored = false
 	tool.Grip     = calcGrip(hand.CFrame, hrp.CFrame)
 	hand.Anchored = true
-	tool.Parent   = char
 
 	RunService.RenderStepped:Wait()
 
-	tool.Parent   = LocalPlayer.Backpack
-	hand.Anchored = false
+	-- restore everything exactly as it was
 	tool.Grip     = oldGrip
-	tool.Parent   = char
+	hand.Anchored = wasAnchored
+	if oldParent and tool.Parent ~= oldParent then
+		tool.Parent = oldParent
+	end
+
+	bulletBusy = false
 end
 
 --==================================================================
@@ -301,7 +313,7 @@ local mainStroke = Instance.new("UIStroke", main)
 mainStroke.Color     = Color3.fromRGB(75, 75, 92)
 mainStroke.Thickness = 1
 
--- title bar (drag handle)
+-- title bar
 local title = Instance.new("TextLabel")
 title.Name             = "Title"
 title.Size             = UDim2.new(1, 0, 0, 28)
@@ -380,7 +392,7 @@ bulletBtn.Parent           = main
 Instance.new("UICorner", bulletBtn).CornerRadius = UDim.new(0, 6)
 
 --==================================================================
---  DRAGGING (fixed)
+--  DRAGGING
 --==================================================================
 local dragging  = false
 local dragStart = nil
@@ -434,7 +446,7 @@ local function makeTracer()
 	tracerPart.CanTouch      = false
 	tracerPart.CastShadow    = false
 	tracerPart.Material      = Enum.Material.Neon
-	tracerPart.Color         = Color3.fromRGB(255, 255, 255)  -- WHITE
+	tracerPart.Color         = Color3.fromRGB(255, 255, 255)
 	tracerPart.Transparency  = 0.15
 	tracerPart.Size          = Vector3.new(0.08, 0.08, 1)
 	tracerPart.TopSurface    = Enum.SurfaceType.Smooth
@@ -496,19 +508,16 @@ local function updateVisuals()
 	local tChar  = target.Character
 	local myChar = LocalPlayer.Character
 
-	----------------------------------------------------- TRACER
 	if tChar and myChar then
 		local myHRP    = myChar:FindFirstChild("HumanoidRootPart")
 		local theirHRP = tChar:FindFirstChild("HumanoidRootPart")
 
 		if myHRP and theirHRP then
 			if not tracerPart then makeTracer() end
-
 			local from = myHRP.Position
 			local to   = theirHRP.Position
 			local dir  = to - from
 			local dist = dir.Magnitude
-
 			if dist > 0.01 then
 				tracerPart.Size         = Vector3.new(0.08, 0.08, dist)
 				tracerPart.CFrame       = CFrame.lookAt(from + dir * 0.5, to)
@@ -521,7 +530,6 @@ local function updateVisuals()
 		if tracerPart then tracerPart.Transparency = 1 end
 	end
 
-	----------------------------------------------------- HIGHLIGHT
 	if tChar then
 		ensureHighlight(tChar)
 		local hum = tChar:FindFirstChildOfClass("Humanoid")
@@ -637,7 +645,7 @@ viewBtn.MouseButton1Click:Connect(function()
 end)
 
 --==================================================================
---  BULLET BUTTON (now also enables aimlock)
+--  BULLET BUTTON  (only marks target + enables aimlock)
 --==================================================================
 bulletBtn.MouseButton1Click:Connect(function()
 	if not target then
@@ -646,9 +654,9 @@ bulletBtn.MouseButton1Click:Connect(function()
 		return
 	end
 
-	bulletTarget       = target
-	bulletOn           = true
-	AimState.enabled   = true   -- aimlock ON automatically
+	bulletTarget     = target
+	bulletOn         = true
+	AimState.enabled = true
 
 	bulletBtn.Text             = "Bullet  ✓  " .. target.Name
 	bulletBtn.BackgroundColor3 = Color3.fromRGB(60, 160, 90)
@@ -659,17 +667,14 @@ bulletBtn.MouseButton1Click:Connect(function()
 end)
 
 --==================================================================
---  RENDER LOOP  (visuals + aim prediction)
+--  RENDER LOOP
 --==================================================================
 renderConn = RunService.RenderStepped:Connect(function()
-	-- visuals (tracer + highlight)
 	updateVisuals()
 
-	-- aimlock prediction
 	if AimState.enabled and bulletTarget and aimTargetValid() then
 		AimState.predicted_position = getPredictedPosition()
 	elseif AimState.enabled then
-		-- no valid target → silently disable aimlock but keep bullet mode
 		AimState.predicted_position = Vector3.new(0, 0, 0)
 	end
 end)
