@@ -1,18 +1,21 @@
 --==================================================================
 --  Death.Eye  -  View / Bullet GUI + Tracer + Health Highlight
---  - Draggable frame (normal behavior)
---  - GUI has a REAL soft shadow (ImageLabel-based)
+--  - Draggable frame
+--  - Real soft shadow
 --  - Red at 0 HP
 --  - Bullet uses Mouse.Hit metatable hook (aims at HEAD)
+--  - Aimlock toggle button (locks camera to target Head)
 --==================================================================
 
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local Workspace        = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse       = LocalPlayer:GetMouse()
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+local Camera      = Workspace.CurrentCamera
 
 --==================================================================
 --  STATE
@@ -23,6 +26,8 @@ local viewOn       = false
 
 local bulletTarget = nil
 local bulletOn     = false
+
+local aimlockOn    = false   -- NEW
 
 local tracerPart   = nil
 local highlight    = nil
@@ -113,6 +118,70 @@ if LocalPlayer.Character then watchCharacter(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(watchCharacter)
 
 --==================================================================
+--  AIMLOCK CORE  (uses `target` from the search box)
+--==================================================================
+local AimConfig = {
+	AimPart    = "Head",
+	Smoothness = 0.25,
+	MaxDistance = 500,
+	Prediction = 0.165,
+	FOV        = 150,
+	TeamCheck  = false,
+	WallCheck  = false,
+}
+
+local function getAimPart(character)
+	if not character then return nil end
+	return character:FindFirstChild(AimConfig.AimPart)
+		or character:FindFirstChild("HumanoidRootPart")
+		or character:FindFirstChildWhichIsA("BasePart")
+end
+
+local function isVisible(part)
+	if not AimConfig.WallCheck then return true end
+	local origin = Camera.CFrame.Position
+	local dir = (part.Position - origin)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { LocalPlayer.Character }
+	local result = Workspace:Raycast(origin, dir, params)
+	if result and not result.Instance:IsDescendantOf(part.Parent) then
+		return false
+	end
+	return true
+end
+
+local function getPredictedPosition(part)
+	if AimConfig.Prediction <= 0 then return part.Position end
+	return part.Position + (part.AssemblyLinearVelocity * AimConfig.Prediction)
+end
+
+-- Aimlock camera loop (only runs when aimlockOn and target exists)
+RunService.RenderStepped:Connect(function()
+	if not aimlockOn then return end
+	if not target or not target.Character then return end
+
+	local part = getAimPart(target.Character)
+	if not part then return end
+
+	-- distance check
+	local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if myRoot and (myRoot.Position - part.Position).Magnitude > AimConfig.MaxDistance then
+		return
+	end
+
+	local aimPos = getPredictedPosition(part)
+	local camPos = Camera.CFrame.Position
+	local lookCF = CFrame.lookAt(camPos, aimPos)
+
+	if AimConfig.Smoothness <= 0 then
+		Camera.CFrame = lookCF
+	else
+		Camera.CFrame = Camera.CFrame:Lerp(lookCF, 1 - AimConfig.Smoothness)
+	end
+end)
+
+--==================================================================
 --  GUI
 --==================================================================
 local gui = Instance.new("ScreenGui")
@@ -131,7 +200,7 @@ local shadow = Instance.new("ImageLabel")
 shadow.Name                   = "Shadow"
 shadow.AnchorPoint            = Vector2.new(0.5, 0.5)
 shadow.Position               = UDim2.new(0.5, 0, 0.5, 6)
-shadow.Size                   = UDim2.new(0, 260 + SHADOW_PADDING * 2, 0, 190 + SHADOW_PADDING * 2)
+shadow.Size                   = UDim2.new(0, 260 + SHADOW_PADDING * 2, 0, 220 + SHADOW_PADDING * 2)
 shadow.BackgroundTransparency = 1
 shadow.Image                  = "rbxassetid://6015897843"
 shadow.ImageColor3            = Color3.fromRGB(0, 0, 0)
@@ -141,12 +210,12 @@ shadow.SliceCenter            = Rect.new(49, 49, 450, 450)
 shadow.ZIndex                 = 0
 shadow.Parent                 = gui
 
--- Dark translucent background (main frame)
+-- Dark translucent background (main frame) — taller to fit new button
 local main = Instance.new("Frame")
 main.Name             = "Main"
 main.AnchorPoint      = Vector2.new(0.5, 0.5)
 main.Position         = UDim2.new(0.5, 0, 0.5, 0)
-main.Size             = UDim2.new(0, 260, 0, 190)
+main.Size             = UDim2.new(0, 260, 0, 220)   -- was 190, +30 for Aimlock
 main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 main.BackgroundTransparency = 0.15
 main.BorderSizePixel  = 0
@@ -164,7 +233,7 @@ mainStroke.Thickness = 1
 local title = Instance.new("TextLabel")
 title.Name             = "Title"
 title.Size             = UDim2.new(1, 0, 0, 28)
-title.BackgroundColor3 = Color3.fromRGB(25, 25, 30) 
+title.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 title.BorderSizePixel  = 0
 title.Text             = ""
 title.TextXAlignment   = Enum.TextXAlignment.Left
@@ -301,8 +370,24 @@ bulletBtn.Parent           = main
 
 Instance.new("UICorner", bulletBtn).CornerRadius = UDim.new(0, 6)
 
+-- AIMLOCK button (NEW)
+local aimlockBtn = Instance.new("TextButton")
+aimlockBtn.Name             = "AimlockButton"
+aimlockBtn.Size             = UDim2.new(1, -24, 0, 32)
+aimlockBtn.Position         = UDim2.new(0, 12, 0, 182)
+aimlockBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
+aimlockBtn.BorderSizePixel  = 0
+aimlockBtn.Text             = "Aimlock: OFF"
+aimlockBtn.TextColor3       = Color3.fromRGB(235, 235, 245)
+aimlockBtn.Font             = Enum.Font.GothamMedium
+aimlockBtn.TextSize         = 13
+aimlockBtn.ZIndex           = 2
+aimlockBtn.Parent           = main
+
+Instance.new("UICorner", aimlockBtn).CornerRadius = UDim.new(0, 6)
+
 --==================================================================
---  DRAGGING  (normal behavior)
+--  DRAGGING
 --==================================================================
 local dragging   = false
 local dragStart  = nil
@@ -314,7 +399,6 @@ local function updateDrag(input)
 		startPos.X.Scale, startPos.X.Offset + delta.X,
 		startPos.Y.Scale, startPos.Y.Offset + delta.Y
 	)
-	-- keep shadow in sync
 	shadow.Position = UDim2.new(
 		main.Position.X.Scale, main.Position.X.Offset,
 		main.Position.Y.Scale, main.Position.Y.Offset + 6
@@ -409,13 +493,13 @@ end
 -- color helper — RED at 0 HP
 local function colorFor(health, maxHealth)
 	if health <= 0 then
-		return Color3.fromRGB(235, 60, 60)            -- dead / 0 HP -> RED
+		return Color3.fromRGB(235, 60, 60)
 	elseif health <= 20 then
-		return Color3.fromRGB(235, 60, 60)            -- 1-20  -> RED
+		return Color3.fromRGB(235, 60, 60)
 	elseif health <= maxHealth * 0.5 then
-		return Color3.fromRGB(240, 210, 60)           -- medium -> YELLOW
+		return Color3.fromRGB(240, 210, 60)
 	else
-		return Color3.fromRGB(60, 220, 90)            -- full/high -> GREEN
+		return Color3.fromRGB(60, 220, 90)
 	end
 end
 
@@ -565,6 +649,9 @@ local function refreshView()
 	local cam = workspace.CurrentCamera
 	if not cam then return end
 
+	-- If aimlock is on, don't let view override camera
+	if aimlockOn then return end
+
 	if viewOn and target and target.Character then
 		local hum = target.Character:FindFirstChildOfClass("Humanoid")
 		if hum then
@@ -681,7 +768,6 @@ bulletBtn.MouseButton1Click:Connect(function()
 		return
 	end
 
-	-- Set bulletTarget to the searched target and enable bullet
 	bulletTarget = target
 	bulletOn     = true
 
@@ -691,6 +777,27 @@ bulletBtn.MouseButton1Click:Connect(function()
 		bulletBtn.Text             = "Bullet"
 		bulletBtn.BackgroundColor3 = Color3.fromRGB(150, 55, 55)
 	end)
+end)
+
+--==================================================================
+--  AIMLOCK BUTTON
+--==================================================================
+aimlockBtn.MouseButton1Click:Connect(function()
+	if not target then
+		nameLabel.Text       = "Select a player first"
+		nameLabel.TextColor3 = Color3.fromRGB(235, 180, 90)
+		return
+	end
+
+	aimlockOn = not aimlockOn
+
+	if aimlockOn then
+		aimlockBtn.Text             = "Aimlock: ON"
+		aimlockBtn.BackgroundColor3 = Color3.fromRGB(70, 130, 200)
+	else
+		aimlockBtn.Text             = "Aimlock: OFF"
+		aimlockBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
+	end
 end)
 
 --==================================================================
@@ -704,6 +811,9 @@ renderConn = RunService.RenderStepped:Connect(updateVisuals)
 Players.PlayerRemoving:Connect(function(plr)
 	if target == plr then
 		selectPlayer(nil)
+		aimlockOn = false
+		aimlockBtn.Text             = "Aimlock: OFF"
+		aimlockBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
 	end
 	if bulletTarget == plr then
 		bulletTarget = nil
