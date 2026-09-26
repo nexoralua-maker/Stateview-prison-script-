@@ -1,6 +1,7 @@
 --==================================================================
---  View / Bullet GUI + Tracer + Health Highlight  (FANCY EDITION)
---  - Draggable frame (transparent main background)
+--  View / Bullet GUI + Tracer + Health Highlight
+--  - Draggable frame (fixed)
+--  - Sidebar Dropdown with Tabs (Main is default)
 --  - TextBox  : partial player name search
 --  - Label    : display name + @username
 --  - Toggle   : View
@@ -15,7 +16,6 @@
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService     = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
@@ -104,7 +104,7 @@ if LocalPlayer.Character then watchCharacter(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(watchCharacter)
 
 --==================================================================
---  GUI  (FANCY + TRANSPARENT BACKGROUND)
+--  GUI
 --==================================================================
 local gui = Instance.new("ScreenGui")
 gui.Name           = "ViewBulletGui"
@@ -113,212 +113,215 @@ gui.IgnoreGuiInset = true
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent         = PlayerGui
 
--- Outer wrapper (fully transparent, no border) -- acts as the shadow/glow container
+-- Main Frame (Widened to fit sidebar)
 local main = Instance.new("Frame")
-main.Name                   = "Main"
-main.AnchorPoint            = Vector2.new(0.5, 0.5)
-main.Position               = UDim2.new(0.5, 0, 0.5, 0)
-main.Size                   = UDim2.new(0, 268, 0, 214)
-main.BackgroundTransparency = 1          -- TRANSPARENT MAIN BACKGROUND
-main.BorderSizePixel        = 0
-main.Active                 = true
-main.Parent                 = gui
+main.Name             = "Main"
+main.AnchorPoint      = Vector2.new(0.5, 0.5)
+main.Position         = UDim2.new(0.5, 0, 0.5, 0)
+main.Size             = UDim2.new(0, 360, 0, 200) -- Wider now
+main.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+main.BackgroundTransparency = 0.25
+main.BorderSizePixel  = 0
+main.Active           = true
+main.Parent           = gui
 
--- Outer glow (soft blue halo behind the panel)
-local glow = Instance.new("Frame", main)
-glow.Name                   = "Glow"
-glow.AnchorPoint            = Vector2.new(0.5, 0.5)
-glow.Position               = UDim2.new(0.5, 0, 0.5, 0)
-glow.Size                   = UDim2.new(1, 12, 1, 12)
-glow.BackgroundColor3       = Color3.fromRGB(90, 140, 255)
-glow.BackgroundTransparency = 0.85
-glow.BorderSizePixel        = 0
-glow.ZIndex                 = 0
-Instance.new("UICorner", glow).CornerRadius = UDim.new(0, 18)
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
 
--- Content panel (this is the visible rounded box)
-local panel = Instance.new("Frame", main)
-panel.Name                   = "Panel"
-panel.AnchorPoint            = Vector2.new(0.5, 0.5)
-panel.Position               = UDim2.new(0.5, 0, 0.5, 0)
-panel.Size                   = UDim2.new(1, 0, 1, 0)
-panel.BackgroundColor3       = Color3.fromRGB(22, 24, 34)
-panel.BackgroundTransparency = 0.08      -- slight transparency for glassy look
-panel.BorderSizePixel        = 0
-panel.ZIndex                 = 1
-Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 14)
+local mainStroke = Instance.new("UIStroke", main)
+mainStroke.Color     = Color3.fromRGB(60, 60, 65)
+mainStroke.Thickness = 1
 
-local panelStroke = Instance.new("UIStroke", panel)
-panelStroke.Color           = Color3.fromRGB(90, 120, 200)
-panelStroke.Thickness       = 1.2
-panelStroke.Transparency    = 0.35
-panelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
--- Top gradient accent bar
-local accent = Instance.new("Frame", panel)
-accent.Name                   = "Accent"
-accent.Size                   = UDim2.new(1, 0, 0, 4)
-accent.Position               = UDim2.new(0, 0, 0, 0)
-accent.BackgroundColor3       = Color3.fromRGB(90, 140, 255)
-accent.BorderSizePixel        = 0
-accent.ZIndex                 = 2
-Instance.new("UICorner", accent).CornerRadius = UDim.new(0, 14)
-
-local accentGrad = Instance.new("UIGradient", accent)
-accentGrad.Color = ColorSequence.new{
-	ColorSequenceKeypoint.new(0,   Color3.fromRGB(90, 140, 255)),
-	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(160, 90, 255)),
-	ColorSequenceKeypoint.new(1,   Color3.fromRGB(90, 200, 255)),
-}
-
---==================================================================
---  TITLE BAR  (drag handle)
---==================================================================
+-- Title bar (drag handle)
 local title = Instance.new("TextLabel")
-title.Name                   = "Title"
-title.Size                   = UDim2.new(1, 0, 0, 34)
-title.Position               = UDim2.new(0, 0, 0, 4)
-title.BackgroundTransparency = 1
-title.Text                   = "  ✦  VIEW / BULLET"
-title.TextXAlignment         = Enum.TextXAlignment.Left
-title.TextColor3             = Color3.fromRGB(235, 240, 255)
-title.Font                   = Enum.Font.GothamBold
-title.TextSize               = 13
-title.Active                 = true
-title.ZIndex                 = 3
-title.Parent                 = panel
+title.Name             = "Title"
+title.Size             = UDim2.new(1, 0, 0, 28)
+title.BackgroundColor3 = Color3.fromRGB(25, 25, 30) 
+title.BorderSizePixel  = 0
+title.Text             = "   View / Bullet"
+title.TextXAlignment   = Enum.TextXAlignment.Left
+title.TextColor3       = Color3.fromRGB(235, 235, 245)
+title.Font             = Enum.Font.GothamBold
+title.TextSize         = 13
+title.Active           = true
+title.Parent           = main
 
--- little status dot
-local dot = Instance.new("Frame", panel)
-dot.Name             = "Dot"
-dot.Size             = UDim2.new(0, 8, 0, 8)
-dot.Position         = UDim2.new(1, -22, 0, 17)
-dot.BackgroundColor3 = Color3.fromRGB(110, 220, 160)
-dot.BorderSizePixel  = 0
-dot.ZIndex           = 4
-Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-
-local dotStroke = Instance.new("UIStroke", dot)
-dotStroke.Color     = Color3.fromRGB(110, 220, 160)
-dotStroke.Thickness = 1
-dotStroke.Transparency = 0.4
+Instance.new("UICorner", title).CornerRadius = UDim.new(0, 10)
 
 --==================================================================
---  SEARCH BOX
+--  SIDEBAR (DROP-DOWN / TABS)
+--==================================================================
+local sidebar = Instance.new("Frame")
+sidebar.Name             = "Sidebar"
+sidebar.Size             = UDim2.new(0, 80, 1, -40) -- 80px wide, below title
+sidebar.Position         = UDim2.new(0, 10, 0, 36)
+sidebar.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+sidebar.BorderSizePixel  = 0
+sidebar.Parent           = main
+
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 6)
+
+local tabContainer = Instance.new("Frame")
+tabContainer.Name             = "TabContainer"
+tabContainer.Size             = UDim2.new(1, 0, 0, 0)
+tabContainer.AutomaticSize    = Enum.AutomaticSize.Y
+tabContainer.BackgroundTransparency = 1
+tabContainer.Parent           = sidebar
+
+local tabLayout = Instance.new("UIListLayout", tabContainer)
+tabLayout.Padding = UDim.new(0, 4)
+tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- Content area for the tabs
+local contentArea = Instance.new("Frame")
+contentArea.Name             = "ContentArea"
+contentArea.Size             = UDim2.new(1, -100, 1, -46) -- Fill rest of space
+contentArea.Position         = UDim2.new(0, 100, 0, 36)
+contentArea.BackgroundTransparency = 1
+contentArea.Parent           = main
+
+-- Tab creation function
+local tabButtons = {}
+local activeTab = "Main"
+
+local function createTab(name, order)
+	local btn = Instance.new("TextButton")
+	btn.Name             = name .. "Tab"
+	btn.Size             = UDim2.new(1, 0, 0, 32)
+	btn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+	btn.BorderSizePixel  = 0
+	btn.Text             = name
+	btn.TextColor3       = Color3.fromRGB(170, 170, 190)
+	btn.Font             = Enum.Font.GothamMedium
+	btn.TextSize         = 12
+	btn.LayoutOrder      = order
+	btn.Parent           = tabContainer
+	
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+	
+	-- Store the page content for this tab
+	local page = Instance.new("Frame")
+	page.Name             = name .. "Page"
+	page.Size             = UDim2.new(1, 0, 1, 0)
+	page.BackgroundTransparency = 1
+	page.Visible          = false -- Hidden by default
+	page.Parent           = contentArea
+	
+	tabButtons[name] = { button = btn, page = page }
+	
+	btn.MouseButton1Click:Connect(function()
+		-- Reset all tabs
+		for tName, data in pairs(tabButtons) do
+			data.button.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+			data.button.TextColor3 = Color3.fromRGB(170, 170, 190)
+			data.page.Visible = false
+		end
+		
+		-- Activate clicked tab
+		btn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+		btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		page.Visible = true
+		activeTab = name
+	end)
+	
+	return page
+end
+
+-- Create the tabs
+local mainPage = createTab("Main", 1)
+local targetPage = createTab("Target", 2)
+local settingsPage = createTab("Settings", 3)
+
+-- Set Main as default active tab
+tabButtons["Main"].button.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+tabButtons["Main"].button.TextColor3 = Color3.fromRGB(255, 255, 255)
+mainPage.Visible = true
+
+--==================================================================
+--  MAIN TAB CONTENT (Original UI)
 --==================================================================
 local searchBox = Instance.new("TextBox")
 searchBox.Name              = "SearchBox"
-searchBox.Size              = UDim2.new(1, -24, 0, 32)
-searchBox.Position          = UDim2.new(0, 12, 0, 44)
-searchBox.BackgroundColor3  = Color3.fromRGB(38, 42, 56)
-searchBox.BackgroundTransparency = 0.15
+searchBox.Size              = UDim2.new(1, 0, 0, 30)
+searchBox.Position          = UDim2.new(0, 0, 0, 0)
+searchBox.BackgroundColor3  = Color3.fromRGB(35, 35, 42)
 searchBox.BorderSizePixel   = 0
-searchBox.PlaceholderText   = "  🔍  Partial player name..."
+searchBox.PlaceholderText   = "Partial player name..."
 searchBox.Text              = ""
 searchBox.ClearTextOnFocus  = false
-searchBox.TextColor3        = Color3.fromRGB(232, 236, 248)
-searchBox.PlaceholderColor3 = Color3.fromRGB(130, 138, 160)
+searchBox.TextColor3        = Color3.fromRGB(232, 232, 242)
+searchBox.PlaceholderColor3 = Color3.fromRGB(128, 128, 148)
 searchBox.Font              = Enum.Font.Gotham
 searchBox.TextSize          = 13
-searchBox.ZIndex            = 3
-searchBox.Parent            = panel
+searchBox.Parent            = mainPage
+Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 6)
 
-Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 8)
-
-local searchStroke = Instance.new("UIStroke", searchBox)
-searchStroke.Color        = Color3.fromRGB(70, 80, 110)
-searchStroke.Thickness    = 1
-searchStroke.Transparency = 0.3
-
---==================================================================
---  NAME LABEL
---==================================================================
 local nameLabel = Instance.new("TextLabel")
 nameLabel.Name                   = "NameLabel"
-nameLabel.Size                   = UDim2.new(1, -24, 0, 22)
-nameLabel.Position               = UDim2.new(0, 12, 0, 82)
+nameLabel.Size                   = UDim2.new(1, 0, 0, 24)
+nameLabel.Position               = UDim2.new(0, 0, 0, 36)
 nameLabel.BackgroundTransparency = 1
 nameLabel.Text                   = "No player selected"
-nameLabel.TextColor3             = Color3.fromRGB(150, 158, 180)
+nameLabel.TextColor3             = Color3.fromRGB(170, 170, 190)
 nameLabel.TextXAlignment         = Enum.TextXAlignment.Left
 nameLabel.Font                   = Enum.Font.Gotham
-nameLabel.TextSize               = 12
+nameLabel.TextSize               = 13
 nameLabel.TextTruncate           = Enum.TextTruncate.AtEnd
-nameLabel.ZIndex                 = 3
-nameLabel.Parent                 = panel
+nameLabel.Parent                 = mainPage
 
---==================================================================
---  BUTTON HELPER  (hover + click effects)
---==================================================================
-local function styleButton(btn, baseColor, hoverColor, textColor)
-	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-
-	local stroke = Instance.new("UIStroke", btn)
-	stroke.Color        = baseColor
-	stroke.Thickness    = 1
-	stroke.Transparency = 0.4
-
-	btn.BackgroundColor3 = baseColor
-	btn.TextColor3       = textColor or Color3.fromRGB(235, 240, 255)
-
-	btn.MouseEnter:Connect(function()
-		TweenService:Create(btn, TweenInfo.new(0.18), {
-			BackgroundColor3 = hoverColor
-		}):Play()
-		TweenService:Create(stroke, TweenInfo.new(0.18), {
-			Transparency = 0
-		}):Play()
-	end)
-
-	btn.MouseLeave:Connect(function()
-		TweenService:Create(btn, TweenInfo.new(0.18), {
-			BackgroundColor3 = btn:GetAttribute("BaseColor") or baseColor
-		}):Play()
-		TweenService:Create(stroke, TweenInfo.new(0.18), {
-			Transparency = 0.4
-		}):Play()
-	end)
-
-	btn:SetAttribute("BaseColor", baseColor)
-	return stroke
-end
-
---==================================================================
---  VIEW TOGGLE
---==================================================================
 local viewBtn = Instance.new("TextButton")
 viewBtn.Name             = "ViewButton"
-viewBtn.Size             = UDim2.new(1, -24, 0, 32)
-viewBtn.Position         = UDim2.new(0, 12, 0, 110)
-viewBtn.BackgroundColor3 = Color3.fromRGB(46, 52, 72)
+viewBtn.Size             = UDim2.new(1, 0, 0, 32)
+viewBtn.Position         = UDim2.new(0, 0, 0, 66)
+viewBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
 viewBtn.BorderSizePixel  = 0
-viewBtn.Text             = "👁  View: OFF"
+viewBtn.Text             = "View: OFF"
+viewBtn.TextColor3       = Color3.fromRGB(235, 235, 245)
 viewBtn.Font             = Enum.Font.GothamMedium
 viewBtn.TextSize         = 13
-viewBtn.AutoButtonColor  = false
-viewBtn.ZIndex           = 3
-viewBtn.Parent           = panel
-styleButton(viewBtn, Color3.fromRGB(46, 52, 72), Color3.fromRGB(60, 70, 100))
+viewBtn.Parent           = mainPage
+Instance.new("UICorner", viewBtn).CornerRadius = UDim.new(0, 6)
 
---==================================================================
---  BULLET BUTTON
---==================================================================
 local bulletBtn = Instance.new("TextButton")
 bulletBtn.Name             = "BulletButton"
-bulletBtn.Size             = UDim2.new(1, -24, 0, 34)
-bulletBtn.Position         = UDim2.new(0, 12, 0, 152)
-bulletBtn.BackgroundColor3 = Color3.fromRGB(160, 55, 70)
+bulletBtn.Size             = UDim2.new(1, 0, 0, 32)
+bulletBtn.Position         = UDim2.new(0, 0, 0, 106)
+bulletBtn.BackgroundColor3 = Color3.fromRGB(150, 55, 55)
 bulletBtn.BorderSizePixel  = 0
-bulletBtn.Text             = "💥  Bullet"
+bulletBtn.Text             = "Bullet"
+bulletBtn.TextColor3       = Color3.fromRGB(255, 240, 240)
 bulletBtn.Font             = Enum.Font.GothamMedium
 bulletBtn.TextSize         = 13
-bulletBtn.AutoButtonColor  = false
-bulletBtn.ZIndex           = 3
-bulletBtn.Parent           = panel
-styleButton(bulletBtn, Color3.fromRGB(160, 55, 70), Color3.fromRGB(200, 75, 95))
+bulletBtn.Parent           = mainPage
+Instance.new("UICorner", bulletBtn).CornerRadius = UDim.new(0, 6)
 
 --==================================================================
---  DRAGGING
+--  TARGET TAB CONTENT (Placeholder)
+--==================================================================
+local targetPlaceholder = Instance.new("TextLabel")
+targetPlaceholder.Size = UDim2.new(1, 0, 1, 0)
+targetPlaceholder.BackgroundTransparency = 1
+targetPlaceholder.Text = "Target settings go here.\n(Placeholder)"
+targetPlaceholder.TextColor3 = Color3.fromRGB(100, 100, 120)
+targetPlaceholder.Font = Enum.Font.Gotham
+targetPlaceholder.TextSize = 14
+targetPlaceholder.TextWrapped = true
+targetPlaceholder.Parent = targetPage
+
+--==================================================================
+--  SETTINGS TAB CONTENT (Placeholder)
+--==================================================================
+local settingsPlaceholder = Instance.new("TextLabel")
+settingsPlaceholder.Size = UDim2.new(1, 0, 1, 0)
+settingsPlaceholder.BackgroundTransparency = 1
+settingsPlaceholder.Text = "Configuration options.\n(Placeholder)"
+settingsPlaceholder.TextColor3 = Color3.fromRGB(100, 100, 120)
+settingsPlaceholder.Font = Enum.Font.Gotham
+settingsPlaceholder.TextSize = 14
+settingsPlaceholder.TextWrapped = true
+settingsPlaceholder.Parent = settingsPage
+
+--==================================================================
+--  DRAGGING  (FIXED)
 --==================================================================
 local dragging   = false
 local dragStart  = nil
@@ -430,7 +433,7 @@ local function colorFor(health, maxHealth)
 end
 
 --==================================================================
---  VISUAL UPDATE
+--  VISUAL UPDATE  (tracer + highlight)
 --==================================================================
 local function updateVisuals()
 	if not target then
@@ -442,7 +445,6 @@ local function updateVisuals()
 	local tChar  = target.Character
 	local myChar = LocalPlayer.Character
 
-	----------------------------------------------------- TRACER
 	if tChar and myChar then
 		local myHRP    = myChar:FindFirstChild("HumanoidRootPart")
 		local theirHRP = tChar:FindFirstChild("HumanoidRootPart")
@@ -467,10 +469,8 @@ local function updateVisuals()
 		if tracerPart then tracerPart.Transparency = 1 end
 	end
 
-	----------------------------------------------------- HIGHLIGHT
 	if tChar then
 		ensureHighlight(tChar)
-
 		local hum = tChar:FindFirstChildOfClass("Humanoid")
 		if highlight and hum then
 			local c = colorFor(hum.Health, hum.MaxHealth)
@@ -517,7 +517,7 @@ local function selectPlayer(plr)
 	target = plr
 
 	if plr then
-		nameLabel.Text       = string.format("  %s  (@%s)", plr.DisplayName, plr.Name)
+		nameLabel.Text       = string.format("%s  (@%s)", plr.DisplayName, plr.Name)
 		nameLabel.TextColor3 = Color3.fromRGB(110, 220, 160)
 
 		if plr.Character then
@@ -536,7 +536,7 @@ local function selectPlayer(plr)
 		end)
 	else
 		nameLabel.Text       = "No player selected"
-		nameLabel.TextColor3 = Color3.fromRGB(150, 158, 180)
+		nameLabel.TextColor3 = Color3.fromRGB(170, 170, 190)
 	end
 
 	refreshView()
@@ -568,7 +568,7 @@ local function doSearch()
 	if found then
 		selectPlayer(found)
 	else
-		nameLabel.Text       = '  No match for "' .. searchBox.Text .. '"'
+		nameLabel.Text       = 'No match for "' .. searchBox.Text .. '"'
 		nameLabel.TextColor3 = Color3.fromRGB(235, 110, 110)
 	end
 end
@@ -582,17 +582,11 @@ viewBtn.MouseButton1Click:Connect(function()
 	viewOn = not viewOn
 
 	if viewOn then
-		viewBtn.Text = "👁  View: ON"
-		viewBtn:SetAttribute("BaseColor", Color3.fromRGB(40, 130, 90))
-		TweenService:Create(viewBtn, TweenInfo.new(0.2), {
-			BackgroundColor3 = Color3.fromRGB(40, 130, 90)
-		}):Play()
+		viewBtn.Text             = "View: ON"
+		viewBtn.BackgroundColor3 = Color3.fromRGB(40, 130, 90)
 	else
-		viewBtn.Text = "👁  View: OFF"
-		viewBtn:SetAttribute("BaseColor", Color3.fromRGB(46, 52, 72))
-		TweenService:Create(viewBtn, TweenInfo.new(0.2), {
-			BackgroundColor3 = Color3.fromRGB(46, 52, 72)
-		}):Play()
+		viewBtn.Text             = "View: OFF"
+		viewBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
 	end
 
 	refreshView()
@@ -603,7 +597,7 @@ end)
 --==================================================================
 bulletBtn.MouseButton1Click:Connect(function()
 	if not target then
-		nameLabel.Text       = "  ⚠  Select a player first"
+		nameLabel.Text       = "Select a player first"
 		nameLabel.TextColor3 = Color3.fromRGB(235, 180, 90)
 		return
 	end
@@ -611,18 +605,11 @@ bulletBtn.MouseButton1Click:Connect(function()
 	bulletTarget = target
 	bulletOn     = true
 
-	bulletBtn.Text = "💥  Bullet  ✓  " .. target.Name
-	bulletBtn:SetAttribute("BaseColor", Color3.fromRGB(60, 160, 90))
-	TweenService:Create(bulletBtn, TweenInfo.new(0.2), {
-		BackgroundColor3 = Color3.fromRGB(60, 160, 90)
-	}):Play()
-
+	bulletBtn.Text             = "Bullet  ✓  " .. target.Name
+	bulletBtn.BackgroundColor3 = Color3.fromRGB(60, 160, 90)
 	task.delay(1, function()
-		bulletBtn.Text = "💥  Bullet"
-		bulletBtn:SetAttribute("BaseColor", Color3.fromRGB(160, 55, 70))
-		TweenService:Create(bulletBtn, TweenInfo.new(0.2), {
-			BackgroundColor3 = Color3.fromRGB(160, 55, 70)
-		}):Play()
+		bulletBtn.Text             = "Bullet"
+		bulletBtn.BackgroundColor3 = Color3.fromRGB(150, 55, 55)
 	end)
 end)
 
