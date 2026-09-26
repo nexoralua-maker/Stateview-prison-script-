@@ -6,6 +6,7 @@
 --  - Toggle buttons redesigned to match the provided image exactly
 --  - Roblox Notification on script load
 --  - Renamed toggles: Spectate & Bullet
+--  - IMPROVED BULLET: Prediction + Hitbox targeting
 --==================================================================
 
 local Players          = game:GetService("Players")
@@ -20,17 +21,14 @@ local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 --  ROBLOX NOTIFICATION ON LOAD
 --==================================================================
 task.spawn(function()
-	-- Wait a tiny bit to ensure the CoreGui is fully loaded
 	task.wait(1)
-	
 	local success, err = pcall(function()
 		StarterGui:SetCore("SendNotification", {
-			Title = "Death.Eye"; -- The bold top text
-			Text = "On top";     -- The text below
-			Duration = 5;        -- How long it stays on screen (seconds)
+			Title = "Death.Eye";
+			Text = "On top";
+			Duration = 5;
 		})
 	end)
-	
 	if not success then
 		warn("Could not send Roblox notification: " .. tostring(err))
 	end
@@ -53,10 +51,23 @@ local billboardLabel = nil
 local renderConn   = nil
 
 --==================================================================
---  BULLET CORE
+--  IMPROVED BULLET CORE
 --==================================================================
-local function calcGrip(handCF, rootCF)
-	return (handCF * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)):ToObjectSpace(rootCF):Inverse()
+-- Calculates the grip needed to aim the tool at a specific point
+local function calcGrip(handCF, targetCF)
+	return (handCF * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)):ToObjectSpace(targetCF):Inverse()
+end
+
+-- Gets the best target position (Head > UpperTorso > HumanoidRootPart)
+local function getBestTargetPart(character)
+	if not character then return nil end
+	local head = character:FindFirstChild("Head")
+	if head then return head end
+	local upperTorso = character:FindFirstChild("UpperTorso")
+	if upperTorso then return upperTorso end
+	local hrp = character:FindFirstChild("HumanoidRootPart")
+	if hrp then return hrp end
+	return nil
 end
 
 local function fireBullet(tool)
@@ -67,19 +78,38 @@ local function fireBullet(tool)
 	if not char or not tChar then return end
 
 	local hand = char:FindFirstChild("RightHand")
-	local hrp  = tChar:FindFirstChild("HumanoidRootPart")
-	if not hand or not hrp then return end
+	if not hand then return end
+
+	local targetPart = getBestTargetPart(tChar)
+	if not targetPart then return end
+
+	-- Get target velocity for prediction
+	local targetVel = targetPart.AssemblyLinearVelocity
+	local hrp = tChar:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		targetVel = hrp.AssemblyLinearVelocity
+	end
+
+	-- Simple prediction: aim where they will be in 0.1 seconds
+	local predictedPos = targetPart.Position + (targetVel * 0.1)
+	local predictedCF = CFrame.new(predictedPos)
 
 	local oldGrip = tool.Grip
 
+	-- Temporarily move tool to backpack to change grip without visual glitch
 	tool.Parent   = LocalPlayer.Backpack
 	hand.Anchored = false
-	tool.Grip     = calcGrip(hand.CFrame, hrp.CFrame)
+	
+	-- Calculate the new grip to aim at the predicted position
+	tool.Grip     = calcGrip(hand.CFrame, predictedCF)
+	
 	hand.Anchored = true
 	tool.Parent   = char
 
+	-- Wait for the next frame to ensure the server registers the new CFrame
 	RunService.RenderStepped:Wait()
 
+	-- Restore original grip and state
 	tool.Parent   = LocalPlayer.Backpack
 	hand.Anchored = false
 	tool.Grip     = oldGrip
@@ -347,14 +377,14 @@ local function createImageToggle(parent, textStr, yPos)
 	return btn, checkLabel
 end
 
--- Create Spectate Toggle (Replaces View Button)
+-- Create Spectate Toggle
 local viewBtn, viewCheck = createImageToggle(main, "Spectate", 102)
 
--- Create Bullet Toggle (Replaces Bullet Button)
+-- Create Bullet Toggle
 local bulletBtn, bulletCheck = createImageToggle(main, "Bullet", 142)
 
 --==================================================================
---  DRAGGING  (original simple behavior)
+--  DRAGGING
 --==================================================================
 local dragging   = false
 local dragStart  = nil
@@ -366,7 +396,6 @@ local function updateDrag(input)
 		startPos.X.Scale, startPos.X.Offset + delta.X,
 		startPos.Y.Scale, startPos.Y.Offset + delta.Y
 	)
-	-- keep shadow in sync
 	shadow.Position = UDim2.new(
 		main.Position.X.Scale, main.Position.X.Offset,
 		main.Position.Y.Scale, main.Position.Y.Offset + 6
@@ -461,13 +490,13 @@ end
 -- color helper — RED at 0 HP
 local function colorFor(health, maxHealth)
 	if health <= 0 then
-		return Color3.fromRGB(235, 60, 60)            -- dead / 0 HP -> RED
+		return Color3.fromRGB(235, 60, 60)
 	elseif health <= 20 then
-		return Color3.fromRGB(235, 60, 60)            -- 1-20  -> RED
+		return Color3.fromRGB(235, 60, 60)
 	elseif health <= maxHealth * 0.5 then
-		return Color3.fromRGB(240, 210, 60)           -- medium -> YELLOW
+		return Color3.fromRGB(240, 210, 60)
 	else
-		return Color3.fromRGB(60, 220, 90)            -- full/high -> GREEN
+		return Color3.fromRGB(60, 220, 90)
 	end
 end
 
@@ -711,23 +740,23 @@ end
 searchBox.FocusLost:Connect(doSearch)
 
 --==================================================================
---  TOGGLE LOGIC (Updated for new visual buttons)
+--  TOGGLE LOGIC
 --==================================================================
 
--- View Toggle (Spectate)
+-- Spectate Toggle
 viewBtn.MouseButton1Click:Connect(function()
 	viewOn = not viewOn
 
 	if viewOn then
-		viewCheck.TextTransparency = 0 -- Show Checkmark
+		viewCheck.TextTransparency = 0
 	else
-		viewCheck.TextTransparency = 1 -- Hide Checkmark
+		viewCheck.TextTransparency = 1
 	end
 
 	refreshView()
 end)
 
--- Bullet Toggle (Bullet)
+-- Bullet Toggle
 bulletBtn.MouseButton1Click:Connect(function()
 	if not target then
 		nameLabel.Text       = "Select a player first"
@@ -739,9 +768,9 @@ bulletBtn.MouseButton1Click:Connect(function()
 	bulletTarget = target
 
 	if bulletOn then
-		bulletCheck.TextTransparency = 0 -- Show Checkmark
+		bulletCheck.TextTransparency = 0
 	else
-		bulletCheck.TextTransparency = 1 -- Hide Checkmark
+		bulletCheck.TextTransparency = 1
 	end
 end)
 
