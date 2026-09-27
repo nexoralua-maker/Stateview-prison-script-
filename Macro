@@ -1,0 +1,245 @@
+-- Wait for game load
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VIM = game:GetService("VirtualInputManager")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local camera = game.Workspace.CurrentCamera
+local isFacingForward = false
+local isControlHeld = false
+
+-- 1. Create the UI (Your Custom UI)
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Parent = CoreGui
+ScreenGui.ResetOnSpawn = false
+
+local TextButton = Instance.new('TextButton')
+TextButton.Parent = ScreenGui
+TextButton.Visible = true
+TextButton.Size = UDim2.new(0, 210, 0, 94)
+-- Start off screen to the right
+TextButton.Position = UDim2.new(1, 20, 0, -12) -- Completely off screen to the right
+TextButton.Rotation = 0
+TextButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- Base color (gradient overlays this)
+TextButton.BackgroundTransparency = 0
+TextButton.BorderSizePixel = 0
+TextButton.BorderColor3 = Color3.fromRGB(27, 42, 53)
+TextButton.Text = "Crispy.lol"
+TextButton.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text for contrast on purple
+TextButton.TextTransparency = 0
+TextButton.TextSize = 20
+TextButton.TextWrapped = false
+TextButton.TextScaled = false
+TextButton.Font = Enum.Font.GothamBold
+TextButton.TextXAlignment = Enum.TextXAlignment.Center
+TextButton.TextYAlignment = Enum.TextYAlignment.Center
+
+-- Add a black stroke to the text so it's readable on the purple gradient
+TextButton.TextStrokeTransparency = 0
+TextButton.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+
+-- Purple gradient background
+local TextButton_UIGradient = Instance.new('UIGradient')
+TextButton_UIGradient.Parent = TextButton
+TextButton_UIGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(150, 0, 255)),  -- Deep purple
+    ColorSequenceKeypoint.new(0.50, Color3.fromRGB(120, 60, 255)), -- Mid violet
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(200, 100, 255)) -- Light lavender
+})
+TextButton_UIGradient.Rotation = 45
+TextButton_UIGradient.Transparency = NumberSequence.new(0)
+TextButton_UIGradient.Offset = Vector2.new(0, 0)
+
+local TextButton_UIStroke = Instance.new('UIStroke')
+TextButton_UIStroke.Parent = TextButton
+TextButton_UIStroke.Color = Color3.fromRGB(60, 0, 100) -- Dark purple stroke
+TextButton_UIStroke.Transparency = 0
+TextButton_UIStroke.Thickness = 2
+TextButton_UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+TextButton_UIStroke.LineJoinMode = Enum.LineJoinMode.Round
+TextButton_UIStroke.Enabled = true
+
+local TextButton_UICorner = Instance.new('UICorner')
+TextButton_UICorner.Parent = TextButton
+TextButton_UICorner.CornerRadius = UDim.new(0, 8)
+
+local mainBtn = TextButton
+
+-- 1b. Create the X (close) button with NO background
+local CloseButton = Instance.new('TextButton')
+CloseButton.Parent = ScreenGui
+CloseButton.Size = UDim2.new(0, 22, 0, 22)
+CloseButton.Position = UDim2.new(0, 745, 0, -12) -- Aligned with top-left of main button
+CloseButton.BackgroundTransparency = 1
+CloseButton.BorderSizePixel = 0
+CloseButton.Text = "X"
+CloseButton.TextColor3 = Color3.fromRGB(255, 60, 60)
+CloseButton.TextSize = 20
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.TextXAlignment = Enum.TextXAlignment.Center
+CloseButton.TextYAlignment = Enum.TextYAlignment.Center
+CloseButton.AutoButtonColor = false
+CloseButton.ZIndex = 5
+
+CloseButton.MouseButton1Click:Connect(function()
+    -- Release control just in case
+    isFacingForward = false
+    isControlHeld = false
+    VIM:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game)
+    ScreenGui:Destroy()
+end)
+
+-- Keep the close button glued to the main button (works during tween AND drag)
+local function updateCloseButtonPosition()
+    local abs = mainBtn.AbsolutePosition
+    CloseButton.Position = UDim2.new(0, abs.X - 27, 0, abs.Y)
+end
+
+mainBtn:GetPropertyChangedSignal("Position"):Connect(updateCloseButtonPosition)
+mainBtn:GetPropertyChangedSignal("AbsolutePosition"):Connect(updateCloseButtonPosition)
+
+-- 2. SLIDE IN ANIMATION
+local targetPosition = UDim2.new(0, 772, 0, -12) -- Your original position
+
+local slideInTween = TweenService:Create(
+    mainBtn,
+    TweenInfo.new(
+        0.8, -- Duration
+        Enum.EasingStyle.Quad, -- Easing style
+        Enum.EasingDirection.Out -- Easing direction
+    ),
+    { Position = targetPosition }
+)
+
+-- Start the animation
+slideInTween:Play()
+
+-- 2b. DRAGGING LOGIC (main button is draggable)
+local dragging = false
+local dragInput, dragStart, startPos
+local dragMoved = false
+
+mainBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragMoved = false
+        dragStart = input.Position
+        startPos = mainBtn.Position
+
+        -- Cancel the slide-in tween if the user grabs it mid-animation
+        if slideInTween.PlaybackState == Enum.PlaybackState.Playing then
+            slideInTween:Cancel()
+        end
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+mainBtn.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        if math.abs(delta.X) > 4 or math.abs(delta.Y) > 4 then
+            dragMoved = true
+        end
+        mainBtn.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- 3. KHEN'S CORE LOGIC
+local function faceForward()
+    local character = player.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = character.HumanoidRootPart
+    
+    local lookVector = camera.CFrame.LookVector
+    local flatLookVector = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
+    hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + flatLookVector)
+end
+
+local function loopFaceForward()
+    local connection
+    connection = RunService.RenderStepped:Connect(function()
+        local char = player.Character
+        if isFacingForward and char and char:FindFirstChild("katana") then
+            faceForward()
+        else
+            -- If katana is unequipped, turn everything OFF
+            isFacingForward = false
+            isControlHeld = false
+            connection:Disconnect()
+            mainBtn.Text = "Crispy.lol"
+            -- Release Control when katana is unequipped
+            VIM:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game)
+        end
+    end)
+end
+
+-- 4. SMART TOGGLE HANDLER
+mainBtn.MouseButton1Click:Connect(function()
+    -- Ignore the click if the user was just dragging the button around
+    if dragMoved then
+        dragMoved = false
+        return
+    end
+
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local bp = player:FindFirstChild("Backpack")
+    
+    -- Check if we are already locked -> UNLOCK
+    if isFacingForward then
+        isFacingForward = false
+        isControlHeld = false
+        mainBtn.Text = "Crispy.lol"
+        -- RELEASE Control when turning OFF
+        VIM:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game)
+        return
+    end
+
+    -- Check if katana is in backpack or hand
+    local toolInHand = char and char:FindFirstChild("katana")
+    local toolInBackpack = bp and bp:FindFirstChild("katana")
+    
+    if toolInHand or toolInBackpack then
+        -- Only equip if it's in the backpack
+        if toolInBackpack and hum then
+            hum:EquipTool(toolInBackpack)
+        end
+        
+        -- Start the Lock Logic
+        isFacingForward = true
+        isControlHeld = true
+        mainBtn.Text = "ON"
+        
+        -- PRESS AND HOLD Left Control (no release)
+        VIM:SendKeyEvent(true, Enum.KeyCode.LeftControl, false, game)
+        
+        loopFaceForward()
+    else
+        mainBtn.Text = "NO KATANA"
+        task.wait(1)
+        mainBtn.Text = "Crispy.lol"
+    end
+end)
