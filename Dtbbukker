@@ -11,6 +11,7 @@
 --  - Bullet toggle now enables/disables the new bullet system
 --  - Auto Fire still auto-calls gun:Activate() on the bullet target
 --  - Tracer color matches highlight color (green/yellow/red)
+--  - [WALLBANG] Added Wallbang toggle below Auto Prediction
 --==================================================================
 
 local Players          = game:GetService("Players")
@@ -48,6 +49,7 @@ local viewOn         = false
 local bulletOn       = false
 local autoPredictOn  = true   -- kept for GUI parity (unused by new bullet)
 local autoFireOn     = true
+local wallbangOn     = false  -- [WALLBANG]
 
 local tracerPart     = nil
 local highlight      = nil
@@ -153,7 +155,6 @@ bullet.Functions.HandleCharacter = function(character)
 
 	bullet.Connections.CharacterChildAdded = character.ChildAdded:Connect(function(tool)
 		if tool:IsA("Tool") then
-			-- Kill any existing Grip listeners the game has on this tool
 			pcall(function()
 				for _, conn in ipairs(getconnections(tool:GetPropertyChangedSignal("Grip"))) do
 					conn:Disable()
@@ -185,13 +186,14 @@ bullet.Functions.HandleCharacter = function(character)
 end
 
 --==================================================================
---  MOUSE METATABLE HOOK  (redirects Mouse.Hit to bullet target)
+--  MOUSE METATABLE HOOK + [WALLBANG] NAMECALL HOOK
 --==================================================================
 do
 	local mt = getrawmetatable(game)
 	setreadonly(mt, false)
-	local oldIndex = mt.__index
 
+	-- ---- Mouse.Hit redirect -------------------------------------
+	local oldIndex = mt.__index
 	mt.__index = function(self, key)
 		if not checkcaller() and self == Mouse then
 			if (key == "Hit" or (key == "Target" and game.PlaceId == 2788229376)) and bulletOn then
@@ -206,6 +208,66 @@ do
 		end
 		return oldIndex(self, key)
 	end
+
+	-- ---- [WALLBANG] Raycast interception ------------------------
+	-- When wallbangOn is true, ANY workspace raycast is rewritten to
+	-- whitelist ONLY the current bullet target's character. This makes
+	-- the game's own bullet ray ignore walls / terrain / other players
+	-- and always register a hit on the chosen target.
+	local oldNamecall = mt.__namecall
+	mt.__namecall = newcclosure(function(self, ...)
+		local method = getnamecallmethod()
+
+		if wallbangOn and not checkcaller() then
+			local tgt = bullet.Targeting.Target
+			if tgt and tgt.Parent and tgt.Character then
+				local args = {...}
+				local modified = false
+
+				if (method == "Raycast" or method == "FindPartOnRay"
+					or method == "FindPartOnRayWithIgnoreList"
+					or method == "FindPartOnRayWithWhitelist")
+					and (self == workspace or self == game)
+				then
+					if method == "Raycast" then
+						-- workspace:Raycast(origin, direction, params)
+						local params = RaycastParams.new()
+						params.FilterType = Enum.RaycastFilterType.Include
+						params.FilterDescendantsInstances = { tgt.Character }
+						params.IgnoreWater = true
+
+						if #args >= 3 then
+							args[3] = params
+						else
+							table.insert(args, params)
+						end
+						modified = true
+
+					elseif method == "FindPartOnRay" then
+						-- (ray, ignoreDescendants, terrainCellsAreCubes, ignoreWater)
+						if #args >= 2 then args[2] = {} end
+						modified = true
+
+					elseif method == "FindPartOnRayWithIgnoreList" then
+						-- (ray, ignoreList, terrainCellsAreCubes, ignoreWater)
+						if #args >= 2 then args[2] = {} end
+						modified = true
+
+					elseif method == "FindPartOnRayWithWhitelist" then
+						-- (ray, whitelist, ignoreWater)
+						if #args >= 2 then args[2] = { tgt.Character } end
+						modified = true
+					end
+				end
+
+				if modified then
+					return oldNamecall(self, table.unpack(args))
+				end
+			end
+		end
+
+		return oldNamecall(self, ...)
+	end)
 end
 
 --==================================================================
@@ -279,7 +341,6 @@ local function tryAutoFire()
 
 	lastAutoFire = tick()
 	pcall(function() gun:Activate() end)
-	-- TeleportBullet fires through the tool.Activated connection
 end
 
 --==================================================================
@@ -294,10 +355,11 @@ gui.Parent         = PlayerGui
 
 --============================================================
 --  SHADOW + MAIN FRAME
+--  [WALLBANG] heights bumped up to fit the new toggle
 --============================================================
 local SHADOW_PADDING = 24
-local GUI_CLOSED_HEIGHT = 230
-local GUI_OPEN_HEIGHT   = 270
+local GUI_CLOSED_HEIGHT = 270   -- was 230
+local GUI_OPEN_HEIGHT   = 310   -- was 270
 
 local shadow = Instance.new("ImageLabel")
 shadow.Name                   = "Shadow"
@@ -505,8 +567,12 @@ local bulletBtn, bulletCheck, bulletCheckFrame = createImageToggle(main, "Bullet
 local autoPredictBtn, autoPredictCheck = createImageToggle(main, "Auto Prediction", 182)
 autoPredictCheck.TextTransparency = 0
 
+-- [WALLBANG] New toggle right below Auto Prediction
+local wallbangBtn, wallbangCheck, wallbangCheckFrame = createImageToggle(main, "Wallbang", 222)
+wallbangCheck.TextTransparency = 1   -- off by default
+
 --============================================================
---  AUTO FIRE ROW
+--  AUTO FIRE ROW  (hidden until accordion opens)
 --============================================================
 local autoFireBtn, autoFireCheck, autoFireCheckFrame = createImageToggle(main, "Auto Fire", 222)
 autoFireCheck.TextTransparency = 0
@@ -544,9 +610,12 @@ end)
 --==================================================================
 local dropdownOpen = false
 
-local AP_UP_Y    = 182
-local AP_DOWN_Y  = 222
-local AF_Y       = 182
+-- [WALLBANG] New Y positions
+local AP_UP_Y     = 182
+local AP_DOWN_Y   = 222
+local WB_UP_Y     = 222
+local WB_DOWN_Y   = 262
+local AF_Y        = 182
 
 local function setDropdown(open)
 	dropdownOpen = open
@@ -563,6 +632,11 @@ local function setDropdown(open)
 
 	TweenService:Create(autoPredictBtn, info, {
 		Position = UDim2.new(0, 12, 0, open and AP_DOWN_Y or AP_UP_Y)
+	}):Play()
+
+	-- [WALLBANG] Move the wallbang toggle too
+	TweenService:Create(wallbangBtn, info, {
+		Position = UDim2.new(0, 12, 0, open and WB_DOWN_Y or WB_UP_Y)
 	}):Play()
 
 	if open then
@@ -849,7 +923,7 @@ local function refreshView()
 end
 
 --==================================================================
---  SELECT PLAYER  (Spectate target AND bullet target)
+--  SELECT PLAYER
 --==================================================================
 local function selectPlayer(plr)
 	if targetConn then
@@ -886,7 +960,6 @@ local function selectPlayer(plr)
 			destroyBillboard()
 			updateVisuals()
 
-			-- Refresh bullet target part if we're still aiming at this player
 			if bullet.Targeting.Target == plr then
 				bullet.Targeting.TargetPart = newChar:FindFirstChild(bulletPartName)
 				lastAutoFire = 0
@@ -953,7 +1026,6 @@ bulletBtn.MouseButton1Click:Connect(function()
 
 	if bulletOn then
 		lastAutoFire = 0
-		-- Require a target — either the search-box target or C-key pick
 		if not bullet.Targeting.Target and target and target.Parent then
 			bullet.Targeting.Target = target
 			bullet.Targeting.TargetPart = target.Character
@@ -965,7 +1037,6 @@ bulletBtn.MouseButton1Click:Connect(function()
 			nameLabel.TextColor3 = Color3.fromRGB(235, 180, 90)
 		end
 	else
-		-- Clear visuals when disabled
 		if bullet.Visualizer then
 			bullet.Visualizer:Destroy()
 			bullet.Visualizer = nil
@@ -978,7 +1049,27 @@ end)
 autoPredictBtn.MouseButton1Click:Connect(function()
 	autoPredictOn = not autoPredictOn
 	autoPredictCheck.TextTransparency = autoPredictOn and 0 or 1
-	-- Note: the new bullet system does not use prediction; toggle kept for UI parity
+end)
+
+-- [WALLBANG] Toggle handler
+wallbangBtn.MouseButton1Click:Connect(function()
+	wallbangOn = not wallbangOn
+	wallbangCheck.TextTransparency = wallbangOn and 0 or 1
+
+	if wallbangOn then
+		if not bullet.Targeting.Target then
+			nameLabel.Text       = "Wallbang: pick a bullet target (C)"
+			nameLabel.TextColor3 = Color3.fromRGB(235, 180, 90)
+		else
+			nameLabel.Text       = "Wallbang ON — bullets ignore walls"
+			nameLabel.TextColor3 = Color3.fromRGB(255, 120, 120)
+		end
+	else
+		if target then
+			nameLabel.Text       = string.format("%s  (@%s)", target.DisplayName, target.Name)
+			nameLabel.TextColor3 = Color3.fromRGB(110, 220, 160)
+		end
+	end
 end)
 
 --==================================================================
@@ -988,7 +1079,6 @@ renderConn = RunService.RenderStepped:Connect(function()
 	updateVisuals()
 	tryAutoFire()
 
-	-- Keep bullet visualizer synced with the target's current character
 	if bulletOn then
 		local tgt = bullet.Targeting.Target
 		if tgt and tgt.Parent and tgt.Character then
