@@ -13,7 +13,6 @@ local GuiService        = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
 local Lighting          = game:GetService("Lighting")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local LP                = Players.LocalPlayer
 local Camera            = Workspace.CurrentCamera
 
@@ -90,111 +89,6 @@ end
 
 --Dot Reference
 local dot_gradient_ref = nil
-
---==================== TOOL / RIGHT-CLICK HELPERS ====================
-local function fireRightClick()
-    pcall(function()
-        local vp = Camera.ViewportSize
-        local x, y = vp.X / 2, vp.Y / 2
-        VirtualInputManager:SendMouseButtonEvent(x, y, 2, true,  game, 1)
-        task.wait(0.015)
-        VirtualInputManager:SendMouseButtonEvent(x, y, 2, false, game, 1)
-    end)
-end
-
-local function getEquippedTool()
-    local char = LP.Character
-    if not char then return nil end
-    return char:FindFirstChildWhichIsA("Tool")
-end
-
-local function equippedHasKeyword(keyword)
-    local t = getEquippedTool()
-    if not t then return false, nil end
-    return string.find(string.lower(t.Name), string.lower(keyword), 1, true) ~= nil, t
-end
-
-local function equipToolByName(name)
-    local char = LP.Character
-    if not char then return false end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return false end
-    local tool = char:FindFirstChild(name)
-    if not tool then
-        local bp = LP:FindFirstChild("Backpack")
-        if bp then tool = bp:FindFirstChild(name) end
-    end
-    if tool and tool:IsA("Tool") then
-        if tool.Parent ~= char then
-            pcall(function() hum:EquipTool(tool) end)
-        end
-        return true
-    end
-    return false
-end
-
-local function unequipAllTools()
-    local char = LP.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then pcall(function() hum:UnequipTools() end) end
-end
-
---==================== KATANA RIGHT-CLICK SPAM ====================
-local katanaSpamActive = false
-local katanaSpamTask   = nil
-
-local function stopKatanaSpam()
-    katanaSpamActive = false
-    if katanaSpamTask then
-        task.cancel(katanaSpamTask)
-        katanaSpamTask = nil
-    end
-end
-
-local function startKatanaSpam()
-    if katanaSpamActive then return end
-    katanaSpamActive = true
-    katanaSpamTask = task.spawn(function()
-        while katanaSpamActive do
-            local char = LP.Character
-            if not char then
-                katanaSpamActive = false
-                break
-            end
-            local tool = char:FindFirstChildWhichIsA("Tool")
-            if not (tool and string.find(string.lower(tool.Name), "katana", 1, true)) then
-                katanaSpamActive = false
-                break
-            end
-            fireRightClick()
-            task.wait(0.05)
-        end
-        katanaSpamTask = nil
-    end)
-end
-
-local function hookKatanaDetection(character)
-    if not character then return end
-    character.ChildAdded:Connect(function(child)
-        if child:IsA("Tool")
-            and string.find(string.lower(child.Name), "katana", 1, true) then
-            startKatanaSpam()
-        end
-    end)
-    character.ChildRemoved:Connect(function(child)
-        if child:IsA("Tool")
-            and string.find(string.lower(child.Name), "katana", 1, true) then
-            stopKatanaSpam()
-        end
-    end)
-end
-
-if LP.Character then hookKatanaDetection(LP.Character) end
-LP.CharacterAdded:Connect(function(c)
-    stopKatanaSpam()
-    hookKatanaDetection(c)
-end)
 
 --Aimlock
 local Aimlock = (function()
@@ -2179,7 +2073,7 @@ local World = (function()
     return M
 end)()
 
---ESP
+--ESP (with Self Material, Self Tool Material, and Self Auras)
 local ESP = (function()
     local M = { enabled = false, players = {} }
     local Draw
@@ -2201,10 +2095,452 @@ local ESP = (function()
         HealthBottom = Color3.fromRGB(247, 118, 142), HealthWidth = 1,
         Armor = false, ArmorTop = Color3.fromRGB(122, 162, 247),
         ArmorBottom = Color3.fromRGB(125, 207, 255), ArmorWidth = 1,
+
+        -- Self Material
+        SelfMaterial          = false,
+        SelfMaterialColor     = PURPLE_ESP,
+        SelfToolMaterial      = false,
+        SelfToolMaterialColor = PURPLE_ESP,
+
+        -- Self Auras
+        SelfAuras          = false,
+        SelfAurasColor     = PURPLE_ESP,
+        SelfAuraAngelWings = false,
+        SelfAuraParticle   = false,
+        SelfAuraEarthquake = false,
+        SelfAuraHalo       = false,
+        SelfAuraSaturnRing = false,
     }
 
     local GRADIENT_STRIPS = 10
 
+    -- ============ Self Material storage & functions ============
+    local savedSelfMaterials     = {}
+    local savedSelfToolMaterials = {}
+
+    local function applySelfMaterial()
+        local char = LP.Character
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                if not part:FindFirstAncestorOfClass("Tool") then
+                    if not savedSelfMaterials[part] then
+                        savedSelfMaterials[part] = { Material = part.Material, Color = part.Color }
+                    end
+                    part.Material = Enum.Material.ForceField
+                    part.Color    = S.SelfMaterialColor
+                end
+            end
+        end
+    end
+
+    local function applySelfToolMaterial()
+        local function applyToTool(tool)
+            if not tool or not tool:IsA("Tool") then return end
+            for _, part in ipairs(tool:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    if not savedSelfToolMaterials[part] then
+                        savedSelfToolMaterials[part] = { Material = part.Material, Color = part.Color }
+                    end
+                    part.Material = Enum.Material.ForceField
+                    part.Color    = S.SelfToolMaterialColor
+                end
+            end
+        end
+        local char = LP.Character
+        if char then
+            for _, tool in ipairs(char:GetDescendants()) do
+                if tool:IsA("Tool") then applyToTool(tool) end
+            end
+        end
+        local bp = LP:FindFirstChildOfClass("Backpack")
+        if bp then
+            for _, tool in ipairs(bp:GetChildren()) do
+                if tool:IsA("Tool") then applyToTool(tool) end
+            end
+        end
+    end
+
+    local function restoreStore(store)
+        for part, data in pairs(store) do
+            if part then
+                pcall(function()
+                    part.Material = data.Material
+                    part.Color    = data.Color
+                end)
+            end
+        end
+        table.clear(store)
+    end
+
+    -- ============ Self Auras engine ============
+    local aura_cache = {}
+
+    local function buildAuraColorSeq(base)
+        return ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, base:Lerp(Color3.new(0,0,0), 0.6)),
+            ColorSequenceKeypoint.new(0.35, base:Lerp(Color3.new(0,0,0), 0.2)),
+            ColorSequenceKeypoint.new(0.65, base),
+            ColorSequenceKeypoint.new(1.00, base:Lerp(Color3.new(1,1,1), 0.4)),
+        })
+    end
+
+    local function buildAuraColorSeqRev(base)
+        return ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, base:Lerp(Color3.new(1,1,1), 0.4)),
+            ColorSequenceKeypoint.new(0.35, base),
+            ColorSequenceKeypoint.new(0.65, base:Lerp(Color3.new(0,0,0), 0.2)),
+            ColorSequenceKeypoint.new(1.00, base:Lerp(Color3.new(0,0,0), 0.6)),
+        })
+    end
+
+    local function buildAuraPinkGradient(base)
+        return ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, base:Lerp(Color3.new(0,0,0), 0.6)),
+            ColorSequenceKeypoint.new(0.30, base:Lerp(Color3.new(0,0,0), 0.2)),
+            ColorSequenceKeypoint.new(0.55, Color3.new(1, 0.5, 1):Lerp(base, 0.5)),
+            ColorSequenceKeypoint.new(0.80, base),
+            ColorSequenceKeypoint.new(1.00, base:Lerp(Color3.new(1,1,1), 0.4)),
+        })
+    end
+
+    local function create_aura_effect(aura_type, attachment, parent_part, base_color)
+        local emitters = {}
+        local extra_attachments = {}
+        local gradA   = buildAuraColorSeq(base_color)
+        local gradB   = buildAuraPinkGradient(base_color)
+        local gradRev = buildAuraColorSeqRev(base_color)
+
+        if aura_type == "Angel Wings" then
+            attachment.Name = "ParticleAttachment"
+            attachment.CFrame = CFrame.new(0, 0, 0, 0.965, 0.259, 0, -0.259, 0.965, 0, 0, 0, 1)
+            attachment.Axis = Vector3.new(0.966, -0.259, 0)
+            attachment.SecondaryAxis = Vector3.new(0.259, 0.966, 0)
+
+            local pe = Instance.new("ParticleEmitter")
+            pe.Texture = "rbxassetid://14054635072"
+            pe.LockedToPart = true
+            pe.Brightness = 1.5
+            pe.LightEmission = 1
+            pe.LightInfluence = 0
+            pe.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            pe.Size = NumberSequence.new(4)
+            pe.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 1),
+                NumberSequenceKeypoint.new(0.5, 0),
+                NumberSequenceKeypoint.new(1, 1)
+            })
+            pe.Color = gradA
+            pe.Lifetime = NumberRange.new(1)
+            pe.Rate = 10
+            pe.Rotation = NumberRange.new(0, 360)
+            pe.RotSpeed = NumberRange.new(30, 60)
+            pe.Speed = NumberRange.new(0.01)
+            pe.SpreadAngle = Vector2.new(0.1)
+            pe.Parent = attachment
+            table.insert(emitters, pe)
+
+        elseif aura_type == "Particle Aura" then
+            local ring = Instance.new("Attachment")
+            ring.Name = "ParticleAttachment"
+            ring.Parent = parent_part
+            ring.CFrame = CFrame.new(0, -3, 0)
+            ring.Axis = Vector3.new(1, 0, 0)
+            ring.SecondaryAxis = Vector3.new(0, 1, 0)
+            table.insert(extra_attachments, ring)
+
+            local props = {
+                Brightness = 2.5, LightEmission = 1, LightInfluence = 0,
+                Orientation = Enum.ParticleOrientation.VelocityPerpendicular, LockedToPart = true,
+                EmissionDirection = Enum.NormalId.Top, Lifetime = NumberRange.new(2, 2), Rate = 20,
+                Rotation = NumberRange.new(0, 360), Speed = NumberRange.new(0.001, 0.001),
+                SpreadAngle = Vector2.new(0.001, 0.001)
+            }
+
+            local sizeLarge = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.3,2),NumberSequenceKeypoint.new(0.6,5),NumberSequenceKeypoint.new(0.8,8),NumberSequenceKeypoint.new(1,12)})
+            local sizeSmall = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.3,1),NumberSequenceKeypoint.new(0.6,2.5),NumberSequenceKeypoint.new(0.8,4),NumberSequenceKeypoint.new(1,6)})
+            local squashL = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,0.2)})
+            local squashH = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,2)})
+            local transF = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.2,0.3),NumberSequenceKeypoint.new(1,1)})
+            local transQ = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,1)})
+            local transM = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.2,0.6),NumberSequenceKeypoint.new(1,1)})
+
+            local e1 = Instance.new("ParticleEmitter")
+            for k,v in pairs(props) do e1[k] = v end
+            e1.Size = sizeLarge; e1.Squash = squashL
+            e1.Texture = "rbxassetid://7216855136"; e1.Transparency = transF; e1.Color = gradA
+            e1.RotSpeed = NumberRange.new(-40, 40); e1.Parent = ring
+            table.insert(emitters, e1)
+
+            local e2 = Instance.new("ParticleEmitter")
+            for k,v in pairs(props) do e2[k] = v end
+            e2.Size = sizeSmall; e2.Squash = squashL
+            e2.Texture = "https://assetgame.roblox.com/asset/?id=12713358087&assetName=crescent"
+            e2.Transparency = transQ; e2.Color = gradB
+            e2.RotSpeed = NumberRange.new(-600, 600); e2.Parent = ring
+            table.insert(emitters, e2)
+
+            local e3 = Instance.new("ParticleEmitter")
+            for k,v in pairs(props) do e3[k] = v end
+            e3.Size = sizeSmall; e3.Squash = squashH
+            e3.Texture = "rbxassetid://7216849325"; e3.Transparency = transM; e3.Color = gradRev
+            e3.RotSpeed = NumberRange.new(-30, 30); e3.Parent = ring
+            table.insert(emitters, e3)
+
+        elseif aura_type == "Earthquake" then
+            local t1 = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.5,0.863),NumberSequenceKeypoint.new(1,1)})
+            local t2 = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.5,0.225),NumberSequenceKeypoint.new(1,1)})
+
+            local offsets = {
+                CFrame.new(2.9,0.42,0.65,1,0,0,0,0,-1,0,1,0),
+                CFrame.new(0.91,0.42,-2.98,1,0,0,0,0,-1,0,1,0),
+                CFrame.new(0.84,0.06,2.57,0,0,1,1,0,0,0,1,0),
+                CFrame.new(2.67,-0.84,-1.51,0,0,1,1,0,0,0,1,0),
+                CFrame.new(-1.63,1.88,2.09,0,0,1,1,0,0,0,1,0),
+                CFrame.new(-1.68,-0.18,-2.84,0,0,1,1,0,0,0,1,0),
+                CFrame.new(-3.29,0.2,0.32,0,0,1,1,0,0,0,1,0),
+                CFrame.new(-0.87,-0.53,1.34,0,0,1,1,0,0,0,1,0),
+                CFrame.new(-3.21,0.91,-2.04,0,0,1,1,0,0,0,1,0),
+            }
+            local wings = {}
+            for i, off in ipairs(offsets) do
+                local wa = Instance.new("Attachment")
+                wa.Name = "ParticleAttachment"..i
+                wa.Parent = parent_part
+                wa.CFrame = off
+                wa.Axis = Vector3.new(1,0,0)
+                wa.SecondaryAxis = Vector3.new(0,0,1)
+
+                local e1 = Instance.new("ParticleEmitter")
+                e1.Brightness = 10; e1.Size = NumberSequence.new(1); e1.Squash = NumberSequence.new(0)
+                e1.LockedToPart = true; e1.Color = gradA; e1.LightEmission = 1; e1.LightInfluence = 0.65
+                e1.Orientation = Enum.ParticleOrientation.FacingCamera
+                e1.EmissionDirection = Enum.NormalId.Top
+                e1.Lifetime = NumberRange.new(1); e1.Rate = 5; e1.Speed = NumberRange.new(0.001)
+                e1.SpreadAngle = Vector2.new(0.1,0.1)
+                e1.Texture = "rbxassetid://9922864240"; e1.Transparency = t1
+                e1.Parent = wa
+                table.insert(emitters, e1)
+
+                local e2 = Instance.new("ParticleEmitter")
+                e2.Brightness = 3; e2.Size = NumberSequence.new(0.75); e2.Squash = NumberSequence.new(0)
+                e2.LockedToPart = true; e2.Color = gradB; e2.LightEmission = 1; e2.LightInfluence = 0
+                e2.Orientation = Enum.ParticleOrientation.FacingCamera
+                e2.EmissionDirection = Enum.NormalId.Top
+                e2.Lifetime = NumberRange.new(1); e2.Rate = 5; e2.Speed = NumberRange.new(0.001)
+                e2.SpreadAngle = Vector2.new(0.1,0.1)
+                e2.Texture = "rbxassetid://16444981264"; e2.Transparency = t2
+                e2.Parent = wa
+                table.insert(emitters, e2)
+
+                table.insert(extra_attachments, wa)
+                wings[i] = wa
+            end
+
+            local textures = {
+                { "rbxassetid://15687629443", 0.5, -2, NumberSequence.new({NumberSequenceKeypoint.new(0,0.3),NumberSequenceKeypoint.new(0.018,0.3),NumberSequenceKeypoint.new(0.019,0),NumberSequenceKeypoint.new(0.991,0),NumberSequenceKeypoint.new(0.992,0.3),NumberSequenceKeypoint.new(1,0.3)}), 0.15, 0.15 },
+                { "rbxassetid://15687532616", 0.5, -0.8, NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.018,1),NumberSequenceKeypoint.new(0.019,0),NumberSequenceKeypoint.new(0.798,0),NumberSequenceKeypoint.new(0.847,0.546),NumberSequenceKeypoint.new(1,1)}), 0.3, 0.15 },
+                { "rbxassetid://16726908900", 1, -0.8, NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.018,1),NumberSequenceKeypoint.new(0.019,0.2),NumberSequenceKeypoint.new(0.798,0.2),NumberSequenceKeypoint.new(0.847,0.546),NumberSequenceKeypoint.new(1,1)}), 0.25, 0.25 },
+                { "rbxassetid://623219622", 0.5, -0.8, NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.018,1),NumberSequenceKeypoint.new(0.019,0.2),NumberSequenceKeypoint.new(0.798,0.2),NumberSequenceKeypoint.new(0.847,0.546),NumberSequenceKeypoint.new(1,1)}), 0.25, 0.25 }
+            }
+
+            for _, pair in ipairs({
+                {wings[2],wings[4]},{wings[4],wings[1]},{wings[1],wings[3]},{wings[3],wings[8]},
+                {wings[3],wings[5]},{wings[5],wings[7]},{wings[7],wings[9]},{wings[7],wings[6]}
+            }) do
+                for i = 1, 4 do
+                    local s = textures[i]
+                    local beam = Instance.new("Beam")
+                    beam.Parent = parent_part
+                    beam.Attachment0 = pair[1]; beam.Attachment1 = pair[2]
+                    beam.FaceCamera = true; beam.Segments = 10; beam.Brightness = 6
+                    beam.Color = gradA; beam.LightEmission = 1; beam.LightInfluence = 0
+                    beam.Texture = s[1]; beam.TextureLength = s[2]; beam.TextureSpeed = s[3]
+                    beam.Transparency = s[4]; beam.Width0 = s[5]; beam.Width1 = s[6]
+                end
+            end
+
+        elseif aura_type == "Halo" then
+            local head = parent_part:FindFirstChild("Head")
+            if not head then return emitters, extra_attachments end
+
+            local ha = Instance.new("Attachment")
+            ha.Name = "CustomAttachment"
+            ha.CFrame = CFrame.new(-0.05, 0.933, 0.259,
+                0.966, -0.250, 0.067,
+                0.259, 0.933, -0.250,
+                -0.0000294, 0.259, 0.966)
+            ha.Axis = Vector3.new(0.966, 0.259, -0.0000294)
+            ha.SecondaryAxis = Vector3.new(-0.250, 0.933, 0.259)
+            ha.Parent = head
+            table.insert(extra_attachments, ha)
+
+            local e1 = Instance.new("ParticleEmitter")
+            e1.Brightness = 3; e1.Color = gradA; e1.LightEmission = 1; e1.LightInfluence = 0
+            e1.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            e1.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,2.5),NumberSequenceKeypoint.new(1,3)})
+            e1.Squash = NumberSequence.new(0)
+            e1.Texture = "rbxassetid://8819682608"
+            e1.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.2,0),NumberSequenceKeypoint.new(0.8,0),NumberSequenceKeypoint.new(1,1)})
+            e1.EmissionDirection = Enum.NormalId.Top
+            e1.Lifetime = NumberRange.new(1,1); e1.Rate = 7
+            e1.Rotation = NumberRange.new(0,360); e1.RotSpeed = NumberRange.new(-400,400)
+            e1.Speed = NumberRange.new(0.001); e1.SpreadAngle = Vector2.new(5,5)
+            e1.Shape = Enum.ParticleEmitterShape.Box; e1.LockedToPart = true
+            e1.Parent = ha
+            table.insert(emitters, e1)
+
+            local e2 = Instance.new("ParticleEmitter")
+            e2.Brightness = 3; e2.Color = gradB; e2.LightEmission = 1
+            e2.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            e2.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,2),NumberSequenceKeypoint.new(1,3)})
+            e2.Squash = NumberSequence.new(0)
+            e2.Texture = "rbxassetid://8819682608"
+            e2.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.2,0),NumberSequenceKeypoint.new(0.8,0),NumberSequenceKeypoint.new(1,1)})
+            e2.EmissionDirection = Enum.NormalId.Top
+            e2.Lifetime = NumberRange.new(1,1); e2.Rate = 7
+            e2.Rotation = NumberRange.new(0,360); e2.RotSpeed = NumberRange.new(-400,400)
+            e2.Speed = NumberRange.new(0.001); e2.SpreadAngle = Vector2.new(5,5)
+            e2.Shape = Enum.ParticleEmitterShape.Box; e2.LockedToPart = true
+            e2.Parent = ha
+            table.insert(emitters, e2)
+
+        elseif aura_type == "Saturn Ring" then
+            local a1 = Instance.new("Attachment")
+            a1.Name = "ParticleAttachment1"
+            a1.CFrame = CFrame.new(2,0.5,1) * CFrame.fromMatrix(Vector3.new(), Vector3.new(0.9659,0,0.2588), Vector3.new(0,1,0), Vector3.new(-0.2588,0,0.9659))
+            a1.Axis = Vector3.new(0.9659,0,0.2588); a1.SecondaryAxis = Vector3.new(0,1,0)
+            a1.Parent = parent_part
+            table.insert(extra_attachments, a1)
+
+            local e1 = Instance.new("ParticleEmitter")
+            e1.Brightness = 3; e1.Color = gradA; e1.LightEmission = 1; e1.LightInfluence = 0
+            e1.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            e1.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,2.75),NumberSequenceKeypoint.new(1,3.5)})
+            e1.Squash = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,0)})
+            e1.Texture = "http://www.roblox.com/asset/?id=13267054240"
+            e1.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0.944),NumberSequenceKeypoint.new(0.5,0.2),NumberSequenceKeypoint.new(0.8,0.8),NumberSequenceKeypoint.new(1,1)})
+            e1.LockedToPart = true; e1.EmissionDirection = Enum.NormalId.Front
+            e1.Lifetime = NumberRange.new(1,1); e1.Rate = 4
+            e1.Rotation = NumberRange.new(-15,-15); e1.Speed = NumberRange.new(0.05,0.05)
+            e1.Parent = a1
+            table.insert(emitters, e1)
+
+            local a2 = Instance.new("Attachment")
+            a2.Name = "ParticleAttachment2"
+            a2.CFrame = CFrame.new(-2,0.5,1) * CFrame.fromMatrix(Vector3.new(), Vector3.new(0.9659,0,-0.2588), Vector3.new(0,1,0), Vector3.new(0.2588,0,0.9659))
+            a2.Axis = Vector3.new(0.9659,0,-0.2588); a2.SecondaryAxis = Vector3.new(0,1,0)
+            a2.Parent = parent_part
+            table.insert(extra_attachments, a2)
+
+            local e2 = Instance.new("ParticleEmitter")
+            e2.Brightness = 3; e2.Color = gradRev; e2.LightEmission = 1; e2.LightInfluence = 0
+            e2.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            e2.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,2.75),NumberSequenceKeypoint.new(1,3.5)})
+            e2.Squash = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,0)})
+            e2.Texture = "http://www.roblox.com/asset/?id=13267054240"
+            e2.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0.944),NumberSequenceKeypoint.new(0.5,0.2),NumberSequenceKeypoint.new(0.8,0.8),NumberSequenceKeypoint.new(1,1)})
+            e2.LockedToPart = true; e2.EmissionDirection = Enum.NormalId.Back
+            e2.Lifetime = NumberRange.new(1,1); e2.Rate = 4
+            e2.Rotation = NumberRange.new(-15,-15); e2.Speed = NumberRange.new(0.05,0.05)
+            e2.Parent = a2
+            table.insert(emitters, e2)
+        end
+
+        return emitters, extra_attachments
+    end
+
+    local AURA_KEYS = {
+        ["Angel Wings"]   = "SelfAuraAngelWings",
+        ["Particle Aura"] = "SelfAuraParticle",
+        ["Earthquake"]    = "SelfAuraEarthquake",
+        ["Halo"]          = "SelfAuraHalo",
+        ["Saturn Ring"]   = "SelfAuraSaturnRing",
+    }
+
+    local function destroyAuraCache(cache)
+        if cache.attachment then cache.attachment:Destroy() end
+        if cache.attachments then
+            for _, a in ipairs(cache.attachments) do
+                if a and a.Parent then a:Destroy() end
+            end
+        end
+        if cache.emitters then
+            for _, e in ipairs(cache.emitters) do
+                if e and e.Parent then e:Destroy() end
+            end
+        end
+    end
+
+    local function cleanupAllAuras()
+        for _, cache in pairs(aura_cache) do destroyAuraCache(cache) end
+        aura_cache = {}
+    end
+
+    local function updateSelfAuras()
+        if not S.SelfAuras then
+            if next(aura_cache) then cleanupAllAuras() end
+            return
+        end
+
+        local char = LP.Character
+        if not char then
+            if next(aura_cache) then cleanupAllAuras() end
+            return
+        end
+
+        local active = {}
+        for name, key in pairs(AURA_KEYS) do
+            if S[key] then table.insert(active, name) end
+        end
+
+        local toRemove = {}
+        for cached in pairs(aura_cache) do
+            local keep = false
+            for _, a in ipairs(active) do
+                if a == cached then keep = true break end
+            end
+            if not keep then table.insert(toRemove, cached) end
+        end
+        for _, name in ipairs(toRemove) do
+            destroyAuraCache(aura_cache[name])
+            aura_cache[name] = nil
+        end
+
+        for _, name in ipairs(active) do
+            local useUpper = (name == "Angel Wings")
+            local targetPart
+            if name == "Halo" then
+                targetPart = char:FindFirstChild("Head")
+            elseif useUpper then
+                targetPart = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+            else
+                targetPart = char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart")
+            end
+
+            if targetPart then
+                if not aura_cache[name] then
+                    local att = Instance.new("Attachment")
+                    if useUpper then att.Position = Vector3.new(0, 0.5, 0) end
+                    att.Parent = targetPart
+                    local emitters, extra = create_aura_effect(name, att, targetPart, S.SelfAurasColor)
+                    aura_cache[name] = { attachment = att, emitters = emitters, attachments = extra or {} }
+                else
+                    local c = aura_cache[name]
+                    if c.attachment and c.attachment.Parent ~= targetPart then
+                        c.attachment.Parent = targetPart
+                        if c.attachments then
+                            for _, a in ipairs(c.attachments) do
+                                if a then a.Parent = targetPart end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- ============ ESP rendering ============
     local skeleton_bones = {
         {"UpperTorso","Head"}, {"UpperTorso","LowerTorso"},
         {"UpperTorso","LeftUpperArm"}, {"LeftUpperArm","LeftLowerArm"}, {"LeftLowerArm","LeftHand"},
@@ -2298,6 +2634,10 @@ local ESP = (function()
 
     RunService.RenderStepped:Connect(function()
         if not M.enabled then return end
+
+        if S.SelfMaterial     then applySelfMaterial()     end
+        if S.SelfToolMaterial then applySelfToolMaterial() end
+        updateSelfAuras()
 
         for plr, o in pairs(M.players) do
             if plr == LP or not plr.Parent then
@@ -2493,12 +2833,21 @@ local ESP = (function()
     Players.PlayerRemoving:Connect(remove)
     for _, p in ipairs(Players:GetPlayers()) do add(p) end
 
+    LP.CharacterAdded:Connect(function()
+        table.clear(savedSelfMaterials)
+        table.clear(savedSelfToolMaterials)
+        cleanupAllAuras()
+    end)
+
     function M.setEnabled(v)
         M.enabled = v and true or false
         if M.enabled then
             for _, p in ipairs(Players:GetPlayers()) do add(p) end
         else
             for plr, o in pairs(M.players) do destroy_obj(o); M.players[plr] = nil end
+            restoreStore(savedSelfMaterials)
+            restoreStore(savedSelfToolMaterials)
+            cleanupAllAuras()
         end
     end
 
@@ -2509,156 +2858,16 @@ local ESP = (function()
                 o.hl.FillColor = S.ChamsFill
                 o.hl.OutlineColor = S.ChamsOutline
             end
+        elseif key == "SelfMaterial" and not val then
+            restoreStore(savedSelfMaterials)
+        elseif key == "SelfToolMaterial" and not val then
+            restoreStore(savedSelfToolMaterials)
+        elseif key == "SelfAuras" and not val then
+            cleanupAllAuras()
+        elseif key == "SelfAurasColor" then
+            cleanupAllAuras()
         end
     end
-
-    return M
-end)()
-
---==================== SELF MATERIAL / SELF TOOL MATERIAL ====================
-local SelfMaterial = (function()
-    local M = {
-        enabled     = false,
-        toolEnabled = false,
-        color       = Color3.fromRGB(160, 60, 255),
-        toolColor   = Color3.fromRGB(160, 60, 255),
-    }
-
-    local savedMaterials     = {}
-    local savedToolMaterials = {}
-    local conn               = nil
-
-    local function applySelfMaterial()
-        if not M.enabled then return end
-        local char = LP.Character
-        if not char then return end
-
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                local isToolPart = part:FindFirstAncestorOfClass("Tool") ~= nil
-                if not isToolPart then
-                    if not savedMaterials[part] then
-                        savedMaterials[part] = {
-                            Material = part.Material,
-                            Color    = part.Color,
-                        }
-                    end
-                    part.Material = Enum.Material.ForceField
-                    part.Color    = M.color
-                end
-            end
-        end
-    end
-
-    local function applyToolMaterial(tool)
-        if not tool or not tool:IsA("Tool") then return end
-        for _, part in ipairs(tool:GetDescendants()) do
-            if part:IsA("BasePart") then
-                if not savedToolMaterials[part] then
-                    savedToolMaterials[part] = {
-                        Material = part.Material,
-                        Color    = part.Color,
-                    }
-                end
-                part.Material = Enum.Material.ForceField
-                part.Color    = M.toolColor
-            end
-        end
-    end
-
-    local function applySelfToolMaterial()
-        if not M.toolEnabled then return end
-        local char = LP.Character
-        if char then
-            for _, tool in ipairs(char:GetDescendants()) do
-                if tool:IsA("Tool") then applyToolMaterial(tool) end
-            end
-        end
-        local bp = LP:FindFirstChildOfClass("Backpack")
-        if bp then
-            for _, tool in ipairs(bp:GetChildren()) do
-                if tool:IsA("Tool") then applyToolMaterial(tool) end
-            end
-        end
-    end
-
-    local function restoreStore(store)
-        for part, data in pairs(store) do
-            if part then
-                pcall(function()
-                    part.Material = data.Material
-                    part.Color    = data.Color
-                end)
-            end
-        end
-        table.clear(store)
-    end
-
-    local function restoreSelfMaterial()     restoreStore(savedMaterials)     end
-    local function restoreSelfToolMaterial() restoreStore(savedToolMaterials) end
-
-    local function ensureLoop()
-        if conn then return end
-        conn = RunService.RenderStepped:Connect(function()
-            if not M.enabled and not M.toolEnabled then return end
-            if M.enabled     then applySelfMaterial()     end
-            if M.toolEnabled then applySelfToolMaterial() end
-        end)
-    end
-
-    local function stopLoopIfIdle()
-        if conn and not M.enabled and not M.toolEnabled then
-            conn:Disconnect()
-            conn = nil
-        end
-    end
-
-    function M.setEnabled(v)
-        M.enabled = v and true or false
-        if M.enabled then
-            ensureLoop()
-            applySelfMaterial()
-        else
-            restoreSelfMaterial()
-            stopLoopIfIdle()
-        end
-    end
-
-    function M.setToolEnabled(v)
-        M.toolEnabled = v and true or false
-        if M.toolEnabled then
-            ensureLoop()
-            applySelfToolMaterial()
-        else
-            restoreSelfToolMaterial()
-            stopLoopIfIdle()
-        end
-    end
-
-    function M.setColor(c)
-        M.color = c
-        if M.enabled then applySelfMaterial() end
-    end
-
-    function M.setToolColor(c)
-        M.toolColor = c
-        if M.toolEnabled then applySelfToolMaterial() end
-    end
-
-    function M.stopAll()
-        M.enabled, M.toolEnabled = false, false
-        restoreSelfMaterial()
-        restoreSelfToolMaterial()
-        stopLoopIfIdle()
-    end
-
-    LP.CharacterAdded:Connect(function()
-        savedMaterials     = {}
-        savedToolMaterials = {}
-        task.wait(0.3)
-        if M.enabled     then applySelfMaterial()     end
-        if M.toolEnabled then applySelfToolMaterial() end
-    end)
 
     return M
 end)()
@@ -3290,7 +3499,6 @@ end
 
 local function stopFling() flingActive = false end
 
---==================== AUTO KILL (with Pizza heal) ====================
 local autoKillEnabled = false
 local autoKillTask, pauseTask = nil, nil
 local pauseTp = false
@@ -3298,49 +3506,6 @@ local lastShot = 0
 local AUTO_SHOOT_DELAY = 0.1
 local targetHistory = {}
 local HISTORY_SIZE = 5
-
-local pizzaMode     = false
-local pizzaSpamTask = nil
-
-local function stopPizzaSpam()
-    pizzaMode = false
-    if pizzaSpamTask then
-        task.cancel(pizzaSpamTask)
-        pizzaSpamTask = nil
-    end
-end
-
-local function startPizzaSpam()
-    if pizzaSpamTask then return end
-    pizzaMode = true
-    pizzaSpamTask = task.spawn(function()
-        while autoKillEnabled and pizzaMode do
-            local ok, tool = equippedHasKeyword("pizza")
-            if not ok then break end
-            pcall(function() tool:Activate() end)
-            fireRightClick()
-            task.wait(0.05)
-        end
-        pizzaSpamTask = nil
-    end)
-end
-
-local function equipPizza()
-    if not equipToolByName("[Pizza]") then
-        if not equipToolByName("Pizza") then
-            local char = LP.Character
-            if char then
-                for _, child in ipairs(char:GetChildren()) do
-                    if child:IsA("Tool") and string.find(string.lower(child.Name), "pizza", 1, true) then
-                        local hum = char:FindFirstChildOfClass("Humanoid")
-                        if hum then pcall(function() hum:EquipTool(child) end) end
-                        break
-                    end
-                end
-            end
-        end
-    end
-end
 
 local function getRealTargetPosition(tgtRoot)
     local now = tick()
@@ -3376,8 +3541,8 @@ local function tryAutoShoot()
     if not char then return end
     local tool = char:FindFirstChildWhichIsA("Tool")
     if not tool then return end
+    if tool.Name == "[Pizza]" or tool.Name == "[Donut]" then return end
     local n = tool.Name:lower()
-    if n:find("pizza") or n:find("donut") or n:find("cola") then return end
     if n:find("katana") or n:find("knife") or n:find("sword")
         or n:find("bat") or n:find("fist") or n:find("crowbar") then return end
     if tick() - lastShot < AUTO_SHOOT_DELAY then return end
@@ -3395,18 +3560,6 @@ local function runAutoKillTick()
     local tgtRoot = tgtChar:FindFirstChild("HumanoidRootPart")
     local humanoid = myChar:FindFirstChildOfClass("Humanoid")
     if not myRoot or not tgtRoot or not humanoid then return end
-
-    if humanoid.Health < humanoid.MaxHealth then
-        local hasPizza = equippedHasKeyword("pizza")
-        if not hasPizza then equipPizza() end
-        if equippedHasKeyword("pizza") then startPizzaSpam() end
-        return
-    else
-        if pizzaMode or pizzaSpamTask then
-            stopPizzaSpam()
-            if equippedHasKeyword("pizza") then unequipAllTools() end
-        end
-    end
 
     if humanoid.Sit then humanoid.Sit = false end
     humanoid.PlatformStand = false
@@ -3466,7 +3619,6 @@ local function stopAutoKill()
     if pauseTask then task.cancel(pauseTask); pauseTask = nil end
     pauseTp = false
     targetHistory = {}
-    stopPizzaSpam()
     stopKillAnim()
     local char = LP.Character
     if char then
@@ -3998,16 +4150,17 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
+--Silent Aim Box (WITH KEYBIND)
 local SilentBox = Tabs.Legitbot:AddLeftGroupbox("Silent Aim", "target")
 
 SilentBox:AddToggle("SilentAimToggle", {
     Text = "Silent Aim", Default = false,
     Callback = function(v) SilentAimPrediction.setEnabled(v) end,
-}):AddKeyPicker("SilentAimToggleKey", {
+}):AddKeyPicker("SilentAimKeybind", {
     Default = "V",
     SyncToggleState = true,
     Mode = "Toggle",
-    Text = "Silent Aim",
+    Text = "Silent Aim Toggle",
     Callback = function(v)
         if Toggles.SilentAimToggle then Toggles.SilentAimToggle:SetValue(v) end
     end,
@@ -4082,16 +4235,17 @@ SilentBox:AddToggle("SilentWallCheckToggle", {
     Callback = function(v) SilentAimPrediction.setWallCheck(v) end,
 })
 
+--Triggerbot Box (WITH KEYBIND)
 local TBBox = Tabs.Legitbot:AddRightGroupbox("Triggerbot", "crosshair")
 
 TBBox:AddToggle("TBEnable", {
     Text = "Enable Triggerbot", Default = false,
     Callback = function(v) TriggerBot.setEnabled(v) end,
-}):AddKeyPicker("TBEnableKey", {
-    Default = "B",
+}):AddKeyPicker("TBEnableKeybind", {
+    Default = "T",
     SyncToggleState = true,
     Mode = "Toggle",
-    Text = "Triggerbot",
+    Text = "Triggerbot Toggle",
     Callback = function(v)
         if Toggles.TBEnable then Toggles.TBEnable:SetValue(v) end
     end,
@@ -4208,15 +4362,7 @@ local PURPLE_ESP_UI = Color3.fromRGB(160, 60, 255)
 
 VisualBox:AddToggle("ESPMaster", {
     Text = "Master Switch", Default = false,
-    Callback = function(v)
-        ESP.setEnabled(v)
-        if not v then
-            -- Master Switch OFF → turn off and restore Self Material toggles
-            SelfMaterial.stopAll()
-            if Toggles.ESPSelfMaterial     then Toggles.ESPSelfMaterial:SetValue(false)     end
-            if Toggles.ESPSelfToolMaterial then Toggles.ESPSelfToolMaterial:SetValue(false) end
-        end
-    end,
+    Callback = function(v) ESP.setEnabled(v) end,
 })
 
 VisualBox:AddToggle("ESPBox", {
@@ -4287,59 +4433,123 @@ VisualBox:AddSlider("BoxTransparency", {
     Callback = function(v) ESP.set("BoxTrans", v) end,
 })
 
--- Self Material toggle (requires Master Switch)
-local SelfMaterialToggle = VisualBox:AddToggle("ESPSelfMaterial", {
+-- Self Material (requires Master Switch)
+VisualBox:AddToggle("SelfMaterialToggle", {
     Text = "Self Material",
     Default = false,
     Callback = function(v)
         if v and not ESP.enabled then
-            if Toggles.ESPSelfMaterial then Toggles.ESPSelfMaterial:SetValue(false) end
-            pcall(function()
-                Library:Notify({
-                    Title = "Self Material",
-                    Description = "Enable Master Switch first",
-                    Time = 2,
-                })
-            end)
+            if Toggles.SelfMaterialToggle then Toggles.SelfMaterialToggle:SetValue(false) end
+            pcall(function() Library:Notify({ Title = "Self Material", Description = "Master Switch required", Time = 2 }) end)
             return
         end
-        SelfMaterial.setEnabled(v)
+        ESP.set("SelfMaterial", v)
     end,
-})
-
-SelfMaterialToggle:AddColorPicker("ESPSelfMaterialColor", {
-    Default = Color3.fromRGB(160, 60, 255),
+}):AddColorPicker("SelfMaterialColor", {
+    Default = PURPLE_ESP_UI,
     Title = "Self Material Color",
-    Callback = function(c)
-        SelfMaterial.setColor(c)
-    end,
+    Callback = function(c) ESP.set("SelfMaterialColor", c) end,
 })
 
--- Self Tool Material toggle (requires Master Switch)
-local SelfToolMaterialToggle = VisualBox:AddToggle("ESPSelfToolMaterial", {
+-- Self Tool Material (requires Master Switch)
+VisualBox:AddToggle("SelfToolMaterialToggle", {
     Text = "Self Tool Material",
     Default = false,
     Callback = function(v)
         if v and not ESP.enabled then
-            if Toggles.ESPSelfToolMaterial then Toggles.ESPSelfToolMaterial:SetValue(false) end
-            pcall(function()
-                Library:Notify({
-                    Title = "Self Tool Material",
-                    Description = "Enable Master Switch first",
-                    Time = 2,
-                })
-            end)
+            if Toggles.SelfToolMaterialToggle then Toggles.SelfToolMaterialToggle:SetValue(false) end
+            pcall(function() Library:Notify({ Title = "Self Tool Material", Description = "Master Switch required", Time = 2 }) end)
             return
         end
-        SelfMaterial.setToolEnabled(v)
+        ESP.set("SelfToolMaterial", v)
+    end,
+}):AddColorPicker("SelfToolMaterialColor", {
+    Default = PURPLE_ESP_UI,
+    Title = "Self Tool Material Color",
+    Callback = function(c) ESP.set("SelfToolMaterialColor", c) end,
+})
+
+-- Self Auras (requires Master Switch)
+VisualBox:AddToggle("SelfAurasToggle", {
+    Text = "Self Auras",
+    Default = false,
+    Callback = function(v)
+        if v and not ESP.enabled then
+            if Toggles.SelfAurasToggle then Toggles.SelfAurasToggle:SetValue(false) end
+            pcall(function() Library:Notify({ Title = "Self Auras", Description = "Master Switch required", Time = 2 }) end)
+            return
+        end
+        ESP.set("SelfAuras", v)
+    end,
+}):AddColorPicker("SelfAurasColor", {
+    Default = PURPLE_ESP_UI,
+    Title = "Self Auras Color",
+    Callback = function(c) ESP.set("SelfAurasColor", c) end,
+})
+
+-- Individual Auras (require Master Switch + Self Auras enabled)
+VisualBox:AddToggle("SelfAuraAngelWings", {
+    Text = "Angel Wings",
+    Default = false,
+    Callback = function(v)
+        if v and (not ESP.enabled or not Options.SelfAurasToggle.Value) then
+            if Toggles.SelfAuraAngelWings then Toggles.SelfAuraAngelWings:SetValue(false) end
+            pcall(function() Library:Notify({ Title = "Self Aura", Description = "Enable Master Switch + Self Auras first", Time = 2 }) end)
+            return
+        end
+        ESP.set("SelfAuraAngelWings", v)
     end,
 })
 
-SelfToolMaterialToggle:AddColorPicker("ESPSelfToolMaterialColor", {
-    Default = Color3.fromRGB(160, 60, 255),
-    Title = "Self Tool Material Color",
-    Callback = function(c)
-        SelfMaterial.setToolColor(c)
+VisualBox:AddToggle("SelfAuraParticle", {
+    Text = "Particle Aura",
+    Default = false,
+    Callback = function(v)
+        if v and (not ESP.enabled or not Options.SelfAurasToggle.Value) then
+            if Toggles.SelfAuraParticle then Toggles.SelfAuraParticle:SetValue(false) end
+            pcall(function() Library:Notify({ Title = "Self Aura", Description = "Enable Master Switch + Self Auras first", Time = 2 }) end)
+            return
+        end
+        ESP.set("SelfAuraParticle", v)
+    end,
+})
+
+VisualBox:AddToggle("SelfAuraEarthquake", {
+    Text = "Earthquake",
+    Default = false,
+    Callback = function(v)
+        if v and (not ESP.enabled or not Options.SelfAurasToggle.Value) then
+            if Toggles.SelfAuraEarthquake then Toggles.SelfAuraEarthquake:SetValue(false) end
+            pcall(function() Library:Notify({ Title = "Self Aura", Description = "Enable Master Switch + Self Auras first", Time = 2 }) end)
+            return
+        end
+        ESP.set("SelfAuraEarthquake", v)
+    end,
+})
+
+VisualBox:AddToggle("SelfAuraHalo", {
+    Text = "Halo",
+    Default = false,
+    Callback = function(v)
+        if v and (not ESP.enabled or not Options.SelfAurasToggle.Value) then
+            if Toggles.SelfAuraHalo then Toggles.SelfAuraHalo:SetValue(false) end
+            pcall(function() Library:Notify({ Title = "Self Aura", Description = "Enable Master Switch + Self Auras first", Time = 2 }) end)
+            return
+        end
+        ESP.set("SelfAuraHalo", v)
+    end,
+})
+
+VisualBox:AddToggle("SelfAuraSaturnRing", {
+    Text = "Saturn Ring",
+    Default = false,
+    Callback = function(v)
+        if v and (not ESP.enabled or not Options.SelfAurasToggle.Value) then
+            if Toggles.SelfAuraSaturnRing then Toggles.SelfAuraSaturnRing:SetValue(false) end
+            pcall(function() Library:Notify({ Title = "Self Aura", Description = "Enable Master Switch + Self Auras first", Time = 2 }) end)
+            return
+        end
+        ESP.set("SelfAuraSaturnRing", v)
     end,
 })
 
