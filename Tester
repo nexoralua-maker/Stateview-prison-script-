@@ -2361,9 +2361,7 @@ local ESP = (function()
             end
 
         elseif aura_type == "Halo" then
-            local head = parent_part:FindFirstChild("Head")
-            if not head then return emitters, extra_attachments end
-
+            -- parent_part IS the Head
             local ha = Instance.new("Attachment")
             ha.Name = "CustomAttachment"
             ha.CFrame = CFrame.new(-0.05, 0.933, 0.259,
@@ -2372,7 +2370,7 @@ local ESP = (function()
                 -0.0000294, 0.259, 0.966)
             ha.Axis = Vector3.new(0.966, 0.259, -0.0000294)
             ha.SecondaryAxis = Vector3.new(-0.250, 0.933, 0.259)
-            ha.Parent = head
+            ha.Parent = parent_part
             table.insert(extra_attachments, ha)
 
             local e1 = Instance.new("ParticleEmitter")
@@ -2524,15 +2522,20 @@ local ESP = (function()
                     if useUpper then att.Position = Vector3.new(0, 0.5, 0) end
                     att.Parent = targetPart
                     local emitters, extra = create_aura_effect(name, att, targetPart, S.SelfAurasColor)
-                    aura_cache[name] = { attachment = att, emitters = emitters, attachments = extra or {} }
+                    if name == "Halo" and #emitters > 0 then
+                        att:Destroy()
+                        aura_cache[name] = { attachment = nil, emitters = emitters, attachments = extra or {} }
+                    else
+                        aura_cache[name] = { attachment = att, emitters = emitters, attachments = extra or {} }
+                    end
                 else
                     local c = aura_cache[name]
                     if c.attachment and c.attachment.Parent ~= targetPart then
                         c.attachment.Parent = targetPart
-                        if c.attachments then
-                            for _, a in ipairs(c.attachments) do
-                                if a then a.Parent = targetPart end
-                            end
+                    end
+                    if c.attachments then
+                        for _, a in ipairs(c.attachments) do
+                            if a and a.Parent ~= targetPart then a.Parent = targetPart end
                         end
                     end
                 end
@@ -2867,6 +2870,10 @@ local ESP = (function()
         elseif key == "SelfAurasColor" then
             cleanupAllAuras()
         end
+    end
+
+    function M.get(key)
+        return S[key]
     end
 
     return M
@@ -3383,29 +3390,48 @@ local function UpdateTargetInfo()
     SetTextSafe(TargetToolLabel, "Tool: " .. (tool and tool.Name or "none"))
 end
 
+-- FIXED Spectate
 local function StartSpectate()
     if SpectateM.conn then return end
     SpectateM.conn = RunService.RenderStepped:Connect(function()
         if not SpectateM.enabled then return end
-        if not SpectateM.target or not SpectateM.target.Parent then SpectateM.enabled = false; return end
-        local char = SpectateM.target.Character
+
+        local tgt = SpectateM.target or SelectedTarget.Player
+        if not tgt then return end
+        if not tgt.Parent then return end
+
+        local char = tgt.Character
         if not char then return end
+
         local hum = char:FindFirstChildOfClass("Humanoid")
         local subj = (hum and hum.Health > 0) and hum
-            or char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
-        if subj and Workspace.CurrentCamera.CameraSubject ~= subj then
-            Workspace.CurrentCamera.CameraSubject = subj
+            or char:FindFirstChild("Head")
+            or char:FindFirstChild("HumanoidRootPart")
+        if not subj then return end
+
+        local cam = Workspace.CurrentCamera
+        if not cam then return end
+
+        if cam.CameraType ~= Enum.CameraType.Custom then
+            cam.CameraType = Enum.CameraType.Custom
+        end
+        if cam.CameraSubject ~= subj then
+            cam.CameraSubject = subj
         end
     end)
 end
 
 local function StopSpectate()
     SpectateM.enabled = false
-    if SpectateM.conn then SpectateM.conn:Disconnect(); SpectateM.conn = nil end
+    if SpectateM.conn then
+        SpectateM.conn:Disconnect()
+        SpectateM.conn = nil
+    end
     local cam = Workspace.CurrentCamera
+    if not cam then return end
     local myHum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-    cam.CameraSubject = myHum or nil
     cam.CameraType = Enum.CameraType.Custom
+    cam.CameraSubject = myHum or LP.Character
 end
 
 local flingActive, flingRunning = false, false
@@ -3690,14 +3716,15 @@ TargetSelectGroup:AddInput("TargetSearchInput", {
 TargetSelectGroup:AddToggle("SpectateToggle", {
     Text = "Spectate", Default = false,
     Callback = function(v)
-        SpectateM.enabled = v
         if v then
-            if not SelectedTarget.Player then
-                SpectateM.enabled = false
+            local tgt = SelectedTarget.Player or SpectateM.target
+            if not tgt then
                 pcall(function() Library:Notify({ Title = "Spectate", Description = "No target selected", Time = 2 }) end)
+                if Toggles.SpectateToggle then Toggles.SpectateToggle:SetValue(false) end
                 return
             end
-            SpectateM.target = SelectedTarget.Player
+            SpectateM.target  = tgt
+            SpectateM.enabled = true
             StartSpectate()
         else
             StopSpectate()
@@ -4487,12 +4514,12 @@ VisualBox:AddToggle("SelfAurasToggle", {
     Callback = function(c) ESP.set("SelfAurasColor", c) end,
 })
 
--- Individual Auras (require Master Switch + Self Auras enabled)
+-- Individual Auras (require Master Switch + Self Auras)
 VisualBox:AddToggle("SelfAuraAngelWings", {
     Text = "Angel Wings",
     Default = false,
     Callback = function(v)
-        if v and (not ESP.enabled or not Options.SelfAurasToggle.Value) then
+        if v and (not ESP.enabled or not ESP.get("SelfAuras")) then
             if Toggles.SelfAuraAngelWings then Toggles.SelfAuraAngelWings:SetValue(false) end
             pcall(function() Library:Notify({ Title = "Self Aura", Description = "Enable Master Switch + Self Auras first", Time = 2 }) end)
             return
@@ -4505,7 +4532,7 @@ VisualBox:AddToggle("SelfAuraParticle", {
     Text = "Particle Aura",
     Default = false,
     Callback = function(v)
-        if v and (not ESP.enabled or not Options.SelfAurasToggle.Value) then
+        if v and (not ESP.enabled or not ESP.get("SelfAuras")) then
             if Toggles.SelfAuraParticle then Toggles.SelfAuraParticle:SetValue(false) end
             pcall(function() Library:Notify({ Title = "Self Aura", Description = "Enable Master Switch + Self Auras first", Time = 2 }) end)
             return
@@ -4518,7 +4545,7 @@ VisualBox:AddToggle("SelfAuraEarthquake", {
     Text = "Earthquake",
     Default = false,
     Callback = function(v)
-        if v and (not ESP.enabled or not Options.SelfAurasToggle.Value) then
+        if v and (not ESP.enabled or not ESP.get("SelfAuras")) then
             if Toggles.SelfAuraEarthquake then Toggles.SelfAuraEarthquake:SetValue(false) end
             pcall(function() Library:Notify({ Title = "Self Aura", Description = "Enable Master Switch + Self Auras first", Time = 2 }) end)
             return
@@ -4531,7 +4558,7 @@ VisualBox:AddToggle("SelfAuraHalo", {
     Text = "Halo",
     Default = false,
     Callback = function(v)
-        if v and (not ESP.enabled or not Options.SelfAurasToggle.Value) then
+        if v and (not ESP.enabled or not ESP.get("SelfAuras")) then
             if Toggles.SelfAuraHalo then Toggles.SelfAuraHalo:SetValue(false) end
             pcall(function() Library:Notify({ Title = "Self Aura", Description = "Enable Master Switch + Self Auras first", Time = 2 }) end)
             return
@@ -4544,7 +4571,7 @@ VisualBox:AddToggle("SelfAuraSaturnRing", {
     Text = "Saturn Ring",
     Default = false,
     Callback = function(v)
-        if v and (not ESP.enabled or not Options.SelfAurasToggle.Value) then
+        if v and (not ESP.enabled or not ESP.get("SelfAuras")) then
             if Toggles.SelfAuraSaturnRing then Toggles.SelfAuraSaturnRing:SetValue(false) end
             pcall(function() Library:Notify({ Title = "Self Aura", Description = "Enable Master Switch + Self Auras first", Time = 2 }) end)
             return
