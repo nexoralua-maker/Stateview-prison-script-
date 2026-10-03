@@ -1824,6 +1824,656 @@ local Fling = (function()
     return M
 end)()
 
+--self auras
+local SelfAuras = (function()
+    local M = {
+        enabled = false,
+        color   = nil,
+        auras = {
+            ["Angel Wings"]   = false,
+            ["Particle Aura"] = false,
+            ["Earthquake"]    = false,
+            ["Halo"]          = false,
+            ["Saturn Ring"]   = false,
+        }
+    }
+
+    local PURPLE = {
+        Deep     = Color3.fromRGB(60, 0, 110),
+        Dark     = Color3.fromRGB(100, 20, 180),
+        Rich     = Color3.fromRGB(138, 43, 226),
+        Vivid    = Color3.fromRGB(160, 60, 255),
+        Bright   = Color3.fromRGB(190, 100, 255),
+        Light    = Color3.fromRGB(215, 150, 255),
+        Lavender = Color3.fromRGB(230, 190, 255),
+        Pink     = Color3.fromRGB(255, 130, 255),
+        White    = Color3.fromRGB(245, 230, 255),
+    }
+
+    local function shade(c, factor)
+        local h, s, v = Color3.toHSV(c)
+        if factor < 0 then
+            v = math.clamp(v * (1 + factor), 0, 1)
+            s = math.clamp(s * (1 + factor * 0.5), 0, 1)
+        else
+            v = math.clamp(v + (1 - v) * factor, 0, 1)
+            s = math.clamp(s * (1 - factor * 0.5), 0, 1)
+        end
+        return Color3.fromHSV(h, s, v)
+    end
+
+    local function palette()
+        if not M.color then return PURPLE end
+        local base = M.color
+        return {
+            Deep     = shade(base, -0.75),
+            Dark     = shade(base, -0.50),
+            Rich     = shade(base, -0.25),
+            Vivid    = base,
+            Bright   = shade(base,  0.20),
+            Light    = shade(base,  0.45),
+            Lavender = shade(base,  0.70),
+            Pink     = shade(base,  0.35),
+            White    = Color3.new(1, 1, 1),
+        }
+    end
+
+    local function purple_gradient(reverse)
+        local p = palette()
+        local seq = {
+            ColorSequenceKeypoint.new(0.00, p.Deep),
+            ColorSequenceKeypoint.new(0.35, p.Rich),
+            ColorSequenceKeypoint.new(0.65, p.Bright),
+            ColorSequenceKeypoint.new(1.00, p.Lavender),
+        }
+        if reverse then
+            local rev = {}
+            for i = #seq, 1, -1 do
+                table.insert(rev, ColorSequenceKeypoint.new(1 - seq[i].Time, seq[i].Value))
+            end
+            return ColorSequence.new(rev)
+        end
+        return ColorSequence.new(seq)
+    end
+
+    local function purple_pink_gradient()
+        local p = palette()
+        return ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, p.Deep),
+            ColorSequenceKeypoint.new(0.30, p.Rich),
+            ColorSequenceKeypoint.new(0.55, p.Pink),
+            ColorSequenceKeypoint.new(0.80, p.Bright),
+            ColorSequenceKeypoint.new(1.00, p.Lavender),
+        })
+    end
+
+    local function create_aura_effect(aura_type, attachment, parent_part)
+        local emitters = {}
+        local extra_attachments = {}
+
+        if aura_type == "Angel Wings" then
+            attachment.Name = "ParticleAttachment"
+            attachment.CFrame = CFrame.new(0, 0, 0, 0.965, 0.259, 0, -0.259, 0.965, 0, 0, 0, 1)
+            attachment.Axis = Vector3.new(0.966, -0.259, 0)
+            attachment.SecondaryAxis = Vector3.new(0.259, 0.966, 0)
+
+            local pe = Instance.new("ParticleEmitter")
+            pe.Name = "ParticleEmitter"
+            pe.Texture = "rbxassetid://14054635072"
+            pe.LockedToPart = true
+            pe.Brightness = 1.5
+            pe.LightEmission = 1
+            pe.LightInfluence = 0
+            pe.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            pe.Size = NumberSequence.new(4)
+            pe.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 1),
+                NumberSequenceKeypoint.new(0.5, 0),
+                NumberSequenceKeypoint.new(1, 1)
+            })
+            pe.Color = purple_gradient()
+            pe.Lifetime = NumberRange.new(1)
+            pe.Rate = 10
+            pe.Rotation = NumberRange.new(0, 360)
+            pe.RotSpeed = NumberRange.new(30, 60)
+            pe.Speed = NumberRange.new(0.01)
+            pe.SpreadAngle = Vector2.new(0.1)
+            pe.Parent = attachment
+            table.insert(emitters, pe)
+
+        elseif aura_type == "Particle Aura" then
+            local ringAttachment = Instance.new("Attachment")
+            ringAttachment.Name = "ParticleAttachment"
+            ringAttachment.Parent = parent_part
+            ringAttachment.CFrame = CFrame.new(0, -3, 0)
+            ringAttachment.Axis = Vector3.new(1, 0, 0)
+            ringAttachment.SecondaryAxis = Vector3.new(0, 1, 0)
+            table.insert(extra_attachments, ringAttachment)
+
+            local purpleColor = purple_gradient()
+            local purplePink  = purple_pink_gradient()
+
+            local emitterProps = {
+                Brightness = 2.5, LightEmission = 1, LightInfluence = 0,
+                Orientation = Enum.ParticleOrientation.VelocityPerpendicular, LockedToPart = true,
+                EmissionDirection = Enum.NormalId.Top, Lifetime = NumberRange.new(2, 2), Rate = 20,
+                Rotation = NumberRange.new(0, 360), Speed = NumberRange.new(0.001, 0.001),
+                SpreadAngle = Vector2.new(0.001, 0.001)
+            }
+
+            local sizeLarge = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(0.3, 2),NumberSequenceKeypoint.new(0.6, 5),NumberSequenceKeypoint.new(0.8, 8),NumberSequenceKeypoint.new(1, 12)})
+            local sizeSmall = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(0.3, 1),NumberSequenceKeypoint.new(0.6, 2.5),NumberSequenceKeypoint.new(0.8, 4),NumberSequenceKeypoint.new(1, 6)})
+            local squashLight = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(1, 0.2)})
+            local squashHeavy = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(1, 2)})
+            local transFade = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(0.2, 0.3),NumberSequenceKeypoint.new(1, 1)})
+            local transQuick = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(1, 1)})
+            local transMidFade = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(0.2, 0.6),NumberSequenceKeypoint.new(1, 1)})
+
+            local e1 = Instance.new("ParticleEmitter")
+            e1.Name = "ParticleEmitter1"
+            for k, v in pairs(emitterProps) do e1[k] = v end
+            e1.Size = sizeLarge; e1.Squash = squashLight
+            e1.Texture = "rbxassetid://7216855136"; e1.Transparency = transFade
+            e1.Color = purpleColor; e1.RotSpeed = NumberRange.new(-40, 40)
+            e1.Parent = ringAttachment
+            table.insert(emitters, e1)
+
+            local e2 = Instance.new("ParticleEmitter")
+            e2.Name = "ParticleEmitter2"
+            for k, v in pairs(emitterProps) do e2[k] = v end
+            e2.Size = sizeSmall; e2.Squash = squashLight
+            e2.Texture = "https://assetgame.roblox.com/asset/?id=12713358087&assetName=crescent"
+            e2.Transparency = transQuick; e2.Color = purplePink
+            e2.RotSpeed = NumberRange.new(-600, 600)
+            e2.Parent = ringAttachment
+            table.insert(emitters, e2)
+
+            local e3 = Instance.new("ParticleEmitter")
+            e3.Name = "ParticleEmitter3"
+            for k, v in pairs(emitterProps) do e3[k] = v end
+            e3.Size = sizeSmall; e3.Squash = squashHeavy
+            e3.Texture = "rbxassetid://7216849325"; e3.Transparency = transMidFade
+            e3.Color = purple_gradient(true); e3.RotSpeed = NumberRange.new(-30, 30)
+            e3.Parent = ringAttachment
+            table.insert(emitters, e3)
+
+        elseif aura_type == "Earthquake" then
+            local transparency1 = NumberSequence.new({NumberSequenceKeypoint.new(0, 1),NumberSequenceKeypoint.new(0.5, 0.863),NumberSequenceKeypoint.new(1, 1)})
+            local transparency2 = NumberSequence.new({NumberSequenceKeypoint.new(0, 1),NumberSequenceKeypoint.new(0.5, 0.225),NumberSequenceKeypoint.new(1, 1)})
+
+            local attachmentOffsets = {
+                CFrame.new(2.9, 0.42, 0.65, 1, 0, 0, 0, 0, -1, 0, 1, 0),
+                CFrame.new(0.91, 0.42, -2.98, 1, 0, 0, 0, 0, -1, 0, 1, 0),
+                CFrame.new(0.84, 0.06, 2.57, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+                CFrame.new(2.67, -0.84, -1.51, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+                CFrame.new(-1.63, 1.88, 2.09, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+                CFrame.new(-1.68, -0.18, -2.84, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+                CFrame.new(-3.29, 0.2, 0.32, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+                CFrame.new(-0.87, -0.53, 1.34, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+                CFrame.new(-3.21, 0.91, -2.04, 0, 0, 1, 1, 0, 0, 0, 1, 0)
+            }
+
+            local wingAttachments = {}
+            for i, offset in ipairs(attachmentOffsets) do
+                local wa = Instance.new("Attachment")
+                wa.Name = "ParticleAttachment" .. i
+                wa.Parent = parent_part
+                wa.CFrame = offset
+                wa.Axis = Vector3.new(1, 0, 0)
+                wa.SecondaryAxis = Vector3.new(0, 0, 1)
+
+                local e1 = Instance.new("ParticleEmitter")
+                e1.Name = "ParticleEmitter1"
+                e1.Parent = wa
+                e1.Brightness = 10; e1.Size = NumberSequence.new(1); e1.Squash = NumberSequence.new(0)
+                e1.LockedToPart = true; e1.Color = purple_gradient()
+                e1.LightEmission = 1; e1.LightInfluence = 0.65
+                e1.Orientation = Enum.ParticleOrientation.FacingCamera
+                e1.EmissionDirection = Enum.NormalId.Top
+                e1.Lifetime = NumberRange.new(1); e1.Rate = 5
+                e1.Speed = NumberRange.new(0.001); e1.SpreadAngle = Vector2.new(0.1, 0.1)
+                e1.Texture = "rbxassetid://9922864240"; e1.Transparency = transparency1
+                table.insert(emitters, e1)
+
+                local e2 = Instance.new("ParticleEmitter")
+                e2.Name = "ParticleEmitter2"
+                e2.Parent = wa
+                e2.Brightness = 3; e2.Size = NumberSequence.new(0.75); e2.Squash = NumberSequence.new(0)
+                e2.LockedToPart = true; e2.Color = purple_pink_gradient()
+                e2.LightEmission = 1; e2.LightInfluence = 0
+                e2.Orientation = Enum.ParticleOrientation.FacingCamera
+                e2.EmissionDirection = Enum.NormalId.Top
+                e2.Lifetime = NumberRange.new(1); e2.Rate = 5
+                e2.Speed = NumberRange.new(0.001); e2.SpreadAngle = Vector2.new(0.1, 0.1)
+                e2.Texture = "rbxassetid://16444981264"; e2.Transparency = transparency2
+                table.insert(emitters, e2)
+
+                table.insert(extra_attachments, wa)
+                wingAttachments[i] = wa
+            end
+
+            local textures = {
+                { "rbxassetid://15687629443", 0.5, -2, NumberSequence.new({NumberSequenceKeypoint.new(0,0.3),NumberSequenceKeypoint.new(0.018,0.3),NumberSequenceKeypoint.new(0.019,0),NumberSequenceKeypoint.new(0.991,0),NumberSequenceKeypoint.new(0.992,0.3),NumberSequenceKeypoint.new(1,0.3)}), 0.15, 0.15 },
+                { "rbxassetid://15687532616", 0.5, -0.8, NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.018,1),NumberSequenceKeypoint.new(0.019,0),NumberSequenceKeypoint.new(0.798,0),NumberSequenceKeypoint.new(0.847,0.546),NumberSequenceKeypoint.new(1,1)}), 0.3, 0.15 },
+                { "rbxassetid://16726908900", 1, -0.8, NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.018,1),NumberSequenceKeypoint.new(0.019,0.2),NumberSequenceKeypoint.new(0.798,0.2),NumberSequenceKeypoint.new(0.847,0.546),NumberSequenceKeypoint.new(1,1)}), 0.25, 0.25 },
+                { "rbxassetid://623219622", 0.5, -0.8, NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.018,1),NumberSequenceKeypoint.new(0.019,0.2),NumberSequenceKeypoint.new(0.798,0.2),NumberSequenceKeypoint.new(0.847,0.546),NumberSequenceKeypoint.new(1,1)}), 0.25, 0.25 }
+            }
+
+            for _, pair in ipairs({
+                {wingAttachments[2], wingAttachments[4]}, {wingAttachments[4], wingAttachments[1]}, {wingAttachments[1], wingAttachments[3]}, {wingAttachments[3], wingAttachments[8]},
+                {wingAttachments[3], wingAttachments[5]}, {wingAttachments[5], wingAttachments[7]}, {wingAttachments[7], wingAttachments[9]}, {wingAttachments[7], wingAttachments[6]}
+            }) do
+                for i = 1, 4 do
+                    local selected = textures[i]
+                    local beam = Instance.new("Beam")
+                    beam.Parent = parent_part
+                    beam.Attachment0 = pair[1]
+                    beam.Attachment1 = pair[2]
+                    beam.FaceCamera = true
+                    beam.Segments = 10
+                    beam.Brightness = 6
+                    beam.Color = purple_gradient()
+                    beam.LightEmission = 1
+                    beam.LightInfluence = 0
+                    beam.Texture = selected[1]
+                    beam.TextureLength = selected[2]
+                    beam.TextureSpeed = selected[3]
+                    beam.Transparency = selected[4]
+                    beam.Width0 = selected[5]
+                    beam.Width1 = selected[6]
+                    table.insert(emitters, beam)
+                end
+            end
+
+        elseif aura_type == "Halo" then
+            local head = parent_part:FindFirstChild("Head")
+            if not head then return emitters, extra_attachments end
+
+            local haloAttachment = Instance.new("Attachment")
+            haloAttachment.Name = "CustomAttachment"
+            haloAttachment.CFrame = CFrame.new(-0.05, 0.933012962, 0.25881958,
+                0.965931654, -0.249973103, 0.0670034066,
+                0.258797228, 0.933025956, -0.249973089,
+                -2.9373914e-05, 0.258797228, 0.965931654)
+            haloAttachment.Axis = Vector3.new(0.9659316539764404, 0.25879722833633423, -0.000029373914003372192)
+            haloAttachment.SecondaryAxis = Vector3.new(-0.2499731034040451, 0.9330259561538696, 0.25879722833633423)
+            haloAttachment.Parent = head
+            table.insert(extra_attachments, haloAttachment)
+
+            local e1 = Instance.new("ParticleEmitter")
+            e1.Name = "ParticleEmitter1"
+            e1.Brightness = 3; e1.Color = purple_gradient()
+            e1.LightEmission = 1; e1.LightInfluence = 0
+            e1.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            e1.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2.5), NumberSequenceKeypoint.new(1, 3)})
+            e1.Squash = NumberSequence.new(0)
+            e1.Texture = "rbxassetid://8819682608"
+            e1.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1),NumberSequenceKeypoint.new(0.2, 0),NumberSequenceKeypoint.new(0.8, 0),NumberSequenceKeypoint.new(1, 1)})
+            e1.EmissionDirection = Enum.NormalId.Top
+            e1.Lifetime = NumberRange.new(1, 1); e1.Rate = 7
+            e1.Rotation = NumberRange.new(0, 360); e1.RotSpeed = NumberRange.new(-400, 400)
+            e1.Speed = NumberRange.new(0.001); e1.SpreadAngle = Vector2.new(5, 5)
+            e1.Shape = Enum.ParticleEmitterShape.Box
+            e1.LockedToPart = true
+            e1.Parent = haloAttachment
+            table.insert(emitters, e1)
+
+            local e2 = Instance.new("ParticleEmitter")
+            e2.Name = "ParticleEmitter2"
+            e2.Brightness = 3; e2.Color = purple_pink_gradient()
+            e2.LightEmission = 1
+            e2.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            e2.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2), NumberSequenceKeypoint.new(1, 3)})
+            e2.Squash = NumberSequence.new(0)
+            e2.Texture = "rbxassetid://8819682608"
+            e2.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1),NumberSequenceKeypoint.new(0.2, 0),NumberSequenceKeypoint.new(0.8, 0),NumberSequenceKeypoint.new(1, 1)})
+            e2.EmissionDirection = Enum.NormalId.Top
+            e2.Lifetime = NumberRange.new(1, 1); e2.Rate = 7
+            e2.Rotation = NumberRange.new(0, 360); e2.RotSpeed = NumberRange.new(-400, 400)
+            e2.Speed = NumberRange.new(0.001); e2.SpreadAngle = Vector2.new(5, 5)
+            e2.Shape = Enum.ParticleEmitterShape.Box
+            e2.LockedToPart = true
+            e2.Parent = haloAttachment
+            table.insert(emitters, e2)
+
+        elseif aura_type == "Saturn Ring" then
+            local a1 = Instance.new("Attachment")
+            a1.Name = "ParticleAttachment1"
+            a1.CFrame = CFrame.new(2, 0.5, 1) * CFrame.fromMatrix(Vector3.new(), Vector3.new(0.965929627, 0, 0.258804798), Vector3.new(0, 1, 0), Vector3.new(-0.258804798, 0, 0.965929627))
+            a1.Axis = Vector3.new(0.9659296274185181, 0, 0.2588047981262207)
+            a1.SecondaryAxis = Vector3.new(0, 1, 0)
+            a1.Parent = parent_part
+            table.insert(extra_attachments, a1)
+
+            local e1 = Instance.new("ParticleEmitter")
+            e1.Name = "ParticleEmitter1"
+            e1.Brightness = 3; e1.Color = purple_gradient()
+            e1.LightEmission = 1; e1.LightInfluence = 0
+            e1.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            e1.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2.75), NumberSequenceKeypoint.new(1, 3.5)})
+            e1.Squash = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0)})
+            e1.Texture = "http://www.roblox.com/asset/?id=13267054240"
+            e1.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.944444),NumberSequenceKeypoint.new(0.5, 0.2),NumberSequenceKeypoint.new(0.8, 0.8),NumberSequenceKeypoint.new(1, 1)})
+            e1.LockedToPart = true
+            e1.EmissionDirection = Enum.NormalId.Front
+            e1.Lifetime = NumberRange.new(1, 1); e1.Rate = 4
+            e1.Rotation = NumberRange.new(-15, -15)
+            e1.Speed = NumberRange.new(0.05000000074505806, 0.05000000074505806)
+            e1.Parent = a1
+            table.insert(emitters, e1)
+
+            local a2 = Instance.new("Attachment")
+            a2.Name = "ParticleAttachment2"
+            a2.CFrame = CFrame.new(-2, 0.5, 1) * CFrame.fromMatrix(Vector3.new(), Vector3.new(0.965929627, 0, -0.258804798), Vector3.new(0, 1, 0), Vector3.new(0.258804798, 0, 0.965929627))
+            a2.Axis = Vector3.new(0.9659296274185181, 0, -0.2588047981262207)
+            a2.SecondaryAxis = Vector3.new(0, 1, 0)
+            a2.Parent = parent_part
+            table.insert(extra_attachments, a2)
+
+            local e2 = Instance.new("ParticleEmitter")
+            e2.Name = "ParticleEmitter2"
+            e2.Brightness = 3; e2.Color = purple_gradient(true)
+            e2.LightEmission = 1; e2.LightInfluence = 0
+            e2.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            e2.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2.75), NumberSequenceKeypoint.new(1, 3.5)})
+            e2.Squash = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0)})
+            e2.Texture = "http://www.roblox.com/asset/?id=13267054240"
+            e2.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.944444),NumberSequenceKeypoint.new(0.5, 0.2),NumberSequenceKeypoint.new(0.8, 0.8),NumberSequenceKeypoint.new(1, 1)})
+            e2.LockedToPart = true
+            e2.EmissionDirection = Enum.NormalId.Back
+            e2.Lifetime = NumberRange.new(1, 1); e2.Rate = 4
+            e2.Rotation = NumberRange.new(-15, -15)
+            e2.Speed = NumberRange.new(0.05000000074505806, 0.05000000074505806)
+            e2.Parent = a2
+            table.insert(emitters, e2)
+        end
+
+        return emitters, extra_attachments
+    end
+
+    local aura_cache = {}
+
+    local function destroy_cache(cache)
+        if not cache then return end
+        if cache.attachment then cache.attachment:Destroy() end
+        if cache.attachments then
+            for _, att in ipairs(cache.attachments) do
+                if att and att.Parent then att:Destroy() end
+            end
+        end
+        if cache.emitters then
+            for _, emitter in ipairs(cache.emitters) do
+                if emitter and emitter.Parent then emitter:Destroy() end
+            end
+        end
+    end
+
+    local function cleanup_all()
+        for _, cache in pairs(aura_cache) do
+            destroy_cache(cache)
+        end
+        aura_cache = {}
+    end
+
+    local function update_aura()
+        local char = LP.Character
+        if not char then
+            cleanup_all()
+            return
+        end
+
+        local current_types = {}
+        for name, enabled in pairs(M.auras) do
+            if enabled then table.insert(current_types, name) end
+        end
+
+        local to_remove = {}
+        for cached_type in pairs(aura_cache) do
+            local found = false
+            for _, t in ipairs(current_types) do
+                if cached_type == t then found = true break end
+            end
+            if not found then table.insert(to_remove, cached_type) end
+        end
+
+        for _, type_to_remove in ipairs(to_remove) do
+            destroy_cache(aura_cache[type_to_remove])
+            aura_cache[type_to_remove] = nil
+        end
+
+        for _, current_type in ipairs(current_types) do
+            local use_upper_torso = (current_type == "Angel Wings")
+            local target_part
+
+            if use_upper_torso then
+                target_part = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+            else
+                target_part = char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart")
+            end
+
+            if current_type == "Halo" then
+                target_part = char:FindFirstChild("Head")
+            end
+
+            if target_part then
+                if not aura_cache[current_type] then
+                    local attachment = Instance.new("Attachment")
+                    if use_upper_torso then
+                        attachment.Position = Vector3.new(0, 0.5, 0)
+                    end
+                    attachment.Parent = target_part
+
+                    local emitters, extra_attachments = create_aura_effect(current_type, attachment, target_part)
+
+                    aura_cache[current_type] = {
+                        attachment = attachment,
+                        emitters = emitters,
+                        attachments = extra_attachments or {}
+                    }
+                else
+                    local cache = aura_cache[current_type]
+                    if cache.attachment and cache.attachment.Parent ~= target_part then
+                        cache.attachment.Parent = target_part
+                        if cache.attachments then
+                            for _, att in ipairs(cache.attachments) do
+                                if att then att.Parent = target_part end
+                            end
+                        end
+                    end
+                    if cache.emitters then
+                        for _, emitter in ipairs(cache.emitters) do
+                            if emitter then
+                                pcall(function() emitter.Enabled = true end)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    RunService.RenderStepped:Connect(function()
+        if not M.enabled then return end
+        update_aura()
+    end)
+
+    LP.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        cleanup_all()
+    end)
+
+    function M.setEnabled(v)
+        M.enabled = v and true or false
+        if not M.enabled then cleanup_all() end
+    end
+
+    function M.setAura(name, v)
+        if M.auras[name] == nil then return end
+        M.auras[name] = v and true or false
+        if not M.enabled then return end
+        if not v then
+            local cache = aura_cache[name]
+            if cache then
+                destroy_cache(cache)
+                aura_cache[name] = nil
+            end
+        end
+    end
+
+    function M.setColor(c)
+        M.color = c
+        if M.enabled then
+            cleanup_all()
+        end
+    end
+
+    function M.cleanupAll()
+        cleanup_all()
+    end
+
+    return M
+end)()
+
+--self material
+local SelfMaterial = (function()
+    local M = { enabled = false, color = DARK_PURPLE }
+    local savedMaterials = {}
+
+    local function restoreAll()
+        for part, data in pairs(savedMaterials) do
+            if part and part.Parent then
+                pcall(function()
+                    part.Material = data.Material
+                    part.Color    = data.Color
+                end)
+            end
+        end
+        table.clear(savedMaterials)
+    end
+
+    local function apply()
+        local char = LP.Character
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                local isToolPart = part:FindFirstAncestorOfClass("Tool") ~= nil
+                if not isToolPart then
+                    if not savedMaterials[part] then
+                        savedMaterials[part] = {
+                            Material = part.Material,
+                            Color    = part.Color,
+                        }
+                    end
+                    part.Material = Enum.Material.ForceField
+                    part.Color    = M.color
+                end
+            end
+        end
+    end
+
+    RunService.Heartbeat:Connect(function()
+        if not M.enabled then return end
+        local char = LP.Character
+        if not char then
+            if next(savedMaterials) then restoreAll() end
+            return
+        end
+        apply()
+    end)
+
+    LP.CharacterAdded:Connect(function()
+        restoreAll()
+    end)
+
+    function M.setEnabled(v)
+        M.enabled = v and true or false
+        if not M.enabled then restoreAll() end
+    end
+
+    function M.setColor(c)
+        M.color = c
+    end
+
+    function M.restoreAll()
+        restoreAll()
+    end
+
+    return M
+end)()
+
+--self tool material
+local SelfToolMaterial = (function()
+    local M = { enabled = false, color = DARK_PURPLE }
+    local savedToolMaterials = {}
+
+    local function restoreAll()
+        for part, data in pairs(savedToolMaterials) do
+            if part and part.Parent then
+                pcall(function()
+                    part.Material = data.Material
+                    part.Color    = data.Color
+                end)
+            end
+        end
+        table.clear(savedToolMaterials)
+    end
+
+    local function applyTool(tool)
+        if not tool or not tool:IsA("Tool") then return end
+        for _, part in ipairs(tool:GetDescendants()) do
+            if part:IsA("BasePart") then
+                if not savedToolMaterials[part] then
+                    savedToolMaterials[part] = {
+                        Material = part.Material,
+                        Color    = part.Color,
+                    }
+                end
+                part.Material = Enum.Material.ForceField
+                part.Color    = M.color
+            end
+        end
+    end
+
+    local function apply()
+        local char = LP.Character
+        if char then
+            for _, tool in ipairs(char:GetDescendants()) do
+                if tool:IsA("Tool") then applyTool(tool) end
+            end
+        end
+        local backpack = LP:FindFirstChildOfClass("Backpack")
+        if backpack then
+            for _, tool in ipairs(backpack:GetChildren()) do
+                if tool:IsA("Tool") then applyTool(tool) end
+            end
+        end
+    end
+
+    RunService.Heartbeat:Connect(function()
+        if not M.enabled then return end
+        apply()
+    end)
+
+    LP.CharacterAdded:Connect(function()
+        restoreAll()
+    end)
+
+    function M.setEnabled(v)
+        M.enabled = v and true or false
+        if not M.enabled then restoreAll() end
+    end
+
+    function M.setColor(c)
+        M.color = c
+    end
+
+    function M.restoreAll()
+        restoreAll()
+    end
+
+    return M
+end)()
+
 --bullet tracer
 local BulletTracer = (function()
     local M = { enabled=false, active={} }
@@ -2044,7 +2694,8 @@ local ESP = (function()
             if S.Skeleton then
                 for i, bone in ipairs(skeleton_bones) do
                     local a = char:FindFirstChild(bone[1]); local b = char:FindFirstChild(bone[2]); local l = o.skel_lines[i]
-                    if a and b then                        local aPos, aOn = w2s(a.Position); local bPos, bOn = w2s(b.Position)
+                    if a and b then
+                        local aPos, aOn = w2s(a.Position); local bPos, bOn = w2s(b.Position)
                         if aOn and bOn then l.From, l.To = aPos, bPos; l.Color = S.SkeletonColor; l.Thickness = 1; l.Visible = true
                         else l.Visible = false end
                     else l.Visible = false end
@@ -2732,6 +3383,39 @@ espSec:ColorPicker({ Text = "skeleton color", Flag = "esp_skelcolor", Default = 
 espSec:Toggle({ Text = "chams", Flag = "esp_chams", Default = false, Callback = function(v) ESP.set("Chams", v) end })
 espSec:ColorPicker({ Text = "chams fill", Flag = "esp_chamsfill", Default = DARK_PURPLE, Callback = function(c) ESP.set("ChamsFill", c) end })
 espSec:ColorPicker({ Text = "chams outline", Flag = "esp_chamsout", Default = WHITE, Callback = function(c) ESP.set("ChamsOutline", c) end })
+espSec:Toggle({ Text = "Self auras", Flag = "esp_self_auras", Default = false, Callback = function(v)
+    SelfAuras.setEnabled(v)
+    notify("self auras", v and "enabled" or "disabled", v and "success" or "warn")
+end })
+espSec:ColorPicker({ Text = "Aura color", Flag = "esp_aura_color", Default = DARK_PURPLE,
+    Callback = function(c) SelfAuras.setColor(c) end })
+espSec:Toggle({ Text = "Angel wings", Flag = "esp_aura_angel", Default = false, Callback = function(v)
+    SelfAuras.setAura("Angel Wings", v)
+end })
+espSec:Toggle({ Text = "Particle aura", Flag = "esp_aura_particle", Default = false, Callback = function(v)
+    SelfAuras.setAura("Particle Aura", v)
+end })
+espSec:Toggle({ Text = "Earthquake", Flag = "esp_aura_earthquake", Default = false, Callback = function(v)
+    SelfAuras.setAura("Earthquake", v)
+end })
+espSec:Toggle({ Text = "Halo", Flag = "esp_aura_halo", Default = false, Callback = function(v)
+    SelfAuras.setAura("Halo", v)
+end })
+espSec:Toggle({ Text = "Saturn ring", Flag = "esp_aura_saturn", Default = false, Callback = function(v)
+    SelfAuras.setAura("Saturn Ring", v)
+end })
+espSec:Toggle({ Text = "Self material", Flag = "esp_selfmat", Default = false, Callback = function(v)
+    SelfMaterial.setEnabled(v)
+    notify("self material", v and "on" or "off", v and "success" or "warn")
+end })
+espSec:ColorPicker({ Text = "Self material color", Flag = "esp_selfmat_color", Default = DARK_PURPLE,
+    Callback = function(c) SelfMaterial.setColor(c) end })
+espSec:Toggle({ Text = "Self tool material", Flag = "esp_selftoolmat", Default = false, Callback = function(v)
+    SelfToolMaterial.setEnabled(v)
+    notify("self tool material", v and "on" or "off", v and "success" or "warn")
+end })
+espSec:ColorPicker({ Text = "Self tool material color", Flag = "esp_selftoolmat_color", Default = DARK_PURPLE,
+    Callback = function(c) SelfToolMaterial.setColor(c) end })
 
 local labelsSec = VisualsTab:Section("labels", 2)
 labelsSec:Toggle({ Text = "name", Flag = "esp_name", Default = false, Callback = function(v) ESP.set("Name", v) end })
