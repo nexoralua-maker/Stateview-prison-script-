@@ -3434,6 +3434,27 @@ miscSec:Toggle({ Text = "rapid fire", Flag = "misc_rf", Default = false, Callbac
 end })
 miscSec:Input({ Text = "fire rate", Flag = "misc_rfr", Default = "0.015", Numeric = true,
     Callback = function(v) local n = tonumber(v); if n then RapidFire.setFireRate(n) end end })
+miscSec:Button({ Text = "Chatlogs", Callback = function()
+    local ok = pcall(function()
+        local TextChatService = game:GetService("TextChatService")
+        TextChatService.ChatWindowConfiguration.Enabled = true
+    end)
+    if ok then
+        notify("chatlogs", "enabled", "success")
+    else
+        notify("chatlogs", "failed", "error")
+    end
+end })
+miscSec:Button({ Text = "Macro", Callback = function()
+    local ok = pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Stateview-prison-script-/main/Macro"))()
+    end)
+    if ok then
+        notify("macro", "loaded", "success")
+    else
+        notify("macro", "failed to load", "error")
+    end
+end })
 miscSec:Toggle({ Text = "auto reload", Flag = "misc_ar", Default = false, Callback = function(v) AutoReloadState.Enabled = v end })
 miscSec:Toggle({ Text = "anti stomp", Flag = "misc_as", Default = false, Callback = function(v) AntiStompState.Enabled = v end })
 miscSec:Toggle({ Text = "auto stomp", Flag = "misc_astomp", Default = false, Callback = function(v) StompState.Enabled = v end })
