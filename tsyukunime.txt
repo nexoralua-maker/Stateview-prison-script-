@@ -1,0 +1,3024 @@
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+--// Obsidian does not publish these as globals (LinoriaLib did), so bind them locally //--
+local Options = Library.Options
+local Toggles = Library.Toggles
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+game:GetService("HttpService")
+game:GetService("TweenService")
+local Stats = game:GetService("Stats")
+local Lighting = game:GetService("Lighting")
+local CoreGui = cloneref(game:GetService("CoreGui"))
+local LocalPlayer = Players.LocalPlayer
+local CurrentCamera = Workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+local tbl = {}
+local State = {
+    silentaim = {istargetting = false, target = nil, predictedposition = Vector3.new()},
+    targetaim = {istargetting = false, target = nil, predictedposition = Vector3.new()},
+    resolver = {playerdata = {}},
+    targetstrafe = {rotationangle = 0, lastupdate = tick()},
+    animationplayer = {
+        enabled = false,
+        animationid = "rbxassetid://14352343065",
+        speed = 1,
+        animationinstance = Instance.new("Animation"),
+        animationtrack = nil,
+        lastcharacter = nil,
+        isplaying = false
+    },
+    autostomp = {loop = nil, isactive = false, targetonly = false, originalcframe = nil, isteleported = false},
+    knockstomp = {
+        isactive = false,
+        tweenspeed = 0.3,
+        detectionrange = 50,
+        userange = true,
+        originalcframe = nil,
+        targetonly = false
+    },
+    autobuy = {
+        isactive = false,
+        selecteditems = {},
+        armorthreshold = 70,
+        hasboughtthislife = false,
+        boughtitems = {}
+    },
+    autoreload = {enabled = false},
+    antilock = {enabled = false, mode = "Jitter", angle = 0},
+    antivoid = {enabled = false, lastsafeposition = nil},
+    removeseats = {enabled = false},
+    networkdesync = {enabled = false},
+    originalposition = CFrame.new(),
+    currentping = 0,
+    wasdead = false,
+    lastshottime = 0
+}
+local Config = {
+    ["legitsilent:enabled"] = false,
+    ["legitsilent:aimpart"] = "HumanoidRootPart",
+    ["legitsilent:closestbodypart"] = false,
+    ["legitsilent:prediction"] = 0.135,
+    ["legitsilent:antigroundshots"] = false,
+    ["legitsilent:antigroundshotstotakeoff"] = 7,
+    ["legitsilent:useairhitpart"] = false,
+    ["legitsilent:airaimpart"] = "LowerTorso",
+    ["legitsilent:resolver"] = false,
+    ["legitsilent:resolvermethod"] = "Hybrid",
+    ["legitsilent:resolverupdatetime"] = 0.05,
+    ["legitsilent:antiaimviewer"] = false,
+    ["legitsilent:usefov"] = false,
+    ["legitsilent:fovradius"] = 100,
+    ["legitsilent:usechecks"] = false,
+    ["legitsilent:checks"] = {},
+    ["ragetargetaim:enabled"] = false,
+    ["ragetargetaim:aimpart"] = "HumanoidRootPart",
+    ["ragetargetaim:prediction"] = 0.135,
+    ["ragetargetaim:autoprediction"] = true,
+    ["ragetargetaim:resolver"] = false,
+    ["ragetargetaim:resolvermethod"] = "Hybrid",
+    ["ragetargetaim:resolversamples"] = 5,
+    ["ragetargetaim:resolversmoothing"] = 0.5,
+    ["ragetargetaim:antigroundshots"] = false,
+    ["ragetargetaim:antigroundshotstotakeoff"] = 7,
+    ["ragetargetaim:useairpart"] = false,
+    ["ragetargetaim:airpart"] = "LowerTorso",
+    ["ragetargetaim:closestbodypart"] = false,
+    ["ragetargetaim:usefov"] = false,
+    ["ragetargetaim:fovradius"] = 100,
+    ["ragetargetaim:usechecks"] = false,
+    ["ragetargetaim:checks"] = {},
+    ["ragetargetaim:autoshoot"] = false,
+    ["ragetargetaim:lookat"] = false,
+    ["ragetargetaim:spectate"] = false,
+    ["ragetargetaim:autoswitch"] = false,
+    ["ragetargetaim:notify"] = false,
+    ["ragetargetaim:dampening"] = 0.7
+}
+local OriginalLighting = {
+    FogColor = Lighting.FogColor,
+    FogStart = Lighting.FogStart,
+    FogEnd = Lighting.FogEnd,
+    Ambient = Lighting.Ambient,
+    Brightness = Lighting.Brightness,
+    ClockTime = Lighting.ClockTime
+}
+local Chams = {LocalChams = Instance.new("Highlight"), TargetChams = Instance.new("Highlight")}
+Chams.LocalChams.FillTransparency = 0.5
+Chams.LocalChams.OutlineTransparency = 0
+Chams.LocalChams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+Chams.TargetChams.FillTransparency = 0.5
+Chams.TargetChams.OutlineTransparency = 0
+Chams.TargetChams.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+local Drawings = {FOV = Drawing.new("Circle"), Tracer = Drawing.new("Line"), Dot = Drawing.new("Circle")}
+Drawings.FOV.Thickness = 1
+Drawings.FOV.Filled = false
+Drawings.FOV.Visible = false
+Drawings.Tracer.Thickness = 2
+Drawings.Tracer.Visible = false
+Drawings.Dot.Filled = true
+Drawings.Dot.Visible = false
+local HitSounds = {
+    RIFK7 = "rbxassetid://9102080552",
+    Bubble = "rbxassetid://9102092728",
+    Minecraft = "rbxassetid://5869422451",
+    Cod = "rbxassetid://160432334",
+    Bameware = "rbxassetid://6565367558",
+    Neverlose = "rbxassetid://6565370984",
+    Gamesense = "rbxassetid://4817809188",
+    Rust = "rbxassetid://6565371338"
+}
+local GunShopItems = {
+    "[Shotgun]",
+    "[Silencer]",
+    "[Tactical Shotgun]",
+    "[Double-Barrel SG]",
+    "[Revolver]",
+    "[SMG]",
+    "[P90]",
+    "[AK47]",
+    "[AR]",
+    "[SilencerAR]",
+    "[LMG]",
+    "[Flamethrower]",
+    "[DrumGun]",
+    "[Aug]",
+    "[Drum]",
+    "[USP]",
+    "[Glock]",
+    "[Knife]",
+    "[Bat]",
+    "[Katana]",
+    "[Machete]",
+    "[Medkit]",
+    "[Radio]",
+    "[Boombox]",
+    "[Flashlight]"
+}
+local ArmorShopItems = {"[High-Medium Armor]", "[Medium Armor]", "[High Armor]", "[Light Armor]", "[Armor]"}
+local Utils = {
+    hascharacter = function(arg1)
+        return arg1 and arg1.Character and arg1.Character:FindFirstChild("Humanoid") and arg1.Character:FindFirstChild("HumanoidRootPart")
+    end,
+    worldtoscreen = function(arg12)
+        local v1, v2 = CurrentCamera:WorldToViewportPoint(arg12)
+        return Vector2.new(v1.X, v1.Y), v2
+    end
+}
+Utils.isinair = function(arg13)
+    if Utils.hascharacter(arg13) then
+        return math.abs(arg13.Character.HumanoidRootPart.Velocity.Y) > 1
+    end
+    return false
+end
+Utils.isfriendswith = function(arg14)
+    local v3, v4 = pcall(function()
+        return arg14:IsFriendsWith(LocalPlayer.UserId)
+    end)
+    return v3 and v4
+end
+Utils.isplayerbehindwall = function(arg15)
+    if not (Utils.hascharacter(arg15) and Utils.hascharacter(LocalPlayer)) then
+        return false
+    end
+    return #CurrentCamera:GetPartsObscuringTarget({LocalPlayer.Character.HumanoidRootPart.Position, arg15.Character.HumanoidRootPart.Position}, {LocalPlayer.Character, arg15.Character}) > 0
+end
+Utils.randomvector3 = function(arg16)
+    return Vector3.new(math.random(-arg16, arg16), math.random(-arg16, arg16), math.random(-arg16, arg16))
+end
+Utils.playsound = function(arg17, arg2)
+    local instance = Instance.new("Sound")
+    instance.Parent = Workspace
+    instance.SoundId = arg2
+    instance.Volume = arg17
+    instance:Play()
+    instance.Ended:Connect(function()
+        instance:Destroy()
+    end)
+end
+Utils.getping = function()
+    local v5, v6 = pcall(function()
+        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    return v5 and v6 or 0
+end
+local DaHood = {
+    isknocked = function(arg18)
+        if Utils.hascharacter(arg18) then
+            local Character = arg18.Character
+            if not Character:GetAttribute("Knocked") then
+                local BodyEffects = Character:FindFirstChild("BodyEffects")
+                if not (BodyEffects and BodyEffects:FindFirstChild("K.O") and BodyEffects["K.O"].Value) then
+                    return false
+                end
+                return true
+            end
+            return true
+        end
+        return false
+    end,
+    isdead = function(arg19)
+        if not (arg19 and arg19.Character) then
+            return true
+        end
+        local Character2 = arg19.Character
+        if not Character2:GetAttribute("Dead") then
+            local Humanoid = Character2:FindFirstChild("Humanoid")
+            if not (Humanoid and Humanoid.Health <= 0) then
+                return false
+            end
+            return true
+        end
+        return true
+    end,
+    isgrabbed = function(arg110)
+        if Utils.hascharacter(arg110) then
+            return arg110.Character:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
+        end
+        return false
+    end,
+    getarmor = function(arg111)
+        if not Utils.hascharacter(arg111) then
+            return 100
+        end
+        local Character3 = arg111.Character
+        for k, v7 in pairs(Character3:GetAttributes()) do
+            local v8 = string.lower(k)
+            if v8:find("armor") then
+                return v7
+            end
+        end
+        local BodyEffects2 = Character3:FindFirstChild("BodyEffects")
+        if BodyEffects2 then
+            local Armor = BodyEffects2:FindFirstChild("Armor")
+            if Armor and Armor:IsA("NumberValue") then
+                return Armor.Value
+            end
+        end
+        return 100
+    end
+}
+local ModDetector = {
+    GetModCount = function()
+        local v9 = 0
+        for k2, v10 in pairs(tbl) do
+            v9 = v9 + 1
+        end
+        return v9
+    end,
+    IsMod = function(arg112)
+        local v11, v12 = pcall(function()
+            return arg112:IsInGroup(693335996)
+        end)
+        return v11 and v12
+    end,
+    GetRole = function(arg113)
+        local v13, v14 = pcall(function()
+            return arg113:GetRoleInGroup(693335996)
+        end)
+        return v13 and v14 or "Staff"
+    end
+}
+ModDetector.RegisterMod = function(arg114)
+    if not tbl[arg114.UserId] then
+        local Role = ModDetector.GetRole(arg114)
+        tbl[arg114.UserId] = {name = arg114.Name, role = Role}
+        return Role
+    end
+    return tbl[arg114.UserId].role
+end
+ModDetector.CheckForMods = function()
+    tbl = {}
+    local tbl2 = {}
+    for k3, v15 in ipairs(Players:GetPlayers()) do
+        if v15 == LocalPlayer or not ModDetector.IsMod(v15) then
+            continue
+        end
+        local v16 = ModDetector.RegisterMod(v15)
+        table.insert(tbl2, v15.Name .. " (" .. v16 .. ")")
+    end
+    if 0 < #tbl2 then
+        Library:Notify("[\226\154\160\239\184\143 STAFF DETECTED] " .. table.concat(tbl2, ", "), 10)
+    end
+    return #tbl2
+end
+task.spawn(function()
+    task.wait(2)
+    if ModDetector.CheckForMods() == 0 then
+        Library:Notify("[ANTI-MOD] Server is clean - No staff detected", 3)
+    end
+end)
+local Targeting = {
+    getclosestplayer = function(arg115, arg22, arg3, arg4)
+        local MouseLocation = UserInputService:GetMouseLocation()
+        local v17 = nil
+        local v18 = arg115 and arg22 * 3 or math.huge
+        for k4, v19 in ipairs(Players:GetPlayers()) do
+            if v19 == LocalPlayer or not Utils.hascharacter(v19) then
+                continue
+            end
+            local v20, v21 = Utils.worldtoscreen(v19.Character.HumanoidRootPart.Position)
+            if not v21 then
+                continue
+            end
+            if arg3 and arg4 then
+                local tbl3 = {}
+                if typeof(arg4) == "table" then
+                    for k5, v22 in pairs(arg4) do
+                        if not v22 then
+                            continue
+                        end
+                        table.insert(tbl3, k5)
+                    end
+                end
+                if table.find(tbl3, "Knocked") and DaHood.isknocked(v19) or table.find(tbl3, "Grabbed") and DaHood.isgrabbed(v19) or (table.find(tbl3, "Friend") and Utils.isfriendswith(v19) or table.find(tbl3, "Wall") and Utils.isplayerbehindwall(v19)) then
+                    continue
+                end
+            end
+            local Magnitude = (MouseLocation - v20).Magnitude
+            if not (Magnitude < v18) then
+                continue
+            end
+            v18 = Magnitude
+            v17 = v19
+        end
+        return v17
+    end,
+    getclosestbodypart = function(arg116)
+        if not Utils.hascharacter(arg116) then
+            return nil
+        end
+        local MouseLocation2 = UserInputService:GetMouseLocation()
+        local v23 = nil
+        local huge = math.huge
+        for k6, v24 in ipairs(arg116.Character:GetChildren()) do
+            if not (v24:IsA("MeshPart") or v24:IsA("BasePart")) then
+                continue
+            end
+            local v25, v26 = Utils.worldtoscreen(v24.Position)
+            if not v26 then
+                continue
+            end
+            local Magnitude2 = (MouseLocation2 - v25).Magnitude
+            if not (Magnitude2 < huge) then
+                continue
+            end
+            huge = Magnitude2
+            v23 = v24
+        end
+        return v23
+    end,
+    resolve = function(arg117, arg23, arg32)
+        if not Utils.hascharacter(arg117) then
+            return Vector3.new(0, 0, 0)
+        end
+        local HumanoidRootPart = arg117.Character.HumanoidRootPart
+        local v27 = State.resolver.playerdata[arg117.UserId]
+        if not v27 then
+            State.resolver.playerdata[arg117.UserId] = {
+                positions = {},
+                timestamps = {},
+                velocities = {},
+                accelerations = {},
+                lastvelocity = Vector3.new(0, 0, 0),
+                lastacceleration = Vector3.new(0, 0, 0),
+                smoothedvelocity = Vector3.new(0, 0, 0),
+                lastupdate = 0
+            }
+            v27 = State.resolver.playerdata[arg117.UserId]
+        end
+        local v28 = tick()
+        if v28 - v27.lastupdate < arg32 then
+            return v27.smoothedvelocity
+        end
+        v27.lastupdate = v28
+        table.insert(v27.positions, HumanoidRootPart.Position)
+        table.insert(v27.timestamps, v28)
+        local v29 = Config["ragetargetaim:resolversamples"] or 5
+        while v29 < #v27.positions do
+            table.remove(v27.positions, 1)
+            table.remove(v27.timestamps, 1)
+        end
+        if 2 <= #v27.positions then
+            local v30 = v27.timestamps[#v27.timestamps] - v27.timestamps[#v27.timestamps - 1]
+            if 0 < v30 then
+                local v31 = (v27.positions[#v27.positions] - v27.positions[#v27.positions - 1]) / v30
+                table.insert(v27.velocities, v31)
+                while v29 < #v27.velocities do
+                    table.remove(v27.velocities, 1)
+                end
+                if v27.lastvelocity then
+                    local v32 = (v31 - v27.lastvelocity) / v30
+                    table.insert(v27.accelerations, v32)
+                    while v29 < #v27.accelerations do
+                        table.remove(v27.accelerations, 1)
+                    end
+                    v27.lastacceleration = v32
+                end
+                v27.lastvelocity = v31
+            end
+        end
+        Vector3.new(0, 0, 0)
+        local v33
+        if arg23 == "Interpolation" then
+            if 2 <= #v27.velocities then
+                local v34 = 0
+                local vector3 = Vector3.new(0, 0, 0)
+                for i = 1, #v27.velocities do
+                    local v35 = i / #v27.velocities
+                    vector3 = vector3 + v27.velocities[i] * v35
+                    v34 = v34 + v35
+                end
+                v33 = v34 > 0 and vector3 / v34 or v27.lastvelocity
+            else
+                v33 = v27.lastvelocity or Vector3.new(0, 0, 0)
+            end
+        elseif arg23 == "Extrapolation" then
+            if 2 <= #v27.velocities then
+                v33 = v27.velocities[#v27.velocities] + (v27.lastacceleration or Vector3.new(0, 0, 0)) * 0.1
+            else
+                v33 = v27.lastvelocity or Vector3.new(0, 0, 0)
+            end
+        else
+            Vector3.new(0, 0, 0)
+            Vector3.new(0, 0, 0)
+            if 2 <= #v27.velocities then
+                local v36 = 0
+                local vector32 = Vector3.new(0, 0, 0)
+                for i2 = 1, #v27.velocities do
+                    local v37 = i2 / #v27.velocities
+                    vector32 = vector32 + v27.velocities[i2] * v37
+                    v36 = v36 + v37
+                end
+                local v38 = v36 > 0 and vector32 / v36 or v27.lastvelocity
+                local v39 = v27.velocities[#v27.velocities]
+                local v40 = v27.lastacceleration or Vector3.new(0, 0, 0)
+                v33 = v38:Lerp(v39 + v40 * 0.1, Config["ragetargetaim:resolversmoothing"] or 0.5)
+            else
+                v33 = v27.lastvelocity or Vector3.new(0, 0, 0)
+            end
+        end
+        if 100 < v33.Magnitude then
+            v33 = v33.Unit * 100
+        end
+        v27.smoothedvelocity = v27.smoothedvelocity:Lerp(v33, 1 - (Config["ragetargetaim:resolversmoothing"] or 0.5))
+        return v27.smoothedvelocity
+    end
+}
+local fn = function()
+    local v41, v42 = pcall(function()
+        return Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
+    end)
+    if not v41 then
+        return
+    end
+    local v43 = string.split(v42, "(")
+    local v44 = tonumber(v43[1])
+    if not v44 then
+        return
+    end
+    State.currentping = v44
+    if Config["ragetargetaim:autoprediction"] then
+        local v45
+        if v44 < 40 then
+            v45 = 0.1256
+        elseif v44 < 50 then
+            v45 = 0.1225
+        elseif v44 < 60 then
+            v45 = 0.1229
+        elseif v44 < 70 then
+            v45 = 0.131
+        elseif v44 < 80 then
+            v45 = 0.134
+        elseif v44 < 90 then
+            v45 = 0.136
+        elseif v44 < 105 then
+            v45 = 0.138
+        elseif v44 < 110 then
+            v45 = 0.146
+        elseif v44 < 125 then
+            v45 = 0.149
+        elseif v44 < 130 then
+            v45 = 0.151
+        elseif v44 < 150 then
+            v45 = 0.155
+        elseif v44 < 175 then
+            v45 = 0.165
+        elseif v44 < 200 then
+            v45 = 0.175
+        else
+            v45 = 0.185
+        end
+        Config["ragetargetaim:prediction"] = v45
+        Config["legitsilent:prediction"] = v45
+        if Options and Options.TargetPrediction then
+            pcall(function()
+                Options.TargetPrediction:SetValue(string.format("%.4f", v45))
+            end)
+        end
+    end
+end
+local SilentAim = {
+    getpredictedposition = function()
+        local target = State.silentaim.target
+        if not (target and Utils.hascharacter(target)) then
+            return Vector3.new()
+        end
+        local v46 = Config["legitsilent:aimpart"]
+        local v47 = Config["legitsilent:prediction"]
+        local v48 = Config["legitsilent:antigroundshots"]
+        local v49 = Config["legitsilent:antigroundshotstotakeoff"] / 10
+        local v50 = Config["legitsilent:useairhitpart"]
+        local v51 = Config["legitsilent:airaimpart"]
+        local v52 = Config["legitsilent:resolver"]
+        local v53 = Config["legitsilent:resolvermethod"]
+        local v54 = Config["legitsilent:resolverupdatetime"]
+        local HumanoidRootPart2 = target.Character.HumanoidRootPart
+        local v55 = Config["legitsilent:closestbodypart"] and Targeting.getclosestbodypart(target) or target.Character:FindFirstChild(v46) or HumanoidRootPart2
+        local vector33 = v52 and Targeting.resolve(target, v53, v54) or HumanoidRootPart2.Velocity
+        if v48 and Utils.isinair(target) then
+            vector33 = Vector3.new(vector33.X, math.abs(vector33.Y) / v49, vector33.Z)
+        end
+        if v50 and Utils.isinair(target) then
+            local v56 = target.Character:FindFirstChild(v51)
+            if v56 then
+                v55 = v56
+            end
+        end
+        local v57 = v55.Position + vector33 * v47
+        if game.PlaceId == 9825515356 then
+            v57 = v57 + Vector3.new(25, 100, 25)
+        end
+        return v57
+    end
+}
+local TargetAim = {
+    getpredictedposition = function()
+        local target2 = State.targetaim.target
+        if not (target2 and Utils.hascharacter(target2)) then
+            return Vector3.new()
+        end
+        local v58 = Config["ragetargetaim:aimpart"]
+        local v59 = Config["ragetargetaim:prediction"]
+        local v60 = Config["ragetargetaim:resolver"]
+        local v61 = Config["ragetargetaim:resolvermethod"]
+        local v62 = Config["ragetargetaim:antigroundshots"]
+        local v63 = Config["ragetargetaim:antigroundshotstotakeoff"] / 10
+        local v64 = Config["ragetargetaim:useairpart"]
+        local v65 = Config["ragetargetaim:airpart"]
+        local HumanoidRootPart3 = target2.Character.HumanoidRootPart
+        local v66 = Config["ragetargetaim:closestbodypart"] and Targeting.getclosestbodypart(target2) or target2.Character:FindFirstChild(v58) or HumanoidRootPart3
+        local vector34 = v60 and Targeting.resolve(target2, v61, 0.05) or HumanoidRootPart3.Velocity
+        if v62 and Utils.isinair(target2) then
+            vector34 = Vector3.new(vector34.X, math.abs(vector34.Y) / v63, vector34.Z)
+        end
+        if v64 and Utils.isinair(target2) then
+            local v67 = target2.Character:FindFirstChild(v65)
+            if v67 then
+                v66 = v67
+            end
+        end
+        local v68 = v66.Position + vector34 * v59
+        if game.PlaceId == 9825515356 then
+            v68 = v68 + Vector3.new(25, 100, 25)
+        end
+        return v68
+    end
+}
+local AutoStomp = {
+    Start = function()
+        if not State.autostomp.loop then
+            State.autostomp.loop = RunService.Heartbeat:Connect(function()
+                if not State.autostomp.isactive then
+                    return
+                end
+                if not Utils.hascharacter(LocalPlayer) then
+                    return
+                end
+                local HumanoidRootPart4 = LocalPlayer.Character.HumanoidRootPart
+                if not State.autostomp.targetonly then
+                    pcall(function()
+                        ReplicatedStorage.MainEvent:FireServer("Stomp")
+                    end)
+                    pcall(function()
+                        ReplicatedStorage.MAINEVENT:FireServer("STOMP")
+                    end)
+                    return
+                end
+                if not (State.targetaim.istargetting and State.targetaim.target) then
+                    if State.autostomp.isteleported and State.autostomp.originalcframe then
+                        HumanoidRootPart4.CFrame = State.autostomp.originalcframe
+                        HumanoidRootPart4.Velocity = Vector3.new(0, 0, 0)
+                        HumanoidRootPart4.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        State.autostomp.isteleported = false
+                        State.autostomp.originalcframe = nil
+                    end
+                    return
+                end
+                local target3 = State.targetaim.target
+                if not DaHood.isknocked(target3) or DaHood.isdead(target3) then
+                    if State.autostomp.isteleported and State.autostomp.originalcframe then
+                        HumanoidRootPart4.CFrame = State.autostomp.originalcframe
+                        HumanoidRootPart4.Velocity = Vector3.new(0, 0, 0)
+                        HumanoidRootPart4.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        State.autostomp.isteleported = false
+                        State.autostomp.originalcframe = nil
+                    end
+                    return
+                end
+                if not State.autostomp.isteleported then
+                    State.autostomp.originalcframe = HumanoidRootPart4.CFrame
+                    State.autostomp.isteleported = true
+                end
+                if Utils.hascharacter(target3) then
+                    local HumanoidRootPart5 = target3.Character:FindFirstChild("HumanoidRootPart")
+                    if HumanoidRootPart5 then
+                        HumanoidRootPart4.CFrame = HumanoidRootPart5.CFrame
+                        HumanoidRootPart4.Velocity = Vector3.new(0, 0, 0)
+                        HumanoidRootPart4.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    end
+                end
+                pcall(function()
+                    ReplicatedStorage.MainEvent:FireServer("Stomp")
+                end)
+                pcall(function()
+                    ReplicatedStorage.MAINEVENT:FireServer("STOMP")
+                end)
+            end)
+            return
+        end
+    end,
+    Stop = function()
+        if State.autostomp.loop then
+            State.autostomp.loop:Disconnect()
+            State.autostomp.loop = nil
+        end
+        if State.autostomp.isteleported and State.autostomp.originalcframe and Utils.hascharacter(LocalPlayer) then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = State.autostomp.originalcframe
+            LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+            LocalPlayer.Character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        end
+        State.autostomp.isteleported = false
+        State.autostomp.originalcframe = nil
+    end
+}
+local KnockStomp = {
+    FindNearbyKnocked = function()
+        local Character4 = LocalPlayer.Character
+        if not (Character4 and Character4:FindFirstChild("HumanoidRootPart")) then
+            return nil, nil, nil
+        end
+        local Position = Character4.HumanoidRootPart.Position
+        local userange = State.knockstomp.userange
+        local detectionrange = State.knockstomp.detectionrange
+        for k7, v69 in pairs(Players:GetPlayers()) do
+            if v69 == LocalPlayer or not v69.Character or DaHood.isdead(v69) or not DaHood.isknocked(v69) then
+                continue
+            end
+            local v70 = Workspace:FindFirstChild(v69.Name)
+            if v70 and v70:FindFirstChild("HB") then
+                local HB = v70.HB
+                local Magnitude3 = (Position - HB.Position).Magnitude
+                if not userange or Magnitude3 <= detectionrange then
+                    return HB, v69.Character, v69
+                end
+            end
+            local HumanoidRootPart6 = v69.Character:FindFirstChild("HumanoidRootPart")
+            if not HumanoidRootPart6 then
+                continue
+            end
+            local Magnitude4 = (Position - HumanoidRootPart6.Position).Magnitude
+            if not userange or Magnitude4 <= detectionrange then
+                return HumanoidRootPart6, v69.Character, v69
+            end
+        end
+        return nil, nil, nil
+    end
+}
+KnockStomp.Loop = function()
+    while State.knockstomp.isactive do
+        local Character5 = LocalPlayer.Character
+        if Character5 and Character5:FindFirstChild("HumanoidRootPart") then
+            local HumanoidRootPart7 = Character5.HumanoidRootPart
+            local v71 = nil
+            local v72 = nil
+            if not State.knockstomp.targetonly then
+                local v73, v74, v75 = KnockStomp.FindNearbyKnocked()
+                v71 = v73
+                v72 = v75
+            elseif State.targetaim.istargetting and State.targetaim.target then
+                local target4 = State.targetaim.target
+                if not (not DaHood.isknocked(target4) or DaHood.isdead(target4)) then
+                    local v76 = Workspace:FindFirstChild(target4.Name)
+                    if not (v76 and v76:FindFirstChild("HB")) then
+                        local HumanoidRootPart8 = target4.Character:FindFirstChild("HumanoidRootPart")
+                        if HumanoidRootPart8 then
+                            local Magnitude5 = (HumanoidRootPart7.Position - HumanoidRootPart8.Position).Magnitude
+                            if not State.knockstomp.userange or Magnitude5 <= State.knockstomp.detectionrange then
+                                v71 = HumanoidRootPart8
+                                v72 = target4
+                            end
+                        end
+                    else
+                        local HB2 = v76.HB
+                        local Magnitude6 = (HumanoidRootPart7.Position - HB2.Position).Magnitude
+                        if not State.knockstomp.userange or Magnitude6 <= State.knockstomp.detectionrange then
+                            v71 = HB2
+                            v72 = target4
+                        end
+                    end
+                end
+            end
+            if v71 and v72 then
+                State.knockstomp.originalcframe = HumanoidRootPart7.CFrame
+                local Position2 = v71.Position
+                HumanoidRootPart7.CFrame = CFrame.new(Position2.X, Position2.Y, Position2.Z)
+                HumanoidRootPart7.Velocity = Vector3.new(0, 0, 0)
+                HumanoidRootPart7.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                while not (not DaHood.isknocked(v72) or (DaHood.isdead(v72) or not State.knockstomp.isactive)) do
+                    if v71 and v71.Parent then
+                        local Position3 = v71.Position
+                        HumanoidRootPart7.CFrame = CFrame.new(Position3.X, Position3.Y, Position3.Z)
+                        HumanoidRootPart7.Velocity = Vector3.new(0, 0, 0)
+                        HumanoidRootPart7.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    end
+                    pcall(function()
+                        ReplicatedStorage.MainEvent:FireServer("Stomp")
+                    end)
+                    pcall(function()
+                        ReplicatedStorage.MAINEVENT:FireServer("STOMP")
+                    end)
+                    task.wait(0.05)
+                end
+                if State.knockstomp.originalcframe then
+                    HumanoidRootPart7.CFrame = State.knockstomp.originalcframe
+                    HumanoidRootPart7.Velocity = Vector3.new(0, 0, 0)
+                    HumanoidRootPart7.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                end
+            end
+        end
+        task.wait(0.3)
+    end
+end
+local AutoReload = {
+    GetEquippedGun = function()
+        local Character6 = LocalPlayer.Character
+        if Character6 then
+            local Tool = Character6:FindFirstChildOfClass("Tool")
+            if not (Tool and Tool:FindFirstChild("AMMO")) then
+                return nil
+            end
+            return Tool
+        end
+        return nil
+    end
+}
+AutoReload.CheckAndReload = function()
+    if not State.autoreload.enabled then
+        return
+    end
+    local EquippedGun = AutoReload.GetEquippedGun()
+    if EquippedGun then
+        local AMMO = EquippedGun:FindFirstChild("AMMO")
+        if AMMO and AMMO.Value <= 0 then
+            local rl = EquippedGun:FindFirstChild("rl")
+            if rl then
+                pcall(function()
+                    rl:FireServer()
+                end)
+            end
+        end
+    end
+end
+local AntiVoid = {
+    Update = function()
+        if State.antivoid.enabled then
+            local Character7 = LocalPlayer.Character
+            if not (Character7 and Character7:FindFirstChild("HumanoidRootPart")) then
+                return
+            end
+            local HumanoidRootPart9 = Character7.HumanoidRootPart
+            local Position4 = HumanoidRootPart9.Position
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {Character7}
+            raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+            if not Workspace:Raycast(Position4, Vector3.new(0, -500, 0), raycastParams) then
+                if Position4.Y < -50 then
+                    if not State.antivoid.lastsafeposition then
+                        HumanoidRootPart9.CFrame = CFrame.new(0, 100, 0)
+                    else
+                        HumanoidRootPart9.CFrame = State.antivoid.lastsafeposition
+                        HumanoidRootPart9.Velocity = Vector3.new(0, 0, 0)
+                        HumanoidRootPart9.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    end
+                end
+            else
+                State.antivoid.lastsafeposition = HumanoidRootPart9.CFrame
+            end
+            return
+        end
+    end
+}
+local RemoveSeats = {
+    Setup = function()
+        local Character8 = LocalPlayer.Character
+        if Character8 then
+            local Humanoid2 = Character8:FindFirstChildOfClass("Humanoid")
+            if Humanoid2 then
+                Humanoid2.Seated:Connect(function(arg118, arg24)
+                    if arg118 and State.removeseats.enabled then
+                        Humanoid2.Sit = false
+                        if arg24 then
+                            Humanoid2.Jump = true
+                        end
+                    end
+                end)
+            end
+            return
+        end
+    end,
+    Update = function()
+        if State.removeseats.enabled then
+            local Character9 = LocalPlayer.Character
+            if Character9 then
+                local Humanoid3 = Character9:FindFirstChildOfClass("Humanoid")
+                if Humanoid3 and Humanoid3.Sit then
+                    Humanoid3.Sit = false
+                    Humanoid3.Jump = true
+                end
+            end
+            return
+        end
+    end
+}
+local AutoBuy = {}
+local ShopCache = {locations = nil, lastUpdate = 0, updateInterval = 30}
+local tbl4 = {}
+AutoBuy.GetShopLocations = function(arg119)
+    local v77 = tick()
+    if not (arg119 or not ShopCache.locations or not (v77 - ShopCache.lastUpdate < ShopCache.updateInterval)) then
+        return ShopCache.locations
+    end
+    local tbl5 = {}
+    local tbl6 = {
+        "Pads",
+        "Shops",
+        "BuyPads",
+        "Shop",
+        "Buy",
+        "Store",
+        "Dealers",
+        "GunDealer",
+        "GunShop",
+        "Items",
+        "Purchase"
+    }
+    local tbl7 = {}
+    local MAP = Workspace:FindFirstChild("MAP")
+    if MAP then
+        for k8, v78 in ipairs(tbl6) do
+            local v79 = MAP:FindFirstChild(v78)
+            if not v79 or tbl7[v79] then
+                continue
+            end
+            table.insert(tbl5, v79)
+            tbl7[v79] = true
+        end
+    end
+    for k9, v80 in ipairs(tbl6) do
+        local v81 = Workspace:FindFirstChild(v80)
+        if not v81 or tbl7[v81] then
+            continue
+        end
+        table.insert(tbl5, v81)
+        tbl7[v81] = true
+    end
+    if #tbl5 == 0 then
+        for k10, v82 in pairs(Workspace:GetChildren()) do
+            if not ((v82:IsA("Folder") or v82:IsA("Model")) and not tbl7[v82]) then
+                continue
+            end
+            local v83 = v82.Name:lower()
+            if not (v83:find("pad") or v83:find("shop") or (v83:find("buy") or v83:find("dealer"))) then
+                continue
+            end
+            table.insert(tbl5, v82)
+            tbl7[v82] = true
+        end
+    end
+    ShopCache.locations = tbl5
+    ShopCache.lastUpdate = v77
+    return tbl5
+end
+AutoBuy.FindItem = function(arg120)
+    if tbl4[arg120] then
+        local v84 = tbl4[arg120]
+        if v84.item and (v84.item.Parent and v84.clickDetector and v84.clickDetector.Parent) then
+            return v84.item, v84.clickDetector
+        end
+        tbl4[arg120] = nil
+    end
+    local ShopLocations = AutoBuy.GetShopLocations()
+    local v85 = arg120:gsub("%[", "")
+    local v86 = v85:gsub("%]", "")
+    for k11, v87 in ipairs(ShopLocations) do
+        local v88 = v87:FindFirstChild(arg120)
+        if v88 then
+            local ClickDetector = v88:FindFirstChildOfClass("ClickDetector")
+            if ClickDetector then
+                tbl4[arg120] = {item = v88, clickDetector = ClickDetector}
+                return v88, ClickDetector
+            end
+        end
+        for k12, v89 in pairs(v87:GetChildren()) do
+            if not (v89.Name == arg120 or v89.Name:find(v86)) then
+                continue
+            end
+            local ClickDetector2 = v89:FindFirstChildOfClass("ClickDetector")
+            if ClickDetector2 then
+                tbl4[arg120] = {item = v89, clickDetector = ClickDetector2}
+                return v89, ClickDetector2
+            end
+        end
+    end
+    return nil, nil
+end
+AutoBuy.HasItem = function(arg121)
+    local Backpack = LocalPlayer.Backpack
+    local Character10 = LocalPlayer.Character
+    local v90 = arg121:lower()
+    local v91 = v90:gsub("%[", "")
+    local v92 = v91:gsub("%]", "")
+    local v93 = v92:gsub(" ", "")
+    for k13, v94 in pairs(Backpack:GetChildren()) do
+        if not v94:IsA("Tool") then
+            continue
+        end
+        local v95 = v94.Name:lower()
+        local v96 = v95:gsub(" ", "")
+        if v96:find(v93) or v93:find(v96) then
+            return true
+        end
+    end
+    if Character10 then
+        for k14, v97 in pairs(Character10:GetChildren()) do
+            if not v97:IsA("Tool") then
+                continue
+            end
+            local v98 = v97.Name:lower()
+            local v99 = v98:gsub(" ", "")
+            if v99:find(v93) or v93:find(v99) then
+                return true
+            end
+        end
+    end
+    return false
+end
+AutoBuy.GetBackpackCount = function()
+    local v100 = 0
+    for k15, v101 in pairs(LocalPlayer.Backpack:GetChildren()) do
+        if not v101:IsA("Tool") then
+            continue
+        end
+        v100 = v100 + 1
+    end
+    if LocalPlayer.Character then
+        for k16, v102 in pairs(LocalPlayer.Character:GetChildren()) do
+            if not v102:IsA("Tool") then
+                continue
+            end
+            v100 = v100 + 1
+        end
+    end
+    return v100
+end
+AutoBuy.BuyItem = function(arg122)
+    if arg122 then
+        return (pcall(function()
+            fireclickdetector(arg122)
+        end))
+    end
+    return false
+end
+AutoBuy.BuyItemVerified = function(arg123, arg25)
+    local v103 = arg25 or 5
+    if AutoBuy.HasItem(arg123) then
+        return true, "already_owned"
+    end
+    local v104, v105 = AutoBuy.FindItem(arg123)
+    if not v105 then
+        return false, "not_found"
+    end
+    local BackpackCount = AutoBuy.GetBackpackCount()
+    for i3 = 1, v103 do
+        AutoBuy.BuyItem(v105)
+        task.wait(0.15)
+        if AutoBuy.HasItem(arg123) then
+            return true, "purchased"
+        end
+        if BackpackCount < AutoBuy.GetBackpackCount() then
+            return true, "purchased"
+        end
+        if not (i3 < v103) then
+            continue
+        end
+        task.wait(0.1)
+    end
+    return false, "failed"
+end
+AutoBuy.BuyArmor = function()
+    if DaHood.getarmor(LocalPlayer) < State.autobuy.armorthreshold then
+        for k17, v106 in ipairs(ArmorShopItems) do
+            local v107, v108 = AutoBuy.FindItem(v106)
+            if v108 then
+                local v109 = DaHood.getarmor(LocalPlayer)
+                for i4 = 1, 3 do
+                    AutoBuy.BuyItem(v108)
+                    task.wait(0.15)
+                    if v109 < DaHood.getarmor(LocalPlayer) then
+                        return true
+                    end
+                end
+                return false
+            end
+        end
+    end
+    return false
+end
+AutoBuy.BuySelected = function()
+    if not State.autobuy.hasboughtthislife then
+        local selecteditems = State.autobuy.selecteditems
+        State.autobuy.boughtitems = {}
+        task.spawn(function()
+            local v110 = 0
+            local v111 = 0
+            local v112 = DaHood.getarmor(LocalPlayer)
+            if AutoBuy.BuyArmor() then
+                task.wait(0.2)
+                if v112 < DaHood.getarmor(LocalPlayer) then
+                    v110 = 1
+                end
+            end
+            if selecteditems then
+                local tbl8 = {}
+                for k18, v113 in pairs(selecteditems) do
+                    if not v113 or AutoBuy.HasItem(k18) then
+                        continue
+                    end
+                    table.insert(tbl8, k18)
+                end
+                for k19, v114 in ipairs(tbl8) do
+                    if State.autobuy.boughtitems[v114] then
+                        continue
+                    end
+                    local v115, v116 = AutoBuy.BuyItemVerified(v114, 5)
+                    if not v115 then
+                        v111 = v111 + 1
+                        warn("[AutoBuy] Failed to buy: " .. v114 .. " (" .. v116 .. ")")
+                    else
+                        State.autobuy.boughtitems[v114] = true
+                        if v116 == "purchased" then
+                            v110 = v110 + 1
+                        end
+                    end
+                    if not (k19 < #tbl8) then
+                        continue
+                    end
+                    task.wait(0.1)
+                end
+            end
+            if 0 < v110 or 0 < v111 then
+                if not (0 < v111) then
+                    Library:Notify("Successfully bought " .. v110 .. " items", 2)
+                else
+                    Library:Notify("Bought " .. v110 .. " items, " .. v111 .. " failed", 3)
+                end
+            end
+        end)
+        State.autobuy.hasboughtthislife = true
+        return 0
+    end
+    return 0
+end
+AutoBuy.RefreshCache = function()
+    ShopCache.locations = nil
+    tbl4 = {}
+    AutoBuy.GetShopLocations(true)
+end
+LocalPlayer.CharacterAdded:Connect(function(arg124)
+    State.autobuy.hasboughtthislife = false
+    State.autobuy.boughtitems = {}
+    tbl4 = {}
+    task.wait(0.8)
+    if State.autobuy.isactive then
+        task.wait(0.5)
+        AutoBuy.BuySelected()
+    end
+end)
+if LocalPlayer.Character then
+    State.autobuy.hasboughtthislife = false
+    State.autobuy.boughtitems = {}
+end
+local AntiLock = {
+    Update = function()
+        if State.antilock.enabled then
+            if Utils.hascharacter(LocalPlayer) then
+                local HumanoidRootPart10 = LocalPlayer.Character.HumanoidRootPart
+                local mode = State.antilock.mode
+                if mode == "Jitter" then
+                    local v117 = math.random(-180, 180)
+                    HumanoidRootPart10.CFrame = CFrame.new(HumanoidRootPart10.Position) * CFrame.Angles(0, math.rad(v117), 0)
+                elseif mode == "Reverse" then
+                    if State.targetaim.istargetting and (State.targetaim.target and Utils.hascharacter(State.targetaim.target)) then
+                        local Position5 = State.targetaim.target.Character.HumanoidRootPart.Position
+                        HumanoidRootPart10.CFrame = CFrame.new(HumanoidRootPart10.Position, Vector3.new(Position5.X, HumanoidRootPart10.Position.Y, Position5.Z)) * CFrame.Angles(0, math.rad(180), 0)
+                    end
+                elseif mode == "Side" and State.targetaim.istargetting and State.targetaim.target and Utils.hascharacter(State.targetaim.target) then
+                    local Position6 = State.targetaim.target.Character.HumanoidRootPart.Position
+                    HumanoidRootPart10.CFrame = CFrame.new(HumanoidRootPart10.Position, Vector3.new(Position6.X, HumanoidRootPart10.Position.Y, Position6.Z)) * CFrame.Angles(0, math.rad(90), 0)
+                end
+                return
+            end
+            return
+        end
+    end
+}
+local StrafeShapes = {
+    Heart = function(arg125, arg26, arg33)
+        local v118 = arg26 / 16
+        local v119 = 16 * math.pow(math.sin(arg125), 3) * v118
+        local v120 = (13 * math.cos(arg125) - 5 * math.cos(2 * arg125) - 2 * math.cos(3 * arg125) - math.cos(4 * arg125)) * v118
+        return Vector3.new(v119, arg33, v120)
+    end,
+    Star = function(arg126, arg27, arg34)
+        local v121 = arg27 * (1 + 0.5 * math.cos(5 * arg126))
+        return Vector3.new(v121 * math.cos(arg126), arg34, v121 * math.sin(arg126))
+    end,
+    Infinity = function(arg127, arg28, arg35)
+        local v122 = arg28 / 2
+        local v123 = 1 + math.pow(math.sin(arg127), 2)
+        local v124 = v122 * math.cos(arg127) / v123
+        local v125 = v122 * math.sin(arg127) * math.cos(arg127) / v123
+        return Vector3.new(v124 * 2, arg35, v125 * 2)
+    end,
+    Square = function(arg128, arg29, arg36)
+        local v126 = arg128 % (math.pi * 2) / (math.pi * 2)
+        local v127, v128
+        if v126 < 0.25 then
+            v127 = arg29 * (v126 * 4 - 0.5) * 2
+            v128 = arg29
+        elseif v126 < 0.5 then
+            v128 = arg29 * (1 - (v126 - 0.25) * 4) * 2 - arg29
+            v127 = arg29
+        elseif v126 < 0.75 then
+            v128 = -arg29
+            v127 = arg29 * (1 - (v126 - 0.5) * 4) * 2 - arg29
+        else
+            v128 = arg29 * ((v126 - 0.75) * 4) * 2 - arg29
+            v127 = -arg29
+        end
+        return Vector3.new(v128, arg36, v127)
+    end,
+    Diamond = function(arg129, arg210, arg37)
+        local v129 = arg129 % (math.pi * 2) / (math.pi * 2)
+        local v130, v131
+        if v129 < 0.25 then
+            v130 = arg210 * v129 * 4
+            v131 = arg210 * (1 - v129 * 4)
+        elseif v129 < 0.5 then
+            v130 = arg210 * (1 - (v129 - 0.25) * 4)
+            v131 = -arg210 * (v129 - 0.25) * 4
+        elseif v129 < 0.75 then
+            v130 = -arg210 * (v129 - 0.5) * 4
+            v131 = -arg210 * (1 - (v129 - 0.5) * 4)
+        else
+            v130 = -arg210 * (1 - (v129 - 0.75) * 4)
+            v131 = arg210 * (v129 - 0.75) * 4
+        end
+        return Vector3.new(v130, arg37, v131)
+    end,
+    Butterfly = function(arg130, arg211, arg38)
+        local v132 = math.exp(math.cos(arg130)) - 2 * math.cos(4 * arg130) - math.pow(math.sin(arg130 / 12), 5)
+        local v133 = arg211 / 4
+        return Vector3.new(math.sin(arg130) * v132 * v133, arg38, math.cos(arg130) * v132 * v133)
+    end,
+    Rose = function(arg131, arg212, arg39)
+        local v134 = arg212 * math.cos(4 * arg131)
+        return Vector3.new(v134 * math.cos(arg131), arg39, v134 * math.sin(arg131))
+    end,
+    Helix = function(arg132, arg213, arg310)
+        return Vector3.new(arg213 * math.cos(arg132), arg310 + math.sin(arg132 * 2) * 3, arg213 * math.sin(arg132))
+    end,
+    Wave = function(arg133, arg214, arg311)
+        return Vector3.new(arg214 * math.cos(arg133), arg311 + math.sin(arg133 * 3) * 4, arg214 * math.sin(arg133))
+    end,
+    Clover = function(arg134, arg215, arg312)
+        local v135 = arg215 * math.sin(2 * arg134)
+        return Vector3.new(v135 * math.cos(arg134), arg312, v135 * math.sin(arg134))
+    end,
+    Pentagon = function(arg135, arg216, arg313)
+        local v136 = arg135 % (math.pi * 2)
+        local v137 = math.floor(v136 / (math.pi * 2 / 5))
+        local v138 = (v136 - v137 * (math.pi * 2 / 5)) / (math.pi * 2 / 5)
+        local v139 = v137 * (math.pi * 2 / 5)
+        local v140 = (v137 + 1) * (math.pi * 2 / 5)
+        local v141 = math.cos(v139) * arg216 + (math.cos(v140) - math.cos(v139)) * arg216 * v138
+        local v142 = math.sin(v139) * arg216 + (math.sin(v140) - math.sin(v139)) * arg216 * v138
+        return Vector3.new(v141, arg313, v142)
+    end,
+    Hexagon = function(arg136, arg217, arg314)
+        local v143 = arg136 % (math.pi * 2)
+        local v144 = math.floor(v143 / (math.pi * 2 / 6))
+        local v145 = (v143 - v144 * (math.pi * 2 / 6)) / (math.pi * 2 / 6)
+        local v146 = v144 * (math.pi * 2 / 6)
+        local v147 = (v144 + 1) * (math.pi * 2 / 6)
+        local v148 = math.cos(v146) * arg217 + (math.cos(v147) - math.cos(v146)) * arg217 * v145
+        local v149 = math.sin(v146) * arg217 + (math.sin(v147) - math.sin(v146)) * arg217 * v145
+        return Vector3.new(v148, arg314, v149)
+    end,
+    Spiral = function(arg137, arg218, arg315)
+        local v150 = arg218 * (0.5 + 0.5 * math.sin(arg137 * 0.5))
+        return Vector3.new(v150 * math.cos(arg137), arg315, v150 * math.sin(arg137))
+    end,
+    Zigzag = function(arg138, arg219, arg316)
+        local v151 = math.abs(arg138 % (math.pi * 2) / (math.pi * 2) * 4 % 2 - 1) * 2 - 1
+        return Vector3.new(math.cos(arg138) * arg219, arg316, v151 * arg219)
+    end
+}
+local TargetStrafe = {
+    Update = function()
+        if not (Toggles and Toggles.StrafeEnabled and Toggles.StrafeEnabled.Value) then
+            return
+        end
+        if not Utils.hascharacter(LocalPlayer) then
+            return
+        end
+        if not (Options and Options.StrafeKey and Options.StrafeKey:GetState()) then
+            return
+        end
+        if not (State.targetaim.istargetting and State.targetaim.target) then
+            return
+        end
+        if not Utils.hascharacter(State.targetaim.target) then
+            return
+        end
+        local HumanoidRootPart11 = State.targetaim.target.Character:FindFirstChild("HumanoidRootPart")
+        if not HumanoidRootPart11 then
+            return
+        end
+        if Toggles.StrafeBypassDestroy and (Toggles.StrafeBypassDestroy.Value and HumanoidRootPart11.Position.Y < -10000) then
+            return
+        end
+        local HumanoidRootPart12 = LocalPlayer.Character.HumanoidRootPart
+        local v152 = tick()
+        local v153 = v152 - State.targetstrafe.lastupdate
+        State.targetstrafe.lastupdate = v152
+        local v154 = Options.StrafeHeight and Options.StrafeHeight.Value or 5
+        local v155 = Options.StrafeDistance and Options.StrafeDistance.Value or 10
+        local v156 = Options.StrafePattern and Options.StrafePattern.Value or "Normal"
+        local Position7 = HumanoidRootPart11.Position
+        State.targetstrafe.rotationangle = State.targetstrafe.rotationangle + v153 * (Options.StrafeSpeed and Options.StrafeSpeed.Value or 1)
+        local rotationangle = State.targetstrafe.rotationangle
+        local vector35
+        if v156 == "Normal" then
+            vector35 = Vector3.new(math.cos(rotationangle) * v155, v154, math.sin(rotationangle) * v155)
+        elseif v156 == "Elliptical" then
+            vector35 = Vector3.new(math.cos(rotationangle) * v155, v154 + math.sin(rotationangle * 2) * 2, math.sin(rotationangle) * v155 * 0.6)
+        elseif v156 == "Figure-8" then
+            vector35 = Vector3.new(math.sin(rotationangle) * v155, v154 + math.abs(math.sin(rotationangle * 3)) * 3, math.sin(rotationangle * 2) * v155 * 0.5)
+        elseif not StrafeShapes[v156] then
+            vector35 = Vector3.new(math.cos(rotationangle) * v155, v154, math.sin(rotationangle) * v155)
+        else
+            vector35 = StrafeShapes[v156](rotationangle, v155, v154)
+        end
+        local cFrame = CFrame.new(Position7 + vector35, Position7)
+        if cFrame then
+            HumanoidRootPart12.CFrame = cFrame
+            HumanoidRootPart12.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        end
+    end
+}
+local SelfAura = {
+    aura_cache = {},
+    enabled = false,
+    current_types = {},
+    create_aura_effect = function(arg139, arg220, arg317)
+        local tbl9 = {}
+        local tbl10 = {}
+        if arg139 == "Saturn Ring" then
+            arg220.Name = "ParticleAttachment"
+            arg220.CFrame = CFrame.new(0, 0, 0, 0.965, 0.259, 0, -0.259, 0.965, 0, 0, 0, 1)
+            local instance2 = Instance.new("ParticleEmitter")
+            instance2.Name = "ParticleEmitter"
+            instance2.Texture = "rbxassetid://14054635072"
+            instance2.LockedToPart = true
+            instance2.Brightness = 1
+            instance2.LightEmission = 1
+            instance2.LightInfluence = 0
+            instance2.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            instance2.Size = NumberSequence.new(4)
+            instance2.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 1),
+                NumberSequenceKeypoint.new(0.5, 0),
+                NumberSequenceKeypoint.new(1, 1)
+            })
+            instance2.Lifetime = NumberRange.new(1)
+            instance2.Rate = 10
+            instance2.Rotation = NumberRange.new(0, 360)
+            instance2.RotSpeed = NumberRange.new(30, 60)
+            instance2.Speed = NumberRange.new(0.01)
+            instance2.SpreadAngle = Vector2.new(0.1)
+            instance2.Parent = arg220
+            table.insert(tbl9, instance2)
+            return tbl9, tbl10
+        end
+        if arg139 == "Particle Aura" then
+            local instance3 = Instance.new("Attachment")
+            instance3.Name = "ParticleAttachment"
+            instance3.Parent = arg317
+            instance3.CFrame = CFrame.new(0, -3, 0)
+            table.insert(tbl10, instance3)
+            local tbl11 = {
+                Brightness = 2,
+                Color = ColorSequence.new(Color3.new(1, 1, 1)),
+                LightEmission = 1,
+                LightInfluence = 0,
+                Orientation = Enum.ParticleOrientation.VelocityPerpendicular,
+                LockedToPart = true,
+                EmissionDirection = Enum.NormalId.Top,
+                Lifetime = NumberRange.new(2, 2),
+                Rate = 20,
+                Rotation = NumberRange.new(0, 360),
+                Speed = NumberRange.new(0.001, 0.001),
+                SpreadAngle = Vector2.new(0.001, 0.001)
+            }
+            local numberSequence = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0),
+                NumberSequenceKeypoint.new(0.3, 2),
+                NumberSequenceKeypoint.new(0.6, 5),
+                NumberSequenceKeypoint.new(0.8, 8),
+                NumberSequenceKeypoint.new(1, 12)
+            })
+            local numberSequence2 = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0),
+                NumberSequenceKeypoint.new(0.2, 0.3),
+                NumberSequenceKeypoint.new(1, 1)
+            })
+            local instance4 = Instance.new("ParticleEmitter")
+            instance4.Name = "ParticleEmitter1"
+            for k20, v157 in pairs(tbl11) do
+                instance4[k20] = v157
+            end
+            instance4.Size = numberSequence
+            instance4.Texture = "rbxassetid://7216855136"
+            instance4.Transparency = numberSequence2
+            instance4.RotSpeed = NumberRange.new(-40, 40)
+            instance4.Parent = instance3
+            table.insert(tbl9, instance4)
+        else
+            if arg139 == "Halo" then
+                local Head = arg317.Parent:FindFirstChild("Head")
+                if Head then
+                    local instance5 = Instance.new("Attachment")
+                    instance5.Name = "CustomAttachment"
+                    instance5.CFrame = CFrame.new(-0.05, 0.933, 0.259)
+                    instance5.Parent = Head
+                    table.insert(tbl10, instance5)
+                    local instance6 = Instance.new("ParticleEmitter")
+                    instance6.Name = "ParticleEmitter1"
+                    instance6.Brightness = 2
+                    instance6.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+                    instance6.LightEmission = 1
+                    instance6.LightInfluence = 0
+                    instance6.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+                    instance6.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2.5), NumberSequenceKeypoint.new(1, 3)})
+                    instance6.Texture = "rbxassetid://8819682608"
+                    instance6.Transparency = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, 1),
+                        NumberSequenceKeypoint.new(0.2, 0),
+                        NumberSequenceKeypoint.new(0.8, 0),
+                        NumberSequenceKeypoint.new(1, 1)
+                    })
+                    instance6.Lifetime = NumberRange.new(1, 1)
+                    instance6.Rate = 7
+                    instance6.Rotation = NumberRange.new(0, 360)
+                    instance6.RotSpeed = NumberRange.new(-400, 400)
+                    instance6.Speed = NumberRange.new(0.001)
+                    instance6.LockedToPart = true
+                    instance6.Parent = instance5
+                    table.insert(tbl9, instance6)
+                    return tbl9, tbl10
+                end
+                return tbl9, tbl10
+            end
+            if arg139 ~= "Angel Wings" then
+                if arg139 == "Fire Aura" then
+                    local instance7 = Instance.new("Attachment")
+                    instance7.Name = "FireAttachment"
+                    instance7.CFrame = CFrame.new(0, -2, 0)
+                    instance7.Parent = arg317
+                    table.insert(tbl10, instance7)
+                    local instance8 = Instance.new("ParticleEmitter")
+                    instance8.Color = ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 100, 0)),
+                        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 50, 0)),
+                        ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 0, 0))
+                    })
+                    instance8.LightEmission = 1
+                    instance8.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2), NumberSequenceKeypoint.new(1, 0)})
+                    instance8.Texture = "rbxassetid://243740013"
+                    instance8.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 1)})
+                    instance8.Lifetime = NumberRange.new(0.5, 1)
+                    instance8.Rate = 50
+                    instance8.Speed = NumberRange.new(5, 10)
+                    instance8.SpreadAngle = Vector2.new(30, 30)
+                    instance8.Parent = instance7
+                    table.insert(tbl9, instance8)
+                elseif arg139 == "Lightning Aura" then
+                    local instance9 = Instance.new("Attachment")
+                    instance9.Name = "LightningAttachment"
+                    instance9.CFrame = CFrame.new(0, 0, 0)
+                    instance9.Parent = arg317
+                    table.insert(tbl10, instance9)
+                    local instance10 = Instance.new("ParticleEmitter")
+                    instance10.Color = ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 100)),
+                        ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 100, 255))
+                    })
+                    instance10.LightEmission = 1
+                    instance10.Size = NumberSequence.new(3)
+                    instance10.Texture = "rbxassetid://243098098"
+                    instance10.Transparency = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, 0.8),
+                        NumberSequenceKeypoint.new(0.5, 0),
+                        NumberSequenceKeypoint.new(1, 0.8)
+                    })
+                    instance10.Lifetime = NumberRange.new(0.1, 0.3)
+                    instance10.Rate = 20
+                    instance10.Speed = NumberRange.new(0)
+                    instance10.RotSpeed = NumberRange.new(-500, 500)
+                    instance10.Parent = instance9
+                    table.insert(tbl9, instance10)
+                end
+                return tbl9, tbl10
+            end
+            local instance11 = Instance.new("Attachment")
+            instance11.Name = "ParticleAttachment1"
+            instance11.CFrame = CFrame.new(2, 0.5, 1)
+            instance11.Parent = arg317
+            table.insert(tbl10, instance11)
+            local instance12 = Instance.new("ParticleEmitter")
+            instance12.Name = "ParticleEmitter1"
+            instance12.Brightness = 2
+            instance12.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+            instance12.LightEmission = 1
+            instance12.LightInfluence = 0
+            instance12.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            instance12.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2.75), NumberSequenceKeypoint.new(1, 3.5)})
+            instance12.Texture = "http://www.roblox.com/asset/?id=13267054240"
+            instance12.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.944),
+                NumberSequenceKeypoint.new(0.5, 0.2),
+                NumberSequenceKeypoint.new(0.8, 0.8),
+                NumberSequenceKeypoint.new(1, 1)
+            })
+            instance12.LockedToPart = true
+            instance12.EmissionDirection = Enum.NormalId.Front
+            instance12.Lifetime = NumberRange.new(1, 1)
+            instance12.Rate = 4
+            instance12.Speed = NumberRange.new(0.05)
+            instance12.Parent = instance11
+            table.insert(tbl9, instance12)
+            local instance13 = Instance.new("Attachment")
+            instance13.Name = "ParticleAttachment2"
+            instance13.CFrame = CFrame.new(-2, 0.5, 1)
+            instance13.Parent = arg317
+            table.insert(tbl10, instance13)
+            local instance14 = Instance.new("ParticleEmitter")
+            instance14.Name = "ParticleEmitter2"
+            instance14.Brightness = 2
+            instance14.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+            instance14.LightEmission = 1
+            instance14.LightInfluence = 0
+            instance14.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+            instance14.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2.75), NumberSequenceKeypoint.new(1, 3.5)})
+            instance14.Texture = "http://www.roblox.com/asset/?id=13267054240"
+            instance14.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.944),
+                NumberSequenceKeypoint.new(0.5, 0.2),
+                NumberSequenceKeypoint.new(0.8, 0.8),
+                NumberSequenceKeypoint.new(1, 1)
+            })
+            instance14.LockedToPart = true
+            instance14.EmissionDirection = Enum.NormalId.Back
+            instance14.Lifetime = NumberRange.new(1, 1)
+            instance14.Rate = 4
+            instance14.Speed = NumberRange.new(0.05)
+            instance14.Parent = instance13
+            table.insert(tbl9, instance14)
+        end
+        return tbl9, tbl10
+    end
+}
+SelfAura.update_aura = function()
+    if SelfAura.enabled then
+        if Utils.hascharacter(LocalPlayer) then
+            local Character11 = LocalPlayer.Character
+            for k21, v158 in ipairs(SelfAura.current_types) do
+                local v159 = v158 == "Angel Wings"
+                local v160 = v159 and Character11:FindFirstChild("UpperTorso") or Character11:FindFirstChild("LowerTorso") or Character11:FindFirstChild("HumanoidRootPart")
+                if not v160 or SelfAura.aura_cache[v158] then
+                    continue
+                end
+                local instance15 = Instance.new("Attachment")
+                if v159 then
+                    instance15.Position = Vector3.new(0, 0.5, 0)
+                end
+                instance15.Parent = v160
+                local v161, v162 = SelfAura.create_aura_effect(v158, instance15, v160)
+                SelfAura.aura_cache[v158] = {attachment = instance15, emitters = v161, attachments = v162 or {}}
+            end
+            return
+        end
+        for k22, v163 in pairs(SelfAura.aura_cache) do
+            if v163.attachment then
+                v163.attachment:Destroy()
+            end
+            if not v163.attachments then
+                continue
+            end
+            for k23, v164 in ipairs(v163.attachments) do
+                v164:Destroy()
+            end
+        end
+        SelfAura.aura_cache = {}
+        return
+    end
+    for k24, v165 in pairs(SelfAura.aura_cache) do
+        if v165.attachment then
+            v165.attachment:Destroy()
+        end
+        if not v165.attachments then
+            continue
+        end
+        for k25, v166 in ipairs(v165.attachments) do
+            v166:Destroy()
+        end
+    end
+    SelfAura.aura_cache = {}
+end
+SelfAura.set_types = function(arg140)
+    for k26, v167 in pairs(SelfAura.aura_cache) do
+        if v167.attachment then
+            v167.attachment:Destroy()
+        end
+        if not v167.attachments then
+            continue
+        end
+        for k27, v168 in ipairs(v167.attachments) do
+            v168:Destroy()
+        end
+    end
+    SelfAura.aura_cache = {}
+    if type(arg140) == "table" then
+        SelfAura.current_types = arg140
+    else
+        SelfAura.current_types = {arg140}
+    end
+    SelfAura.update_aura()
+end
+local ESP = {
+    Enabled = false,
+    TeamCheck = true,
+    MaxDistance = 200,
+    FontSize = 11,
+    Drawing = {
+        Chams = {Enabled = false, FillRGB = Color3.fromRGB(219, 68, 103), OutlineRGB = Color3.fromRGB(219, 68, 103)},
+        Names = {Enabled = false},
+        Healthbar = {Enabled = false, Width = 2.5},
+        Boxes = {
+            Full = {Enabled = false, Filled = false},
+            Corner = {Enabled = false, RGB = Color3.fromRGB(219, 68, 103)}
+        }
+    }
+}
+local tbl12 = {
+    Create = function(arg141, arg221, arg318)
+        local v169 = typeof(arg221) == "string" and Instance.new(arg221) or arg221
+        for k28, v170 in pairs(arg318) do
+            v169[k28] = v170
+        end
+        return v169
+    end,
+    GetHealthColor = function(arg142, arg222)
+        if 0.75 <= arg222 then
+            return Color3.fromRGB(0, 255, 0)
+        end
+        if 0.5 <= arg222 then
+            return Color3.fromRGB(255, 255, 0)
+        end
+        if 0.25 <= arg222 then
+            return Color3.fromRGB(255, 170, 0)
+        end
+        return Color3.fromRGB(255, 0, 0)
+    end
+}
+local v171 = nil
+local v172 = false
+local tbl13 = {}
+local fn2 = function()
+    if v172 then
+        return
+    end
+    v172 = true
+    v171 = tbl12:Create("ScreenGui", {Parent = CoreGui, Name = "ESPHolder"})
+    local fn3 = function(arg143)
+        if v171:FindFirstChild(arg143.Name) then
+            v171[arg143.Name]:Destroy()
+        end
+        local v173 = tbl12:Create("TextLabel", {
+            Parent = v171,
+            Position = UDim2.new(0.5, 0, 0, -11),
+            Size = UDim2.new(0, 100, 0, 20),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundTransparency = 1,
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            Font = Enum.Font.Code,
+            TextSize = ESP.FontSize,
+            TextStrokeTransparency = 0,
+            TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+            RichText = true
+        })
+        local v174 = tbl12:Create("Frame", {
+            Parent = v171,
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0
+        })
+        local v175 = tbl12:Create("Frame", {
+            Parent = v174,
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundTransparency = 0.8,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 1, 0)
+        })
+        tbl12:Create("UIStroke", {
+            Parent = v174,
+            Transparency = 0,
+            Color = Color3.fromRGB(255, 255, 255),
+            LineJoinMode = Enum.LineJoinMode.Miter
+        })
+        local v176 = tbl12:Create("Frame", {Parent = v171, BackgroundColor3 = Color3.fromRGB(0, 255, 0), BackgroundTransparency = 0})
+        local v177 = tbl12:Create("Frame", {
+            Parent = v171,
+            ZIndex = -1,
+            BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+            BackgroundTransparency = 0.3
+        })
+        local v178 = tbl12:Create("TextLabel", {
+            Parent = v171,
+            Size = UDim2.new(0, 100, 0, 20),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundTransparency = 1,
+            TextColor3 = Color3.fromRGB(255, 255, 255),
+            Font = Enum.Font.Code,
+            TextSize = 10,
+            TextStrokeTransparency = 0,
+            TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        })
+        local v179 = tbl12:Create("Highlight", {
+            Parent = v171,
+            FillTransparency = 1,
+            OutlineTransparency = 0,
+            OutlineColor = Color3.fromRGB(219, 68, 103),
+            DepthMode = "AlwaysOnTop"
+        })
+        local v180 = tbl12:Create("Frame", {Parent = v171, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+        local v181 = tbl12:Create("Frame", {Parent = v171, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+        local v182 = tbl12:Create("Frame", {Parent = v171, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+        local v183 = tbl12:Create("Frame", {Parent = v171, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+        local v184 = tbl12:Create("Frame", {Parent = v171, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+        local v185 = tbl12:Create("Frame", {Parent = v171, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+        local v186 = tbl12:Create("Frame", {Parent = v171, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+        local v187 = tbl12:Create("Frame", {Parent = v171, BackgroundColor3 = ESP.Drawing.Boxes.Corner.RGB})
+        local fn4 = function()
+            v174.Visible = false
+            v175.Visible = false
+            v173.Visible = false
+            v176.Visible = false
+            v177.Visible = false
+            v178.Visible = false
+            v180.Visible = false
+            v181.Visible = false
+            v184.Visible = false
+            v185.Visible = false
+            v182.Visible = false
+            v183.Visible = false
+            v186.Visible = false
+            v187.Visible = false
+            v179.Enabled = false
+        end
+        local v188 = RunService.RenderStepped:Connect(function()
+            if not ESP.Enabled then
+                fn4()
+                return
+            end
+            if not (arg143.Character and arg143.Character:FindFirstChild("HumanoidRootPart")) then
+                fn4()
+                return
+            end
+            local HumanoidRootPart13 = arg143.Character.HumanoidRootPart
+            local Humanoid4 = arg143.Character:FindFirstChild("Humanoid")
+            if not Humanoid4 then
+                fn4()
+                return
+            end
+            local v189, v190 = CurrentCamera:WorldToScreenPoint(HumanoidRootPart13.Position)
+            local v191 = (CurrentCamera.CFrame.Position - HumanoidRootPart13.Position).Magnitude / 3.5714285714
+            if not (v190 and v191 <= ESP.MaxDistance) then
+                fn4()
+                return
+            end
+            local v192 = HumanoidRootPart13.Size.Y * CurrentCamera.ViewportSize.Y / (v189.Z * 2)
+            local v193 = 3 * v192
+            local v194 = 4.5 * v192
+            local v195
+            if not ESP.TeamCheck then
+                v195 = arg143 ~= LocalPlayer
+            else
+                v195 = arg143 ~= LocalPlayer and (LocalPlayer.Team ~= arg143.Team and arg143.Team or not LocalPlayer.Team and not arg143.Team)
+            end
+            if not v195 then
+                fn4()
+                return
+            end
+            v179.Adornee = arg143.Character
+            v179.Enabled = ESP.Drawing.Chams.Enabled
+            v179.FillColor = ESP.Drawing.Chams.FillRGB
+            v179.OutlineColor = ESP.Drawing.Chams.OutlineRGB
+            v180.Visible = ESP.Drawing.Boxes.Corner.Enabled
+            v180.Position = UDim2.new(0, v189.X - v193 / 2, 0, v189.Y - v194 / 2)
+            v180.Size = UDim2.new(0, v193 / 5, 0, 1)
+            v181.Visible = ESP.Drawing.Boxes.Corner.Enabled
+            v181.Position = UDim2.new(0, v189.X - v193 / 2, 0, v189.Y - v194 / 2)
+            v181.Size = UDim2.new(0, 1, 0, v194 / 5)
+            v184.Visible = ESP.Drawing.Boxes.Corner.Enabled
+            v184.Position = UDim2.new(0, v189.X - v193 / 2, 0, v189.Y + v194 / 2)
+            v184.Size = UDim2.new(0, 1, 0, v194 / 5)
+            v184.AnchorPoint = Vector2.new(0, 5)
+            v185.Visible = ESP.Drawing.Boxes.Corner.Enabled
+            v185.Position = UDim2.new(0, v189.X - v193 / 2, 0, v189.Y + v194 / 2)
+            v185.Size = UDim2.new(0, v193 / 5, 0, 1)
+            v185.AnchorPoint = Vector2.new(0, 1)
+            v182.Visible = ESP.Drawing.Boxes.Corner.Enabled
+            v182.Position = UDim2.new(0, v189.X + v193 / 2, 0, v189.Y - v194 / 2)
+            v182.Size = UDim2.new(0, v193 / 5, 0, 1)
+            v182.AnchorPoint = Vector2.new(1, 0)
+            v183.Visible = ESP.Drawing.Boxes.Corner.Enabled
+            v183.Position = UDim2.new(0, v189.X + v193 / 2 - 1, 0, v189.Y - v194 / 2)
+            v183.Size = UDim2.new(0, 1, 0, v194 / 5)
+            v186.Visible = ESP.Drawing.Boxes.Corner.Enabled
+            v186.Position = UDim2.new(0, v189.X + v193 / 2, 0, v189.Y + v194 / 2)
+            v186.Size = UDim2.new(0, 1, 0, v194 / 5)
+            v186.AnchorPoint = Vector2.new(1, 1)
+            v187.Visible = ESP.Drawing.Boxes.Corner.Enabled
+            v187.Position = UDim2.new(0, v189.X + v193 / 2, 0, v189.Y + v194 / 2)
+            v187.Size = UDim2.new(0, v193 / 5, 0, 1)
+            v187.AnchorPoint = Vector2.new(1, 1)
+            v174.Position = UDim2.new(0, v189.X - v193 / 2, 0, v189.Y - v194 / 2)
+            v174.Size = UDim2.new(0, v193, 0, v194)
+            v174.Visible = ESP.Drawing.Boxes.Full.Enabled
+            v175.Visible = ESP.Drawing.Boxes.Full.Enabled and ESP.Drawing.Boxes.Full.Filled
+            local v196 = Humanoid4.Health / Humanoid4.MaxHealth
+            local HealthColor = tbl12:GetHealthColor(v196)
+            local v197 = math.floor(v196 * 100)
+            v176.Visible = ESP.Drawing.Healthbar.Enabled
+            v176.Position = UDim2.new(0, v189.X - v193 / 2 - 6, 0, v189.Y - v194 / 2 + v194 * (1 - v196))
+            v176.Size = UDim2.new(0, ESP.Drawing.Healthbar.Width, 0, v194 * v196)
+            v176.BackgroundColor3 = HealthColor
+            v177.Visible = ESP.Drawing.Healthbar.Enabled
+            v177.Position = UDim2.new(0, v189.X - v193 / 2 - 6, 0, v189.Y - v194 / 2)
+            v177.Size = UDim2.new(0, ESP.Drawing.Healthbar.Width, 0, v194)
+            v178.Visible = ESP.Drawing.Healthbar.Enabled
+            v178.Text = tostring(v197)
+            v178.TextColor3 = HealthColor
+            v178.Position = UDim2.new(0, v189.X - v193 / 2 - 15, 0, v189.Y - v194 / 2 + v194 * (1 - v196))
+            v173.Visible = ESP.Drawing.Names.Enabled
+            v173.Text = arg143.Name
+            v173.Position = UDim2.new(0, v189.X, 0, v189.Y - v194 / 2 - 9)
+        end)
+        table.insert(tbl13, v188)
+    end
+    for k29, v198 in pairs(Players:GetPlayers()) do
+        if v198.Name == LocalPlayer.Name then
+            continue
+        end
+        coroutine.wrap(fn3)(v198)
+    end
+    Players.PlayerAdded:Connect(function(arg144)
+        coroutine.wrap(fn3)(arg144)
+    end)
+end
+local NetworkDesync = {
+    Start = function()
+        if not State.networkdesync.enabled then
+            State.networkdesync.enabled = true
+            Library:Notify("Desync: ON", 2)
+            task.spawn(function()
+                while State.networkdesync.enabled do
+                    task.wait()
+                    if not (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) then
+                        continue
+                    end
+                    local HumanoidRootPart14 = LocalPlayer.Character.HumanoidRootPart
+                    pcall(function()
+                        sethiddenproperty(HumanoidRootPart14, "NetworkIsSleeping", true)
+                    end)
+                    task.wait()
+                    pcall(function()
+                        sethiddenproperty(HumanoidRootPart14, "NetworkIsSleeping", false)
+                    end)
+                end
+            end)
+            return
+        end
+    end,
+    Stop = function()
+        State.networkdesync.enabled = false
+        Library:Notify("Desync: OFF", 2)
+    end
+}
+local fn5 = function()
+    local Character12 = LocalPlayer.Character
+    if not Character12 then
+        return
+    end
+    local Humanoid5 = Character12:FindFirstChildOfClass("Humanoid")
+    if not Humanoid5 then
+        return
+    end
+    local animationplayer = State.animationplayer
+    if animationplayer.lastcharacter ~= Character12 then
+        if animationplayer.animationtrack then
+            animationplayer.animationtrack:Stop()
+            animationplayer.animationtrack = nil
+        end
+        animationplayer.lastcharacter = Character12
+        animationplayer.isplaying = false
+    end
+    if not animationplayer.enabled then
+        if animationplayer.animationtrack and animationplayer.isplaying then
+            animationplayer.animationtrack:Stop()
+            animationplayer.isplaying = false
+        end
+        return
+    end
+    local v199 = animationplayer.animationid or "rbxassetid://14352343065"
+    if not string.match(v199, "^rbxassetid://") then
+        v199 = "rbxassetid://" .. v199
+    end
+    if not animationplayer.animationtrack then
+        animationplayer.animationinstance.AnimationId = v199
+        local v200, v201 = pcall(function()
+            return Humanoid5:LoadAnimation(animationplayer.animationinstance)
+        end)
+        if v200 and v201 then
+            animationplayer.animationtrack = v201
+            animationplayer.animationtrack.Looped = true
+            animationplayer.animationtrack.Priority = Enum.AnimationPriority.Action
+            task.spawn(function()
+                task.wait(0.6)
+                if animationplayer.animationtrack and animationplayer.enabled then
+                    animationplayer.animationtrack:Play()
+                    animationplayer.isplaying = true
+                end
+            end)
+        end
+    end
+    if animationplayer.animationtrack and animationplayer.isplaying then
+        animationplayer.animationtrack:AdjustSpeed(animationplayer.speed)
+    end
+end
+local gameMeta = getrawmetatable(game)
+setreadonly(gameMeta, false)
+local __index = gameMeta.__index
+gameMeta.__index = function(arg145, arg223)
+    if not (checkcaller() or arg145 ~= Mouse or arg223 ~= "Hit" and arg223 ~= "Target") then
+        if not Config["legitsilent:enabled"] or Config["legitsilent:antiaimviewer"] or not State.silentaim.istargetting or not State.silentaim.target then
+            if Config["ragetargetaim:enabled"] and State.targetaim.istargetting and State.targetaim.target then
+                return CFrame.new(State.targetaim.predictedposition)
+            end
+            return __index(arg145, arg223)
+        end
+        return CFrame.new(State.silentaim.predictedposition)
+    end
+    return __index(arg145, arg223)
+end
+if hookmetamethod then
+    local v202 = nil
+    v202 = hookmetamethod(game, "__namecall", function(arg146, ...)
+        local v203 = tostring(getnamecallmethod())
+        local tbl14 = {...}
+        if checkcaller() or v203 ~= "FireServer" or typeof(tbl14[1]) ~= "string" or typeof(tbl14[2]) ~= "Vector3" then
+            return v202(arg146, ...)
+        end
+        if not (not Config["legitsilent:enabled"] or Config["legitsilent:antiaimviewer"] or not State.silentaim.istargetting or not State.silentaim.target) then
+            tbl14[2] = State.silentaim.predictedposition
+        end
+        if Config["ragetargetaim:enabled"] and State.targetaim.istargetting and State.targetaim.target then
+            tbl14[2] = State.targetaim.predictedposition
+        end
+        return v202(arg146, unpack(tbl14))
+    end)
+end
+local Window = Library:CreateWindow({
+    Title = "Avenir Rage [BETA VERSION]",
+    Footer = "Avenir Rage",
+    Center = true,
+    AutoShow = true
+})
+local Tabs = {
+    Rage = Window:AddTab("Rage"),
+    Visuals = Window:AddTab("Visuals"),
+    World = Window:AddTab("World"),
+    Exploits = Window:AddTab("Exploits"),
+    Settings = Window:AddTab("Settings")
+}
+local TargetAimBox = Tabs.Rage:AddLeftGroupbox("Target Aim")
+local PredictionBox = Tabs.Rage:AddLeftGroupbox("Prediction")
+local TargetStrafeBox = Tabs.Rage:AddRightGroupbox("Target Strafe")
+local StompBox = Tabs.Rage:AddRightGroupbox("Stomp")
+TargetAimBox:AddToggle("TargetEnabled", {
+    Text = "Enabled",
+    Callback = function(arg147)
+        Config["ragetargetaim:enabled"] = arg147
+    end
+})
+local KeybindLabel = TargetAimBox:AddLabel("Keybind")
+KeybindLabel:AddKeyPicker("TargetKey", {Default = "None", Mode = "Toggle", Text = "Target Key"})
+TargetAimBox:AddDropdown("TargetPart", {
+    Text = "Aim Part",
+    Values = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"},
+    Default = "HumanoidRootPart",
+    AllowNull = true,
+    Callback = function(arg148)
+        Config["ragetargetaim:aimpart"] = arg148
+    end
+})
+TargetAimBox:AddDivider()
+TargetAimBox:AddToggle("TargetAutoShoot", {
+    Text = "Auto Shoot",
+    Callback = function(arg149)
+        Config["ragetargetaim:autoshoot"] = arg149
+    end
+})
+TargetAimBox:AddToggle("TargetAutoReload", {
+    Text = "Auto Reload",
+    Callback = function(arg150)
+        State.autoreload.enabled = arg150
+    end
+})
+TargetAimBox:AddToggle("TargetLookAt", {
+    Text = "Look At Target",
+    Callback = function(arg151)
+        Config["ragetargetaim:lookat"] = arg151
+    end
+})
+TargetAimBox:AddToggle("TargetSpectate", {
+    Text = "Spectate Target",
+    Callback = function(arg152)
+        Config["ragetargetaim:spectate"] = arg152
+    end
+})
+TargetAimBox:AddToggle("TargetAutoSwitch", {
+    Text = "Auto Switch",
+    Callback = function(arg153)
+        Config["ragetargetaim:autoswitch"] = arg153
+    end
+})
+TargetAimBox:AddToggle("TargetClosestPart", {
+    Text = "Closest Body Part",
+    Callback = function(arg154)
+        Config["ragetargetaim:closestbodypart"] = arg154
+    end
+})
+TargetAimBox:AddDivider()
+TargetAimBox:AddToggle("TargetAirPart", {
+    Text = "Use Air Part",
+    Callback = function(arg155)
+        Config["ragetargetaim:useairpart"] = arg155
+    end
+})
+TargetAimBox:AddDropdown("TargetAirPartSelect", {
+    Text = "Air Part",
+    Values = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"},
+    Default = "LowerTorso",
+    AllowNull = true,
+    Callback = function(arg156)
+        Config["ragetargetaim:airpart"] = arg156
+    end
+})
+TargetAimBox:AddToggle("TargetAntiGround", {
+    Text = "Anti Ground Shots",
+    Callback = function(arg157)
+        Config["ragetargetaim:antigroundshots"] = arg157
+    end
+})
+TargetAimBox:AddSlider("TargetAntiGroundTakeoff", {
+    Text = "Takeoff Amount",
+    Default = 7,
+    Min = 1,
+    Max = 20,
+    Rounding = 1,
+    Callback = function(arg158)
+        Config["ragetargetaim:antigroundshotstotakeoff"] = arg158
+    end
+})
+TargetAimBox:AddDivider()
+TargetAimBox:AddToggle("TargetFOV", {
+    Text = "Use FOV",
+    Callback = function(arg159)
+        Config["ragetargetaim:usefov"] = arg159
+    end
+})
+TargetAimBox:AddToggle("TargetVisualizeFOV", {Text = "Visualize FOV"})
+TargetAimBox:AddSlider("TargetFOVRadius", {
+    Text = "FOV Radius",
+    Default = 100,
+    Min = 10,
+    Max = 500,
+    Rounding = 0,
+    Callback = function(arg160)
+        Config["ragetargetaim:fovradius"] = arg160
+    end
+})
+local FOVColorLabel = TargetAimBox:AddLabel("FOV Color")
+FOVColorLabel:AddColorPicker("TargetFOVColor", {Default = Color3.fromRGB(219, 68, 103)})
+TargetAimBox:AddDivider()
+TargetAimBox:AddToggle("TargetChecks", {
+    Text = "Use Checks",
+    Callback = function(arg161)
+        Config["ragetargetaim:usechecks"] = arg161
+    end
+})
+TargetAimBox:AddDropdown("TargetCheckValues", {
+    Text = "Checks",
+    Values = {"Knocked", "Grabbed", "Friend", "Wall"},
+    Multi = true,
+    Default = {},
+    AllowNull = true,
+    Callback = function(arg162)
+        Config["ragetargetaim:checks"] = arg162
+    end
+})
+PredictionBox:AddToggle("AutoPrediction", {
+    Text = "Auto Prediction",
+    Default = true,
+    Callback = function(arg163)
+        Config["ragetargetaim:autoprediction"] = arg163
+    end
+})
+PredictionBox:AddDivider()
+PredictionBox:AddInput("TargetPrediction", {
+    Text = "Prediction",
+    Default = "0.135",
+    Numeric = false,
+    Finished = true,
+    Callback = function(arg164)
+        local v204 = tonumber(arg164)
+        if v204 then
+            Config["ragetargetaim:prediction"] = v204
+            Config["legitsilent:prediction"] = v204
+        end
+    end
+})
+PredictionBox:AddDivider()
+PredictionBox:AddToggle("ResolverEnabled", {
+    Text = "Enable Resolver",
+    Default = false,
+    Callback = function(arg165)
+        Config["ragetargetaim:resolver"] = arg165
+        Config["legitsilent:resolver"] = arg165
+    end
+})
+local ResolverKeyLabel = PredictionBox:AddLabel("Resolver Key")
+ResolverKeyLabel:AddKeyPicker("ResolverKey", {
+    Default = "None",
+    Mode = "Toggle",
+    Text = "Resolver Toggle",
+    Callback = function(arg166)
+        Config["ragetargetaim:resolver"] = arg166
+        Config["legitsilent:resolver"] = arg166
+        Library:Notify("Resolver: " .. (arg166 and "ON" or "OFF"), 2)
+    end
+})
+PredictionBox:AddDropdown("ResolverMethod", {
+    Text = "Method",
+    Values = {"Hybrid", "Interpolation", "Extrapolation"},
+    Default = "Hybrid",
+    AllowNull = true,
+    Callback = function(arg167)
+        Config["ragetargetaim:resolvermethod"] = arg167
+        Config["legitsilent:resolvermethod"] = arg167
+    end
+})
+PredictionBox:AddSlider("ResolverSamples", {
+    Text = "Samples",
+    Default = 5,
+    Min = 2,
+    Max = 15,
+    Rounding = 0,
+    Callback = function(arg168)
+        Config["ragetargetaim:resolversamples"] = arg168
+    end
+})
+PredictionBox:AddSlider("ResolverSmoothing", {
+    Text = "Smoothing",
+    Default = 0.5,
+    Min = 0.1,
+    Max = 1,
+    Rounding = 2,
+    Callback = function(arg169)
+        Config["ragetargetaim:resolversmoothing"] = arg169
+    end
+})
+TargetStrafeBox:AddToggle("StrafeEnabled", {Text = "Enabled"})
+local KeybindLabel2 = TargetStrafeBox:AddLabel("Keybind")
+KeybindLabel2:AddKeyPicker("StrafeKey", {Default = "None", Mode = "Hold", Text = "Strafe Key"})
+TargetStrafeBox:AddToggle("StrafeBypassDestroy", {Text = "Bypass Destroy"})
+TargetStrafeBox:AddDropdown("StrafePattern", {
+    Text = "Pattern",
+    Values = {
+        "Normal",
+        "Elliptical",
+        "Figure-8",
+        "Heart",
+        "Star",
+        "Infinity",
+        "Square",
+        "Diamond",
+        "Butterfly",
+        "Rose",
+        "Helix",
+        "Wave",
+        "Clover",
+        "Pentagon",
+        "Hexagon",
+        "Spiral",
+        "Zigzag"
+    },
+    Default = "Normal",
+    AllowNull = true
+})
+TargetStrafeBox:AddSlider("StrafeSpeed", {Text = "Speed", Default = 1, Min = 0.1, Max = 10, Rounding = 2})
+TargetStrafeBox:AddSlider("StrafeHeight", {Text = "Height", Default = 5, Min = 0, Max = 30, Rounding = 1})
+TargetStrafeBox:AddSlider("StrafeDistance", {Text = "Distance", Default = 10, Min = 1, Max = 50, Rounding = 1})
+StompBox:AddToggle("AutoStompEnabled", {
+    Text = "Auto Stomp",
+    Callback = function(arg170)
+        State.autostomp.isactive = arg170
+        if not arg170 then
+            AutoStomp.Stop()
+        else
+            AutoStomp.Start()
+        end
+    end
+})
+StompBox:AddToggle("AutoStompTargetOnly", {
+    Text = "Target Only (TP Mode)",
+    Callback = function(arg171)
+        State.autostomp.targetonly = arg171
+    end
+})
+StompBox:AddDivider()
+StompBox:AddToggle("KnockStompEnabled", {
+    Text = "Knock Stomp",
+    Callback = function(arg172)
+        State.knockstomp.isactive = arg172
+        if arg172 then
+            task.spawn(KnockStomp.Loop)
+        end
+    end
+})
+StompBox:AddToggle("KnockStompTargetOnly", {
+    Text = "Target Only",
+    Callback = function(arg173)
+        State.knockstomp.targetonly = arg173
+    end
+})
+StompBox:AddToggle("KnockStompUseRange", {
+    Text = "Use Range",
+    Default = true,
+    Callback = function(arg174)
+        State.knockstomp.userange = arg174
+    end
+})
+StompBox:AddInput("KnockStompRange", {
+    Text = "Range (studs)",
+    Default = "50",
+    Numeric = false,
+    Finished = true,
+    Callback = function(arg175)
+        local v205 = tonumber(arg175)
+        if v205 then
+            State.knockstomp.detectionrange = v205
+        end
+    end
+})
+local ESPBox = Tabs.Visuals:AddLeftGroupbox("ESP")
+local SelfAuraBox = Tabs.Visuals:AddLeftGroupbox("Self Aura")
+local HitDetectionBox = Tabs.Visuals:AddRightGroupbox("Hit Detection")
+local LocalPlayerBox = Tabs.Visuals:AddRightGroupbox("Local Player")
+local TargetVisualsBox = Tabs.Visuals:AddRightGroupbox("Target Visuals")
+ESPBox:AddToggle("ESPEnabled", {
+    Text = "Enable ESP",
+    Callback = function(arg176)
+        ESP.Enabled = arg176
+        if arg176 then
+            fn2()
+        end
+    end
+})
+ESPBox:AddSlider("ESPMaxDistance", {
+    Text = "Max Distance",
+    Default = 200,
+    Min = 50,
+    Max = 20000,
+    Rounding = 0,
+    Callback = function(arg177)
+        ESP.MaxDistance = arg177
+    end
+})
+ESPBox:AddToggle("ESPNames", {
+    Text = "Names",
+    Callback = function(arg178)
+        ESP.Drawing.Names.Enabled = arg178
+    end
+})
+ESPBox:AddToggle("ESPChams", {
+    Text = "Chams",
+    Callback = function(arg179)
+        ESP.Drawing.Chams.Enabled = arg179
+    end
+})
+local ChamsColorLabel = ESPBox:AddLabel("Chams Color")
+ChamsColorLabel:AddColorPicker("ESPChamsColor", {
+    Default = Color3.fromRGB(219, 68, 103),
+    Callback = function(arg180)
+        ESP.Drawing.Chams.FillRGB = arg180
+        ESP.Drawing.Chams.OutlineRGB = arg180
+    end
+})
+ESPBox:AddToggle("ESPBoxes", {
+    Text = "Boxes",
+    Callback = function(arg181)
+        ESP.Drawing.Boxes.Full.Enabled = arg181
+    end
+})
+ESPBox:AddToggle("ESPBoxesFilled", {
+    Text = "Filled Boxes",
+    Callback = function(arg182)
+        ESP.Drawing.Boxes.Full.Filled = arg182
+    end
+})
+ESPBox:AddToggle("ESPCornerBoxes", {
+    Text = "Corner Boxes",
+    Callback = function(arg183)
+        ESP.Drawing.Boxes.Corner.Enabled = arg183
+    end
+})
+ESPBox:AddToggle("ESPHealthbar", {
+    Text = "Healthbar",
+    Callback = function(arg184)
+        ESP.Drawing.Healthbar.Enabled = arg184
+    end
+})
+SelfAuraBox:AddToggle("AuraEnabled", {
+    Text = "Enabled",
+    Callback = function(arg185)
+        SelfAura.enabled = arg185
+        SelfAura.update_aura()
+    end
+})
+SelfAuraBox:AddDropdown("AuraTypes", {
+    Text = "Types",
+    Values = {"Angel Wings", "Particle Aura", "Halo", "Saturn Ring", "Fire Aura", "Lightning Aura"},
+    Multi = true,
+    Default = {},
+    AllowNull = true,
+    Callback = function(arg186)
+        local tbl15 = {}
+        for k30, v206 in pairs(arg186) do
+            if not v206 then
+                continue
+            end
+            table.insert(tbl15, k30)
+        end
+        SelfAura.set_types(tbl15)
+    end
+})
+HitDetectionBox:AddToggle("HitEnabled", {Text = "Enabled"})
+HitDetectionBox:AddToggle("HitSound", {Text = "Hit Sound"})
+HitDetectionBox:AddDropdown("HitSoundSelect", {
+    Text = "Sound",
+    Values = {"RIFK7", "Bubble", "Minecraft", "Cod", "Bameware", "Neverlose", "Gamesense", "Rust"},
+    Default = "RIFK7",
+    AllowNull = true
+})
+HitDetectionBox:AddSlider("HitSoundVolume", {Text = "Volume", Default = 5, Min = 0.1, Max = 10, Rounding = 1})
+HitDetectionBox:AddToggle("HitNotify", {Text = "Notify"})
+HitDetectionBox:AddToggle("HitChams", {Text = "Hit Chams"})
+local ChamsColorLabel2 = HitDetectionBox:AddLabel("Chams Color")
+ChamsColorLabel2:AddColorPicker("HitChamsColor", {Default = Color3.fromRGB(219, 68, 103)})
+HitDetectionBox:AddSlider("HitChamsDuration", {Text = "Duration", Default = 0.5, Min = 0.1, Max = 3, Rounding = 1})
+LocalPlayerBox:AddToggle("LocalChams", {Text = "Chams"})
+local FillColorLabel = LocalPlayerBox:AddLabel("Fill Color")
+FillColorLabel:AddColorPicker("LocalChamsFill", {Default = Color3.fromRGB(219, 68, 103)})
+local OutlineColorLabel = LocalPlayerBox:AddLabel("Outline Color")
+OutlineColorLabel:AddColorPicker("LocalChamsOutline", {Default = Color3.new(0, 0, 0)})
+TargetVisualsBox:AddToggle("TargetVisuals", {Text = "Enabled"})
+TargetVisualsBox:AddToggle("TargetTracer", {Text = "Tracer"})
+local TracerColorLabel = TargetVisualsBox:AddLabel("Tracer Color")
+TracerColorLabel:AddColorPicker("TargetTracerColor", {Default = Color3.fromRGB(219, 68, 103)})
+TargetVisualsBox:AddToggle("TargetDot", {Text = "Dot"})
+local DotColorLabel = TargetVisualsBox:AddLabel("Dot Color")
+DotColorLabel:AddColorPicker("TargetDotColor", {Default = Color3.fromRGB(219, 68, 103)})
+TargetVisualsBox:AddToggle("TargetChams", {Text = "Chams"})
+local ChamsFillLabel = TargetVisualsBox:AddLabel("Chams Fill")
+ChamsFillLabel:AddColorPicker("TargetChamsFill", {Default = Color3.fromRGB(219, 68, 103)})
+TargetVisualsBox:AddToggle("TargetNotify", {
+    Text = "Notify",
+    Callback = function(arg187)
+        Config["ragetargetaim:notify"] = arg187
+    end
+})
+local LightingBox = Tabs.World:AddLeftGroupbox("Lighting")
+local AutoBuyBox = Tabs.World:AddRightGroupbox("Auto Buy")
+local SafetyBox = Tabs.World:AddRightGroupbox("Safety")
+LightingBox:AddToggle("WorldFog", {Text = "Custom Fog"})
+local FogColorLabel = LightingBox:AddLabel("Fog Color")
+FogColorLabel:AddColorPicker("WorldFogColor", {Default = Color3.fromRGB(128, 128, 128)})
+LightingBox:AddSlider("WorldFogStart", {Text = "Fog Start", Default = 0, Min = 0, Max = 5000, Rounding = 0})
+LightingBox:AddSlider("WorldFogEnd", {Text = "Fog End", Default = 1000, Min = 100, Max = 10000, Rounding = 0})
+LightingBox:AddToggle("WorldAmbient", {Text = "Custom Ambient"})
+local AmbientLabel = LightingBox:AddLabel("Ambient")
+AmbientLabel:AddColorPicker("WorldAmbientColor", {Default = Color3.fromRGB(128, 128, 128)})
+LightingBox:AddToggle("WorldTime", {Text = "Custom Time"})
+LightingBox:AddSlider("WorldTimeValue", {Text = "Time", Default = 14, Min = 0, Max = 24, Rounding = 1})
+LightingBox:AddToggle("WorldBrightness", {Text = "Custom Brightness"})
+LightingBox:AddSlider("WorldBrightnessValue", {Text = "Brightness", Default = 1, Min = 0, Max = 5, Rounding = 2})
+AutoBuyBox:AddToggle("AutoBuyEnabled", {
+    Text = "Auto Buy On Respawn",
+    Default = false,
+    Callback = function(arg188)
+        State.autobuy.isactive = arg188
+    end
+})
+AutoBuyBox:AddSlider("AutoBuyArmorThreshold", {
+    Text = "Armor Threshold",
+    Default = 70,
+    Min = 30,
+    Max = 130,
+    Rounding = 0,
+    Callback = function(arg189)
+        State.autobuy.armorthreshold = arg189
+    end
+})
+AutoBuyBox:AddDropdown("AutoBuyItems", {
+    Text = "Items to Buy",
+    Values = GunShopItems,
+    Multi = true,
+    Default = {},
+    AllowNull = true,
+    Callback = function(arg190)
+        State.autobuy.selecteditems = arg190
+    end
+})
+AutoBuyBox:AddDivider()
+AutoBuyBox:AddButton("Buy Selected Now", function()
+    State.autobuy.hasboughtthislife = false
+    AutoBuy.BuySelected()
+end)
+AutoBuyBox:AddButton("Refresh Shop Cache", function()
+    AutoBuy.RefreshCache()
+    Library:Notify("Shop cache refreshed", 2)
+end)
+SafetyBox:AddToggle("AntiVoidEnabled", {
+    Text = "Anti Void",
+    Callback = function(arg191)
+        State.antivoid.enabled = arg191
+    end
+})
+SafetyBox:AddToggle("RemoveSeatsEnabled", {
+    Text = "Remove Seats",
+    Callback = function(arg192)
+        State.removeseats.enabled = arg192
+    end
+})
+local MovementBox = Tabs.Exploits:AddLeftGroupbox("Movement")
+local AntiLockBox = Tabs.Exploits:AddLeftGroupbox("Anti-Lock")
+local AntiAimBox = Tabs.Exploits:AddRightGroupbox("Anti-Aim")
+local MiscBox = Tabs.Exploits:AddRightGroupbox("Misc")
+local AnimationBox = Tabs.Exploits:AddRightGroupbox("Animation")
+MovementBox:AddToggle("SpeedEnabled", {Text = "CFrame Speed"})
+local KeybindLabel3 = MovementBox:AddLabel("Keybind")
+KeybindLabel3:AddKeyPicker("SpeedKey", {Default = "None", Mode = "Hold", Text = "Speed Key"})
+MovementBox:AddSlider("SpeedAmount", {Text = "Speed", Default = 1, Min = 0.1, Max = 20, Rounding = 2})
+MovementBox:AddToggle("FlyEnabled", {Text = "Fly"})
+local KeybindLabel4 = MovementBox:AddLabel("Keybind")
+KeybindLabel4:AddKeyPicker("FlyKey", {Default = "None", Mode = "Hold", Text = "Fly Key"})
+MovementBox:AddSlider("FlySpeed", {Text = "Speed", Default = 2, Min = 0.5, Max = 50, Rounding = 1})
+AntiLockBox:AddToggle("AntiLockEnabled", {
+    Text = "Enabled",
+    Callback = function(arg193)
+        State.antilock.enabled = arg193
+    end
+})
+local KeybindLabel5 = AntiLockBox:AddLabel("Keybind")
+KeybindLabel5:AddKeyPicker("AntiLockKey", {Default = "None", Mode = "Hold", Text = "Anti-Lock Key"})
+AntiLockBox:AddDropdown("AntiLockMode", {
+    Text = "Mode",
+    Values = {"Jitter", "Reverse", "Side"},
+    Default = "Jitter",
+    AllowNull = true,
+    Callback = function(arg194)
+        State.antilock.mode = arg194
+    end
+})
+AntiAimBox:AddToggle("VelocityEnabled", {Text = "Velocity Spoofer"})
+local KeybindLabel6 = AntiAimBox:AddLabel("Keybind")
+KeybindLabel6:AddKeyPicker("VelocityKey", {Default = "None", Mode = "Hold", Text = "Velocity Key"})
+AntiAimBox:AddDropdown("VelocityType", {Text = "Type", Values = {"Strafe", "Static", "Random"}, Default = "Strafe", AllowNull = true})
+AntiAimBox:AddSlider("VelocityStrafeSpeed", {Text = "Strafe Speed", Default = 1, Min = 0.1, Max = 5, Rounding = 2})
+AntiAimBox:AddSlider("VelocityStrafeDistance", {Text = "Strafe Distance", Default = 10, Min = 1, Max = 100, Rounding = 0})
+AntiAimBox:AddSlider("VelocityRandomization", {Text = "Randomization", Default = 50, Min = 1, Max = 200, Rounding = 0})
+AntiAimBox:AddDivider()
+AntiAimBox:AddToggle("DesyncEnabled", {Text = "Network Desync"})
+local KeybindLabel7 = AntiAimBox:AddLabel("Keybind")
+KeybindLabel7:AddKeyPicker("DesyncKey", {Default = "None", Mode = "Toggle", Text = "Desync Key"})
+AntiAimBox:AddDivider()
+AntiAimBox:AddToggle("CSyncEnabled", {Text = "C-Sync"})
+local KeybindLabel8 = AntiAimBox:AddLabel("Keybind")
+KeybindLabel8:AddKeyPicker("CSyncKey", {Default = "None", Mode = "Hold", Text = "C-Sync Key"})
+AntiAimBox:AddDropdown("CSyncType", {
+    Text = "Type",
+    Values = {"Static Local", "Static Target", "Random Local", "Random Target"},
+    Default = "Static Local",
+    AllowNull = true
+})
+AntiAimBox:AddSlider("CSyncOffsetX", {Text = "Offset X", Default = 0, Min = -100, Max = 100, Rounding = 1})
+AntiAimBox:AddSlider("CSyncOffsetY", {Text = "Offset Y", Default = 0, Min = -100, Max = 100, Rounding = 1})
+AntiAimBox:AddSlider("CSyncRandomization", {Text = "Randomization", Default = 10, Min = 1, Max = 100, Rounding = 0})
+MiscBox:AddToggle("NoJumpCooldown", {Text = "No Jump Cooldown"})
+MiscBox:AddToggle("NoSlow", {Text = "No Slow"})
+AnimationBox:AddToggle("AnimationEnabled", {
+    Text = "Enable",
+    Callback = function(arg195)
+        State.animationplayer.enabled = arg195
+    end
+})
+AnimationBox:AddInput("AnimationId", {
+    Text = "Animation ID",
+    Default = "14352343065",
+    Numeric = true,
+    Callback = function(arg196)
+        State.animationplayer.animationid = "rbxassetid://" .. arg196
+    end
+})
+AnimationBox:AddSlider("AnimationSpeed", {
+    Text = "Speed",
+    Default = 1,
+    Min = 0.1,
+    Max = 5,
+    Rounding = 1,
+    Callback = function(arg197)
+        State.animationplayer.speed = arg197
+    end
+})
+local MenuBox = Tabs.Settings:AddLeftGroupbox("Menu")
+local MenuKeybindLabel = MenuBox:AddLabel("Menu Keybind")
+MenuKeybindLabel:AddKeyPicker("MenuKey", {Default = "End", NoUI = true, Text = "Menu Toggle"})
+MenuBox:AddButton("Unload Script", function()
+    Library:Unload()
+end)
+Library.ToggleKeybind = Options.MenuKey
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({"MenuKey"})
+ThemeManager:SetFolder("ObsidianTheme")
+SaveManager:SetFolder("ObsidianConfig")
+SaveManager:BuildConfigSection(Tabs.Settings)
+ThemeManager:ApplyToTab(Tabs.Settings)
+local tbl16 = {}
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    fn()
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    if Config["legitsilent:enabled"] then
+        local v207 = Targeting.getclosestplayer(Config["legitsilent:usefov"], Config["legitsilent:fovradius"], Config["legitsilent:usechecks"], Config["legitsilent:checks"])
+        if not (v207 and Utils.hascharacter(v207)) then
+            State.silentaim.istargetting = false
+            State.silentaim.target = nil
+        else
+            State.silentaim.target = v207
+            State.silentaim.istargetting = true
+            State.silentaim.predictedposition = SilentAim.getpredictedposition()
+        end
+        return
+    end
+    State.silentaim.istargetting = false
+    State.silentaim.target = nil
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    if not Config["ragetargetaim:enabled"] then
+        State.targetaim.istargetting = false
+        State.targetaim.target = nil
+        return
+    end
+    if not (Options and (Options.TargetKey and Options.TargetKey:GetState())) then
+        if State.targetaim.istargetting then
+            State.targetaim.istargetting = false
+            State.targetaim.target = nil
+            if Config["ragetargetaim:spectate"] and Utils.hascharacter(LocalPlayer) then
+                CurrentCamera.CameraSubject = LocalPlayer.Character.Humanoid
+            end
+        end
+        return
+    end
+    if not State.targetaim.target or Config["ragetargetaim:autoswitch"] then
+        local v208 = Targeting.getclosestplayer(Config["ragetargetaim:usefov"], Config["ragetargetaim:fovradius"], Config["ragetargetaim:usechecks"], Config["ragetargetaim:checks"])
+        if not (not v208 or v208 == State.targetaim.target) then
+            State.targetaim.target = v208
+            if Config["ragetargetaim:notify"] then
+                Library:Notify("Targeting: " .. v208.DisplayName, 3)
+            end
+            if Config["ragetargetaim:spectate"] and Utils.hascharacter(v208) then
+                CurrentCamera.CameraSubject = v208.Character.Humanoid
+            end
+        end
+    end
+    if not (State.targetaim.target and Utils.hascharacter(State.targetaim.target)) then
+        State.targetaim.istargetting = false
+        return
+    end
+    State.targetaim.istargetting = true
+    State.targetaim.predictedposition = TargetAim.getpredictedposition()
+    if Config["ragetargetaim:lookat"] and Utils.hascharacter(LocalPlayer) then
+        local Position8 = State.targetaim.target.Character.HumanoidRootPart.Position
+        local HumanoidRootPart15 = LocalPlayer.Character.HumanoidRootPart
+        HumanoidRootPart15.CFrame = CFrame.new(HumanoidRootPart15.Position, Vector3.new(Position8.X, HumanoidRootPart15.Position.Y, Position8.Z))
+    end
+end))
+table.insert(tbl16, RunService.RenderStepped:Connect(function()
+    if not (Toggles and Options) then
+        return
+    end
+    local MouseLocation3 = UserInputService:GetMouseLocation()
+    local v209 = false
+    local v210 = 100
+    local v211 = Color3.fromRGB(219, 68, 103)
+    if Config["ragetargetaim:enabled"] and (Config["ragetargetaim:usefov"] and Toggles.TargetVisualizeFOV and Toggles.TargetVisualizeFOV.Value) then
+        v209 = true
+        v210 = Config["ragetargetaim:fovradius"]
+        v211 = Options.TargetFOVColor and Options.TargetFOVColor.Value or Color3.fromRGB(219, 68, 103)
+    end
+    Drawings.FOV.Visible = v209
+    Drawings.FOV.Position = MouseLocation3
+    Drawings.FOV.Radius = v210
+    Drawings.FOV.Color = v211
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    if not (Toggles and Options) then
+        return
+    end
+    if not (Toggles.LocalChams and (Toggles.LocalChams.Value and Utils.hascharacter(LocalPlayer))) then
+        Chams.LocalChams.Enabled = false
+    else
+        Chams.LocalChams.Adornee = LocalPlayer.Character
+        Chams.LocalChams.Parent = LocalPlayer.Character
+        Chams.LocalChams.FillColor = Options.LocalChamsFill and Options.LocalChamsFill.Value or Color3.fromRGB(219, 68, 103)
+        Chams.LocalChams.OutlineColor = Options.LocalChamsOutline and Options.LocalChamsOutline.Value or Color3.new(0, 0, 0)
+        Chams.LocalChams.Enabled = true
+    end
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    if not (Toggles and Options) then
+        return
+    end
+    if not (Toggles.TargetVisuals and (Toggles.TargetVisuals.Value and Toggles.TargetChams and Toggles.TargetChams.Value)) then
+        Chams.TargetChams.Enabled = false
+    elseif not (State.targetaim.istargetting and (State.targetaim.target and Utils.hascharacter(State.targetaim.target))) then
+        Chams.TargetChams.Enabled = false
+    else
+        Chams.TargetChams.Adornee = State.targetaim.target.Character
+        Chams.TargetChams.Parent = State.targetaim.target.Character
+        Chams.TargetChams.FillColor = Options.TargetChamsFill and Options.TargetChamsFill.Value or Color3.fromRGB(219, 68, 103)
+        Chams.TargetChams.Enabled = true
+    end
+end))
+table.insert(tbl16, RunService.RenderStepped:Connect(function()
+    if not (Toggles and Options) then
+        return
+    end
+    if not (Toggles.TargetVisuals and Toggles.TargetVisuals.Value and State.targetaim.istargetting) then
+        Drawings.Tracer.Visible = false
+        Drawings.Dot.Visible = false
+        return
+    end
+    local v212, v213 = Utils.worldtoscreen(State.targetaim.predictedposition)
+    if not (Toggles.TargetTracer and Toggles.TargetTracer.Value) then
+        Drawings.Tracer.Visible = false
+    else
+        Drawings.Tracer.Visible = v213
+        Drawings.Tracer.From = UserInputService:GetMouseLocation()
+        Drawings.Tracer.To = v212
+        Drawings.Tracer.Color = Options.TargetTracerColor and Options.TargetTracerColor.Value or Color3.fromRGB(219, 68, 103)
+    end
+    if not (Toggles.TargetDot and Toggles.TargetDot.Value) then
+        Drawings.Dot.Visible = false
+    else
+        Drawings.Dot.Visible = v213
+        Drawings.Dot.Position = v212
+        Drawings.Dot.Color = Options.TargetDotColor and Options.TargetDotColor.Value or Color3.fromRGB(219, 68, 103)
+        Drawings.Dot.Radius = 6
+    end
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    TargetStrafe.Update()
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    if not (Toggles and Options) then
+        return
+    end
+    if Toggles.AntiLockEnabled and (Toggles.AntiLockEnabled.Value and (Options.AntiLockKey and Options.AntiLockKey:GetState())) then
+        AntiLock.Update()
+    end
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    fn5()
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    if SelfAura.enabled then
+        SelfAura.update_aura()
+    end
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    AntiVoid.Update()
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    RemoveSeats.Update()
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    AutoReload.CheckAndReload()
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    if not State.autobuy.isactive then
+        return
+    end
+    local v214 = not Utils.hascharacter(LocalPlayer)
+    if v214 then
+        State.autobuy.hasboughtthislife = false
+        State.autobuy.boughtitems = {}
+    end
+    if not (not State.wasdead or v214) then
+        task.wait(1)
+        AutoBuy.BuySelected()
+    end
+    State.wasdead = v214
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    if State.autobuy.isactive then
+        if Utils.hascharacter(LocalPlayer) then
+            if DaHood.getarmor(LocalPlayer) < State.autobuy.armorthreshold then
+                AutoBuy.BuyArmor()
+            end
+            return
+        end
+        return
+    end
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function(arg198)
+    if not (Toggles and Options and Utils.hascharacter(LocalPlayer)) then
+        return
+    end
+    local HumanoidRootPart16 = LocalPlayer.Character.HumanoidRootPart
+    local Humanoid6 = LocalPlayer.Character.Humanoid
+    if Toggles.SpeedEnabled and Toggles.SpeedEnabled.Value and Options.SpeedKey and Options.SpeedKey:GetState() then
+        HumanoidRootPart16.CFrame = HumanoidRootPart16.CFrame + Humanoid6.MoveDirection * (Options.SpeedAmount and Options.SpeedAmount.Value or 1)
+    end
+    if Toggles.FlyEnabled and Toggles.FlyEnabled.Value and Options.FlyKey and Options.FlyKey:GetState() then
+        local v215 = Options.FlySpeed and Options.FlySpeed.Value or 2
+        local v216 = 0
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            v216 = v215
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            v216 = -v215
+        end
+        HumanoidRootPart16.CFrame = HumanoidRootPart16.CFrame + Humanoid6.MoveDirection * arg198 * v215 * 10 + Vector3.new(0, v216 * arg198 * 10, 0)
+        HumanoidRootPart16.Velocity = Vector3.new(0, 0.1, 0)
+    end
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    if not (Toggles and Options) then
+        return
+    end
+    if Toggles.WorldFog and Toggles.WorldFog.Value then
+        Lighting.FogColor = Options.WorldFogColor and Options.WorldFogColor.Value or Color3.new(0.5, 0.5, 0.5)
+        Lighting.FogStart = Options.WorldFogStart and Options.WorldFogStart.Value or 0
+        Lighting.FogEnd = Options.WorldFogEnd and Options.WorldFogEnd.Value or 1000
+    end
+    if Toggles.WorldAmbient and Toggles.WorldAmbient.Value then
+        Lighting.Ambient = Options.WorldAmbientColor and Options.WorldAmbientColor.Value or Color3.new(0.5, 0.5, 0.5)
+    end
+    if Toggles.WorldTime and Toggles.WorldTime.Value then
+        Lighting.ClockTime = Options.WorldTimeValue and Options.WorldTimeValue.Value or 14
+    end
+    if Toggles.WorldBrightness and Toggles.WorldBrightness.Value then
+        Lighting.Brightness = Options.WorldBrightnessValue and Options.WorldBrightnessValue.Value or 1
+    end
+end))
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    if not (Toggles and Options) then
+        return
+    end
+    if not Utils.hascharacter(LocalPlayer) then
+        return
+    end
+    local HumanoidRootPart17 = LocalPlayer.Character.HumanoidRootPart
+    if Toggles.VelocityEnabled and Toggles.VelocityEnabled.Value and Options.VelocityKey and Options.VelocityKey:GetState() then
+        local v217 = Options.VelocityType and Options.VelocityType.Value or "Strafe"
+        local Velocity = HumanoidRootPart17.Velocity
+        local vector36 = nil
+        if v217 == "Strafe" then
+            local v218 = Options.VelocityStrafeSpeed and Options.VelocityStrafeSpeed.Value or 1
+            local v219 = (Options.VelocityStrafeDistance and Options.VelocityStrafeDistance.Value or 10) * 10
+            local v220 = tick() * v218 * math.pi * 2
+            vector36 = Vector3.new(math.cos(v220) * v219, 0, math.sin(v220) * v219)
+        elseif v217 == "Static" then
+            vector36 = Vector3.new(100, 0, 100)
+        elseif v217 == "Random" then
+            vector36 = Utils.randomvector3((Options.VelocityRandomization and Options.VelocityRandomization.Value or 50) * 10)
+        end
+        if vector36 then
+            HumanoidRootPart17.Velocity = vector36
+            RunService.RenderStepped:Wait()
+            HumanoidRootPart17.Velocity = Velocity
+        end
+    end
+    if Toggles.CSyncEnabled and (Toggles.CSyncEnabled.Value and Options.CSyncKey and Options.CSyncKey:GetState()) then
+        local v221 = Options.CSyncType and Options.CSyncType.Value or "Static Local"
+        local v222 = Options.CSyncOffsetX and Options.CSyncOffsetX.Value or 0
+        local v223 = Options.CSyncOffsetY and Options.CSyncOffsetY.Value or 0
+        local v224 = Options.CSyncRandomization and Options.CSyncRandomization.Value or 10
+        State.originalposition = HumanoidRootPart17.CFrame
+        local v225
+        if v221 == "Static Local" then
+            v225 = HumanoidRootPart17.CFrame + Vector3.new(v222, v223, 0)
+        elseif v221 == "Static Target" and (State.targetaim.target and Utils.hascharacter(State.targetaim.target)) then
+            v225 = State.targetaim.target.Character.HumanoidRootPart.CFrame + Vector3.new(v222, v223, 0)
+        elseif v221 == "Random Local" then
+            v225 = HumanoidRootPart17.CFrame + Utils.randomvector3(v224)
+        elseif v221 == "Random Target" and (State.targetaim.target and Utils.hascharacter(State.targetaim.target)) then
+            v225 = State.targetaim.target.Character.HumanoidRootPart.CFrame + Utils.randomvector3(v224)
+        else
+            v225 = HumanoidRootPart17.CFrame + Vector3.new(v222, v223, 0)
+        end
+        if v225 then
+            HumanoidRootPart17.CFrame = v225
+            RunService.RenderStepped:Wait()
+            HumanoidRootPart17.CFrame = State.originalposition
+        end
+    end
+end))
+table.insert(tbl16, UserInputService.InputBegan:Connect(function(arg199, arg224)
+    if not arg224 then
+        if not (Toggles and Options) then
+            return
+        end
+        if not (not Options.DesyncKey or (arg199.KeyCode ~= Options.DesyncKey.Value or not Toggles.DesyncEnabled or not Toggles.DesyncEnabled.Value)) then
+            if not State.networkdesync.enabled then
+                NetworkDesync.Start()
+            else
+                NetworkDesync.Stop()
+            end
+        end
+        return
+    end
+end))
+local v226 = nil
+v226 = hookmetamethod(game, "__newindex", function(arg1100, arg225, arg319)
+    if not (checkcaller() or not arg1100:IsA("Humanoid")) then
+        if not (Toggles and Toggles.NoJumpCooldown) or (not Toggles.NoJumpCooldown.Value or arg225 ~= "JumpPower") then
+            if not (not Toggles or (not (Toggles.NoSlow and Toggles.NoSlow.Value) or arg225 ~= "WalkSpeed" or not (tonumber(arg319) < 16))) then
+                arg319 = 16
+            end
+            return v226(arg1100, arg225, arg319)
+        end
+        return
+    end
+    return v226(arg1100, arg225, arg319)
+end)
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    if Config["ragetargetaim:enabled"] then
+        if Config["ragetargetaim:autoshoot"] then
+            if not (State.targetaim.istargetting and State.targetaim.target) then
+                return
+            end
+            if not (Utils.hascharacter(LocalPlayer) and Utils.hascharacter(State.targetaim.target)) then
+                return
+            end
+            if not Utils.isplayerbehindwall(State.targetaim.target) then
+                if tick() - State.lastshottime < 0.15 then
+                    return
+                end
+                if State.targetaim.predictedposition == Vector3.new() then
+                    return
+                end
+                local Tool2 = LocalPlayer.Character:FindFirstChildWhichIsA("Tool")
+                if Tool2 then
+                    pcall(function()
+                        Tool2:Activate()
+                    end)
+                    State.lastshottime = tick()
+                end
+                return
+            end
+            return
+        end
+        return
+    end
+end))
+local tbl17 = {LastHealth = {}, HitChamsInstances = {}}
+local fn6 = function(arg1101, arg226, arg320)
+    if not arg1101 then
+        return
+    end
+    for k31, v227 in ipairs(tbl17.HitChamsInstances) do
+        if not v227 or v227.Parent ~= arg1101 then
+            continue
+        end
+        v227:Destroy()
+    end
+    local instance16 = Instance.new("Highlight")
+    instance16.FillColor = arg226
+    instance16.OutlineColor = arg226
+    instance16.FillTransparency = 0.3
+    instance16.OutlineTransparency = 0
+    instance16.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    instance16.Adornee = arg1101
+    instance16.Parent = arg1101
+    table.insert(tbl17.HitChamsInstances, instance16)
+    task.delay(arg320, function()
+        if instance16 and instance16.Parent then
+            instance16:Destroy()
+        end
+        local v228 = table.find(tbl17.HitChamsInstances, instance16)
+        if v228 then
+            table.remove(tbl17.HitChamsInstances, v228)
+        end
+    end)
+end
+table.insert(tbl16, RunService.Heartbeat:Connect(function()
+    if not (Toggles and Toggles.HitEnabled and Toggles.HitEnabled.Value) then
+        return
+    end
+    for k32, v229 in ipairs(Players:GetPlayers()) do
+        if v229 == LocalPlayer or not Utils.hascharacter(v229) then
+            continue
+        end
+        local Humanoid7 = v229.Character:FindFirstChildOfClass("Humanoid")
+        if not Humanoid7 then
+            continue
+        end
+        local Health = Humanoid7.Health
+        local v230 = tbl17.LastHealth[v229.UserId] or Health
+        if Health < v230 and State.targetaim.target == v229 then
+            if Toggles.HitSound and Toggles.HitSound.Value then
+                local v231 = HitSounds[Options.HitSoundSelect and Options.HitSoundSelect.Value or "RIFK7"]
+                if v231 then
+                    Utils.playsound(Options.HitSoundVolume and Options.HitSoundVolume.Value or 5, v231)
+                end
+            end
+            if Toggles.HitChams and Toggles.HitChams.Value then
+                fn6(v229.Character, Options.HitChamsColor and Options.HitChamsColor.Value or Color3.fromRGB(219, 68, 103), Options.HitChamsDuration and Options.HitChamsDuration.Value or 0.5)
+            end
+            if Toggles.HitNotify and Toggles.HitNotify.Value then
+                Library:Notify(string.format("Hit %s for %.1f!", v229.DisplayName, v230 - Health), 2)
+            end
+        end
+        tbl17.LastHealth[v229.UserId] = Health
+    end
+end))
+table.insert(tbl16, Players.PlayerAdded:Connect(function(arg1102)
+    task.wait(1)
+    if not (arg1102 == LocalPlayer or not ModDetector.IsMod(arg1102)) then
+        local v232 = ModDetector.RegisterMod(arg1102)
+        Library:Notify("[\226\154\160\239\184\143 STAFF JOINED] " .. arg1102.Name .. " (" .. v232 .. ") - " .. ModDetector.GetModCount() .. " staff in server", 10)
+    end
+end))
+table.insert(tbl16, Players.PlayerRemoving:Connect(function(arg1103)
+    if State.targetaim.target == arg1103 then
+        State.targetaim.target = nil
+        State.targetaim.istargetting = false
+    end
+    if State.silentaim.target == arg1103 then
+        State.silentaim.target = nil
+        State.silentaim.istargetting = false
+    end
+    State.resolver.playerdata[arg1103.UserId] = nil
+    tbl17.LastHealth[arg1103.UserId] = nil
+    local v233 = tbl[arg1103.UserId]
+    if v233 then
+        tbl[arg1103.UserId] = nil
+        Library:Notify("[STAFF LEFT] " .. v233.name .. " (" .. v233.role .. ") - " .. ModDetector.GetModCount() .. " staff remaining", 5)
+    end
+end))
+LocalPlayer.CharacterAdded:Connect(function(arg1104)
+    RemoveSeats.Setup()
+    task.wait(0.5)
+    local HumanoidRootPart18 = arg1104:WaitForChild("HumanoidRootPart", 5)
+    if HumanoidRootPart18 then
+        State.antivoid.lastsafeposition = HumanoidRootPart18.CFrame
+    end
+end)
+if LocalPlayer.Character then
+    RemoveSeats.Setup()
+    local HumanoidRootPart19 = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if HumanoidRootPart19 then
+        State.antivoid.lastsafeposition = HumanoidRootPart19.CFrame
+    end
+end
+Library:OnUnload(function()
+    for k33, v234 in ipairs(tbl16) do
+        if typeof(v234) ~= "RBXScriptConnection" then
+            continue
+        end
+        v234:Disconnect()
+    end
+    for k34, v235 in ipairs(tbl13) do
+        if typeof(v235) ~= "RBXScriptConnection" then
+            continue
+        end
+        v235:Disconnect()
+    end
+    AutoStomp.Stop()
+    State.knockstomp.isactive = false
+    NetworkDesync.Stop()
+    if v171 then
+        v171:Destroy()
+    end
+    for k35, v236 in pairs(SelfAura.aura_cache) do
+        if v236.attachment then
+            v236.attachment:Destroy()
+        end
+        if not v236.attachments then
+            continue
+        end
+        for k36, v237 in ipairs(v236.attachments) do
+            v237:Destroy()
+        end
+    end
+    if State.animationplayer.animationtrack then
+        State.animationplayer.animationtrack:Stop()
+    end
+    for k37, v238 in ipairs(tbl17.HitChamsInstances) do
+        if not (v238 and v238.Parent) then
+            continue
+        end
+        v238:Destroy()
+    end
+    for k38, v239 in pairs(Drawings) do
+        pcall(function()
+            v239:Remove()
+        end)
+    end
+    for k39, v240 in pairs(Chams) do
+        pcall(function()
+            v240:Destroy()
+        end)
+    end
+    pcall(function()
+        Lighting.FogColor = OriginalLighting.FogColor
+        Lighting.FogStart = OriginalLighting.FogStart
+        Lighting.FogEnd = OriginalLighting.FogEnd
+        Lighting.Ambient = OriginalLighting.Ambient
+        Lighting.Brightness = OriginalLighting.Brightness
+        Lighting.ClockTime = OriginalLighting.ClockTime
+    end)
+    if Utils.hascharacter(LocalPlayer) then
+        pcall(function()
+            CurrentCamera.CameraSubject = LocalPlayer.Character.Humanoid
+        end)
+    end
+    Library.Unloaded = true
+    print("Avenir Rage unloaded successfully!")
+end)
+SaveManager:LoadAutoloadConfig()
+Library:Notify("Cracked by @.cuvt suck dick flock", 5)
