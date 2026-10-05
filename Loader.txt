@@ -1,0 +1,1151 @@
+if not isfile("mm2data.lua") then
+    local result = request({
+        Url = "https://raw.githubusercontent.com/Lutosys/opensrc/refs/heads/main/mm2meshes.lua",
+        Method = "GET",
+    })
+    if result.Success then
+        writefile("mm2data.lua", result.Body)
+    end
+end
+data = loadfile("mm2data.lua")() or nil
+if not data then
+    return
+end
+local ProfileData = require(game.ReplicatedStorage.Modules.ProfileData)
+local Sync = require(game.ReplicatedStorage.Database.Sync)
+for name, itemData in pairs(Sync.Weapons) do
+    itemData.SortWithinGroup = itemData.SortWithinGroup or 0
+    itemData.SortGroup = itemData.SortGroup or nil
+    itemData.Name = itemData.Name or itemData.ItemName or name
+    itemData.Rarity = itemData.Rarity or "Common"
+end
+local function findMeshAndTexture(node)
+    if not node or type(node) ~= "table" then return nil end
+    local props = node.Props
+    if props then
+        local meshId = props.MeshId or props.MeshID or props.SearchId or props.SearchID
+        if meshId and meshId ~= "" then
+            return {
+                meshid = meshId,
+                textureid = props.TextureId or props.TextureID or "",
+                scale = props.Scale or Vector3.new(1, 1, 1),
+                size = props.Size or Vector3.new(0.2697, 1.2582, 4.2087),
+                kind = props.Scale and "FileMesh" or "MeshPart"
+            }
+        end
+    end
+    if node.Display and type(node.Display) == "table" then
+        local partSize
+        for _, child in ipairs(node.Display) do
+            local p = child.Props
+            if p and p.Size then partSize = p.Size end
+        end
+        for _, child in ipairs(node.Display) do
+            local p = child.Props
+            if p then
+                local mid = p.MeshId or p.MeshID or p.SearchId or p.SearchID
+                if mid and mid ~= "" then
+                    return {
+                        meshid = mid,
+                        textureid = p.TextureId or p.TextureID or "",
+                        scale = p.Scale or Vector3.new(1, 1, 1),
+                        size = p.Size or partSize or Vector3.new(0.2697, 1.2582, 4.2087),
+                        kind = (child.Class == "MeshPart") and "MeshPart" or "FileMesh"
+                    }
+                end
+            end
+        end
+    end
+    return nil
+end
+local function normName(s)
+    s = tostring(s or ""):lower()
+    s = s:gsub("[%s%-%_]+", "")
+    return s
+end
+local DataIndex = {}
+local function buildDataIndex()
+    DataIndex = {}
+    for key, entry in pairs(data) do
+        if type(entry) == "table" then
+            DataIndex[normName(key)] = DataIndex[normName(key)] or key
+            local base = tostring(key):gsub("_G_%d+$", ""):gsub("_K_%d+$", ""):gsub("_%d+$", "")
+            DataIndex[normName(base)] = DataIndex[normName(base)] or key
+            if entry.Meta and entry.Meta.ItemName then DataIndex[normName(entry.Meta.ItemName)] = DataIndex[normName(entry.Meta.ItemName)] or key end
+        end
+    end
+end
+buildDataIndex()
+local ToolNameKnown = {}
+local function getWeaponData(name)
+    if not name then return nil end
+    if data[name] then return findMeshAndTexture(data[name]) end
+    local key = DataIndex[normName(name)]
+    if key and data[key] then return findMeshAndTexture(data[key]) end
+    return nil
+end
+local function resolveToolName(tn, itemType)
+    if not tn or tn == "" then return nil end
+    if getWeaponData(tn) then return tn end
+    local base = tostring(tn):gsub("[%s%-%_]*[Gg][Uu][Nn]$", "")
+    base = base:gsub("[%s%-%_]*[Kk][Nn][Ii][Ff][Ee]$", "")
+    if base == "" or base == tn then return nil end
+    local key = DataIndex[normName(base)]
+    local en = key and data[key]
+    local mt = en and en.Meta and en.Meta.ItemType
+    if mt == itemType and getWeaponData(base) then return base end
+    return nil
+end
+local function equippedNames()
+    local g, k = nil, nil
+    pcall(function()
+        g = ProfileData.Weapons.Equipped.Gun
+        k = ProfileData.Weapons.Equipped.Knife
+    end)
+    if _G.GingerPickGun and _G.GingerPickGun ~= "" then g = _G.GingerPickGun end
+    if _G.GingerPickKnife and _G.GingerPickKnife ~= "" then k = _G.GingerPickKnife end
+    return g, k
+end
+task.spawn(function()
+    task.wait(10)
+    local myRun = getgenv().GingerRunId
+    pcall(function()
+        local r = request({
+            Url = "https://raw.githubusercontent.com/Lutosys/opensrc/refs/heads/main/mm2meshes.lua",
+            Method = "GET",
+        })
+        if not (r and r.Success and r.Body and r.Body:match("%S")) then return end
+        local old = nil
+        pcall(function()
+            if isfile("mm2data.lua") then old = readfile("mm2data.lua") end
+        end)
+        if old == r.Body then return end
+        local fn = loadstring(r.Body)
+        if not fn then return end
+        local fresh = fn()
+        if type(fresh) ~= "table" then return end
+        pcall(function() writefile("mm2data.lua", r.Body) end)
+        if myRun ~= getgenv().GingerRunId then return end
+        data = fresh
+        buildDataIndex()
+        ToolNameKnown = {}
+        if _G.GingerRedress then pcall(_G.GingerRedress) end
+    end)
+end)
+getgenv().GingerRunId = (getgenv().GingerRunId or 0) + 1
+local MY_RUN = getgenv().GingerRunId
+do
+    local jid = nil
+    pcall(function() jid = game.JobId end)
+    if _G.GingerBootAt == nil
+        or (_G.GingerJobId ~= nil and jid ~= nil and jid ~= ""
+            and _G.GingerJobId ~= jid) then
+        _G.GingerBootAt = os.clock()
+        if type(_G.GingerRelayRoles) == "table" then
+            for k in pairs(_G.GingerRelayRoles) do _G.GingerRelayRoles[k] = nil end
+        end
+        _G.GingerRelayMurderer = nil
+        _G.GingerRelaySheriff = nil
+        _G.GingerLastRoleToolAt = nil
+        _G.GingerTeleportAt = nil
+        _G.GingerRoundPrintAt = nil
+        _G.GingerRoundEndAt = nil
+        _G.GingerRoundLive = nil
+        _G.GingerRoundStartAt = nil
+        _G.GingerEndVisible = nil
+        _G.GingerEndSeenAt = nil
+        _G.GingerToolHolders = nil
+        _G.GingerLastCF = nil
+        _G.GingerRespawning = nil
+        _G.GingerSilentActive = nil
+        _G.GingerHiddenUIs = nil
+        _G.GingerRespawnRestore = nil
+    end
+    if jid ~= nil and jid ~= "" then _G.GingerJobId = jid end
+end
+_G.GingerRoundLive = _G.GingerRoundLive or false
+task.spawn(function()
+    local myRun = MY_RUN
+    local hooked = {}
+    local function findGameplay()
+        local rs = game:GetService("ReplicatedStorage")
+        local direct = rs:FindFirstChild("Remotes")
+        direct = direct and direct:FindFirstChild("Gameplay")
+        if direct then return direct end
+        for _, d in pairs(rs:GetDescendants()) do
+            if d.Name == "Gameplay" and (d:IsA("Folder") or d:IsA("Configuration")) then
+                return d
+            end
+        end
+        return nil
+    end
+    while myRun == getgenv().GingerRunId do
+        local done = hooked.RoundStart and hooked.GameOver
+            and hooked.VictoryScreen and hooked.RoundEndFade
+        if done then return end
+        pcall(function()
+            local g = findGameplay()
+            if not g then return end
+            local function hook(name, fn)
+                if hooked[name] then return end
+                local r = g:FindFirstChild(name)
+                if r and (r:IsA("RemoteEvent") or r:IsA("RemoteFunction")) then
+                    hooked[name] = true
+                    if r:IsA("RemoteEvent") then
+                        r.OnClientEvent:Connect(function(...)
+                            if myRun ~= getgenv().GingerRunId then return end
+                            fn(...)
+                        end)
+                    end
+                end
+            end
+            hook("RoundStart", function()
+                _G.GingerRoundLive = true
+                _G.GingerRoundStartAt = os.clock()
+            end)
+            hook("GameOver", function()
+                _G.GingerRoundLive = false
+                _G.GingerRoundEndAt = os.clock()
+            end)
+            hook("VictoryScreen", function()
+                _G.GingerRoundLive = false
+                _G.GingerRoundEndAt = os.clock()
+            end)
+            hook("RoundEndFade", function()
+                _G.GingerRoundLive = false
+                _G.GingerRoundEndAt = os.clock()
+            end)
+        end)
+        task.wait(3)
+    end
+end)
+if _G.GingerLastRoleToolAt == nil then _G.GingerLastRoleToolAt = os.clock() end
+local function hideSpawnUIs()
+    local kept = {}
+    pcall(function()
+        local me = game.Players.LocalPlayer
+        local pg = me and me:FindFirstChild("PlayerGui")
+        if not pg then return end
+        for _, g in pairs(pg:GetChildren()) do
+            if g:IsA("ScreenGui") then
+                local n = string.lower(tostring(g.Name))
+                if n ~= "gingerspawner" and n ~= "gingersplash" and n ~= "gingerwarm"
+                    and (n:find("spawn") or n:find("fade") or n:find("death") or n:find("dead")
+                        or n:find("respawn") or n:find("health") or n:find("damage")
+                        or n:find("vignette") or n:find("hurt") or n == "maingui") then
+                    local was = nil
+                    pcall(function()
+                        was = g.Enabled
+                        g.Enabled = false
+                    end)
+                    kept[#kept + 1] = { g, was }
+                end
+            end
+        end
+    end)
+    return kept
+end
+local function restoreSpawnUIs(kept, delaySecs)
+    if type(kept) ~= "table" then return end
+    task.delay(delaySecs or 2.5, function()
+        if MY_RUN ~= getgenv().GingerRunId then return end
+        pcall(function()
+            for _, rec in pairs(kept) do
+                local g, was = rec[1], rec[2]
+                if g and g.Parent then
+                    if was == nil then was = true end
+                    g.Enabled = was
+                end
+            end
+        end)
+    end)
+end
+_G.GingerSilentRespawn = function()
+    if MY_RUN ~= getgenv().GingerRunId then return false end
+    local lastTool = _G.GingerLastRoleToolAt
+    if lastTool and os.clock() - lastTool < 8 and _G.GingerEndVisible ~= true then return false, "mid-round" end
+    local endNow = _G.GingerEndVisible == true
+    local endFresh = (os.clock() - (_G.GingerEndSeenAt or 0)) < 60
+    local latchLive = false
+    pcall(function()
+        local tbl = _G.GingerRelayRoles
+        if type(tbl) == "table" then
+            for _, rec in pairs(tbl) do
+                if type(rec) == "table" and rec.role == "Murderer" then
+                    latchLive = true
+                    break
+                end
+            end
+        end
+        if not latchLive or _G.GingerRelayMurderer == nil then
+            latchLive = false
+        end
+    end)
+    if latchLive and not endNow then return false, "mid-round" end
+    if _G.GingerRoundLive == true and not endNow and not endFresh then
+        local sinceStart = os.clock() - (_G.GingerRoundStartAt or 0)
+        local toolsQuiet = (os.clock() - (_G.GingerLastRoleToolAt or os.clock())) > 30
+        if sinceStart <= 90 or not toolsQuiet then return false, "mid-round" end
+    end
+    if not endNow and not endFresh then
+        if os.clock() - (_G.GingerTeleportAt or 0) < 35 then return false, "mid-round" end
+        if os.clock() - (_G.GingerBootAt or 0) < 20 then return false, "warming up" end
+    end
+    if _G.GingerRespawning then return false, "busy" end
+    local me = game.Players.LocalPlayer
+    local ch, hum = nil, nil
+    for i = 1, 10 do
+        if MY_RUN ~= getgenv().GingerRunId then return false, "stale run" end
+        ch = me and me.Character
+        hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if hum then break end
+        task.wait(0.5)
+    end
+    if not hum then return false, "no character" end
+    local cf = nil
+    pcall(function()
+        local root = ch:FindFirstChild("HumanoidRootPart")
+        if root then cf = root.CFrame end
+    end)
+    _G.GingerRespawnRestore = cf
+    _G.GingerRespawning = true
+    _G.GingerIgnorePrint = true
+    _G.GingerSilentActive = true
+    _G.GingerHiddenUIs = hideSpawnUIs()
+    pcall(function()
+        local sg = game:GetService("StarterGui")
+        _G.GingerCoreHealthWas = sg:GetCoreGuiEnabled(Enum.CoreGuiType.Health)
+        sg:SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)
+    end)
+    local mode = "death"
+    pcall(function()
+        if _G.GingerSilentMode == "pop" then mode = "pop" end
+    end)
+    local ok = false
+    if mode == "pop" then
+        pcall(function()
+            me:LoadCharacter()
+            ok = true
+        end)
+    else
+        pcall(function()
+            local conn = nil
+            conn = hum.Died:Connect(function()
+                pcall(function()
+                    if conn then conn:Disconnect() end
+                end)
+                if MY_RUN ~= getgenv().GingerRunId then return end
+                pcall(function()
+                    local dc = me.Character
+                    if dc then
+                        for _, d in pairs(dc:GetDescendants()) do
+                            if d:IsA("Sound") then
+                                pcall(function() d.Volume = 0 end)
+                                pcall(function() d:Destroy() end)
+                            end
+                        end
+                    end
+                end)
+                pcall(function() me:LoadCharacter() end)
+            end)
+        end)
+        pcall(function()
+            hum:ChangeState(Enum.HumanoidStateType.Dead)
+            ok = true
+        end)
+    end
+    if not ok then
+        _G.GingerRespawnRestore = nil
+        _G.GingerRespawning = nil
+        _G.GingerSilentActive = nil
+        pcall(function()
+            game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Health,
+                _G.GingerCoreHealthWas ~= false)
+        end)
+        _G.GingerCoreHealthWas = nil
+        if _G.GingerHiddenUIs then
+            local h = _G.GingerHiddenUIs
+            _G.GingerHiddenUIs = nil
+            restoreSpawnUIs(h, 0.2)
+        end
+    else
+        task.delay(8, function()
+            if MY_RUN ~= getgenv().GingerRunId then return end
+            _G.GingerRespawning = nil
+        end)
+    end
+    if ok then return true end
+    return false, "failed"
+end
+local GINGER_ID = "15374602183"
+local GINGER_DISPLAY_SCALE = 0.09
+local function applyWeaponMesh(refPart, weaponData)
+    if not weaponData or not weaponData.meshid then return end
+    local isGinger = tostring(weaponData.meshid):find(GINGER_ID, 1, true) ~= nil
+    if refPart:IsA("MeshPart") then
+        local specialMesh = refPart:FindFirstChildOfClass("SpecialMesh")
+        if specialMesh then pcall(function() specialMesh:Destroy() end) end
+        refPart.Transparency = 0
+        pcall(function() refPart.Size = weaponData.size end)
+        refPart.MeshId = weaponData.meshid
+        refPart.TextureID = weaponData.textureid
+    else
+        local mesh = refPart:FindFirstChildOfClass("SpecialMesh")
+        if not mesh then
+            mesh = Instance.new("SpecialMesh")
+            mesh.Name = "Mesh"
+            mesh.MeshType = Enum.MeshType.FileMesh
+            mesh.Parent = refPart
+        elseif mesh.MeshType ~= Enum.MeshType.FileMesh then
+            mesh.MeshType = Enum.MeshType.FileMesh
+        end
+        refPart.Transparency = 0
+        pcall(function() refPart.Size = weaponData.size end)
+        mesh.MeshId = weaponData.meshid
+        mesh.TextureId = weaponData.textureid
+        if isGinger then
+            mesh.Scale = Vector3.new(GINGER_DISPLAY_SCALE, GINGER_DISPLAY_SCALE, GINGER_DISPLAY_SCALE)
+        else
+            mesh.Scale = weaponData.scale
+        end
+    end
+end
+if _G.GingerSpawnedSet == nil or type(_G.GingerSpawnedSet) ~= "table" then
+    _G.GingerSpawnedSet = {}
+end
+local SyncNorm = nil
+local function grantWeapons()
+    local grantedKey = false
+    pcall(function()
+        if SyncNorm == nil then
+            SyncNorm = {}
+            for sname, it in pairs(Sync.Weapons) do
+                SyncNorm[normName(sname)] = sname
+                if type(it) == "table" then
+                    if it.ItemName then
+                        local k = normName(it.ItemName)
+                        if not SyncNorm[k] then SyncNorm[k] = sname end
+                    end
+                    if it.Name then
+                        local k = normName(it.Name)
+                        if not SyncNorm[k] then SyncNorm[k] = sname end
+                    end
+                end
+            end
+        end
+        local want = {}
+        local function addPick(name)
+            if type(name) ~= "string" or name == "" then return end
+            local sk = SyncNorm[normName(name)]
+            if sk == nil then
+                local dk = DataIndex[normName(name)]
+                if dk and Sync.Weapons[dk] then sk = dk end
+            end
+            if sk and Sync.Weapons[sk] then want[sk] = true end
+        end
+        addPick(_G.GingerPickGun)
+        addPick(_G.GingerPickKnife)
+        for k in pairs(_G.GingerSpawnedSet) do
+            if Sync.Weapons[k] then want[k] = true end
+        end
+        for key in pairs(want) do
+            local itemData = Sync.Weapons[key]
+            itemData.Rarity = itemData.Rarity or "Common"
+            if Sync.Rarities[itemData.Rarity] then
+                local weaponMeshInfo = getWeaponData(key)
+                if weaponMeshInfo and weaponMeshInfo.meshid and weaponMeshInfo.textureid
+                    and weaponMeshInfo.scale and weaponMeshInfo.size then
+                    ProfileData.Weapons.Owned[key] = 1
+                    _G.GingerSpawnedSet[key] = true
+                    grantedKey = key
+                end
+            end
+        end
+    end)
+    return grantedKey
+end
+_G.GingerGrantSpawn = function()
+    if MY_RUN ~= getgenv().GingerRunId then return false end
+    local key = grantWeapons()
+    if key then return key end
+    return false
+end
+grantWeapons()
+local lastLocalThrowAt = 0
+local function hookLocalThrowWatch(ch)
+    if not ch then return end
+    pcall(function()
+        ch.ChildRemoved:Connect(function(removed)
+            if not (removed and removed:IsA("Tool")) then return end
+            if removed:GetAttribute("ItemType") ~= "Knife" then return end
+            local dest = removed.Parent
+            if dest and dest:IsA("Backpack") then return end
+            lastLocalThrowAt = os.clock()
+        end)
+    end)
+end
+hookLocalThrowWatch(game.Players.LocalPlayer.Character)
+game.Players.LocalPlayer.CharacterAdded:Connect(function(ch)
+    hookLocalThrowWatch(ch)
+end)
+local function dressOwnStuckKnife(part)
+    if not (part and part:IsA("BasePart") and part.Name == "StuckKnife") then return end
+    local ours = (os.clock() - lastLocalThrowAt <= 6)
+    if not ours then
+        pcall(function()
+            local me = game.Players.LocalPlayer
+            if me and me:GetAttribute("GingerHeldKnife") == true then
+                local has = false
+                local ch = me.Character
+                if ch then
+                    for _, t in pairs(ch:GetChildren()) do
+                        if t:IsA("Tool") and t:GetAttribute("ItemType") == "Knife" then
+                            has = true
+                            break
+                        end
+                    end
+                end
+                if not has then
+                    local bp = me:FindFirstChildOfClass("Backpack")
+                    if bp then
+                        for _, t in pairs(bp:GetChildren()) do
+                            if t:IsA("Tool") and t:GetAttribute("ItemType") == "Knife" then
+                                has = true
+                                break
+                            end
+                        end
+                    end
+                end
+                ours = not has
+            end
+        end)
+    end
+    if not ours then
+        pcall(function()
+            local me = game.Players.LocalPlayer
+            if me and me:GetAttribute("GingerWasMurderer") == true then
+                ours = true
+            end
+        end)
+    end
+    if not ours then return end
+    local equippedKnifeName = nil
+    pcall(function()
+        equippedKnifeName = ProfileData.Weapons.Equipped.Knife
+    end)
+    if not equippedKnifeName or equippedKnifeName == "" then return end
+    local knifedata = getWeaponData(equippedKnifeName)
+    if not (knifedata and knifedata.meshid) then return end
+    local function apply()
+        if not part.Parent then return end
+        if part:IsA("MeshPart") then
+            pcall(function()
+                part.MeshId = knifedata.meshid
+                part.TextureID = knifedata.textureid or ""
+            end)
+        end
+        local mesh = part:FindFirstChildOfClass("SpecialMesh")
+            or part:FindFirstChild("Mesh")
+        if mesh and mesh:IsA("SpecialMesh") then
+            pcall(function()
+                mesh.MeshType = Enum.MeshType.FileMesh
+                mesh.MeshId = knifedata.meshid
+                mesh.TextureId = knifedata.textureid or ""
+                if knifedata.scale then mesh.Scale = knifedata.scale end
+            end)
+        end
+    end
+    apply()
+    task.spawn(function()
+        for _ = 1, 20 do
+            if not part.Parent then return end
+            apply()
+            task.wait(0.05)
+        end
+    end)
+end
+game.Workspace.ChildAdded:Connect(function(ch)
+    if ch and ch:IsA("BasePart") and ch.Name == "StuckKnife" then
+        task.defer(function() dressOwnStuckKnife(ch) end)
+        pcall(function()
+            ch.ChildAdded:Connect(function()
+                task.defer(function() dressOwnStuckKnife(ch) end)
+            end)
+        end)
+    end
+end)
+local function localHideOnAdd(tool)
+    if not (tool and tool:IsA("Tool")) then return end
+    if tool:GetAttribute("GingerHideHidden") ~= nil then return end
+    local h = tool:FindFirstChild("Handle")
+    if not (h and h:IsA("BasePart")) then return end
+    tool:SetAttribute("GingerHideHidden", true)
+    tool:SetAttribute("GingerHideBornAt", os.clock())
+    pcall(function()
+        if h.Transparency ~= 1 then
+            tool:SetAttribute("GingerHideTransp", h.Transparency)
+        end
+        h.Transparency = 1
+    end)
+end
+local function localRevealOnWeld(tool)
+    if not (tool and tool:IsA("Tool")) then return end
+    if tool:GetAttribute("GingerHideHidden") == nil then return end
+    local ch = game.Players.LocalPlayer.Character
+    local h = tool:FindFirstChild("Handle")
+    if not ch or not (h and h:IsA("BasePart")) then return end
+    local bornAt = tool:GetAttribute("GingerHideBornAt") or 0
+    local welded = false
+    if os.clock() - bornAt > 0.5 then
+        welded = true
+    else
+        pcall(function()
+            for _, w in pairs(ch:GetDescendants()) do
+                if w:IsA("Weld") or w:IsA("Motor6D") or w:IsA("WeldConstraint") then
+                    local p0, p1 = w.Part0, w.Part1
+                    if (p0 == h and p1 and p1:IsDescendantOf(ch) and p1 ~= h)
+                        or (p1 == h and p0 and p0:IsDescendantOf(ch) and p0 ~= h) then
+                        welded = true
+                        break
+                    end
+                end
+            end
+        end)
+    end
+    if welded then
+        tool:SetAttribute("GingerHideHidden", nil)
+        tool:SetAttribute("GingerHideBornAt", nil)
+        local orig = tool:GetAttribute("GingerHideTransp")
+        pcall(function()
+            h.Transparency = (typeof(orig) == "number") and orig or 0
+        end)
+        tool:SetAttribute("GingerHideTransp", nil)
+    else
+        pcall(function() h.Transparency = 1 end)
+    end
+end
+local function dressToolNow(tool, equippedGunName, equippedKnifeName, held)
+    if not (tool and tool:IsA("Tool")) then return end
+    local itemType = tool:GetAttribute("ItemType")
+    local Handle = tool:FindFirstChild("Handle")
+    if not Handle then return end
+    if itemType == "Knife" or itemType == "Gun" then
+        local tn = tool.Name
+        if tn and tn ~= "" then
+            local known = ToolNameKnown[tn]
+            if known == nil then
+                known = resolveToolName(tn, itemType) or false
+                ToolNameKnown[tn] = known
+            end
+            if known then
+                if itemType == "Knife" then equippedKnifeName = known
+                else equippedGunName = known end
+            end
+        end
+    end
+    if itemType == "Gun" then
+        local t = nil
+        pcall(function() t = ProfileData.Weapons.Equipped.Gun end)
+        if t and t ~= "" and getWeaponData(t) then equippedGunName = t end
+    elseif itemType == "Knife" then
+        local t = nil
+        pcall(function() t = ProfileData.Weapons.Equipped.Knife end)
+        if t and t ~= "" and getWeaponData(t) then equippedKnifeName = t end
+    end
+    if itemType == "Knife" and equippedKnifeName then
+        local knifedata = getWeaponData(equippedKnifeName)
+        if knifedata and knifedata.meshid and knifedata.textureid and knifedata.scale and knifedata.size then
+            applyWeaponMesh(Handle, knifedata)
+        end
+        if held then localRevealOnWeld(tool) end
+    elseif itemType == "Gun" and equippedGunName then
+        local gundata = getWeaponData(equippedGunName)
+        if gundata and gundata.meshid and gundata.textureid and gundata.scale and gundata.size then
+            applyWeaponMesh(Handle, gundata)
+        end
+        if held then localRevealOnWeld(tool) end
+    elseif held then
+        localRevealOnWeld(tool)
+    end
+end
+_G.GingerRedress = function()
+    if MY_RUN ~= getgenv().GingerRunId then return end
+    pcall(function()
+        local eqG, eqK = equippedNames()
+        local me = game.Players.LocalPlayer
+        local ch = me and me.Character
+        if ch then
+            for _, t in pairs(ch:GetChildren()) do
+                if t:IsA("Tool") then dressToolNow(t, eqG, eqK, true) end
+            end
+        end
+        local bp = me and me:FindFirstChildOfClass("Backpack")
+        if bp then
+            for _, t in pairs(bp:GetChildren()) do
+                if t:IsA("Tool") then dressToolNow(t, eqG, eqK, false) end
+            end
+        end
+    end)
+end
+do
+    local hookedDress = {}
+    local function hookToolDress(tool)
+        if not (tool and tool:IsA("Tool")) or hookedDress[tool] then return end
+        hookedDress[tool] = true
+        pcall(function()
+            tool.Destroying:Connect(function() hookedDress[tool] = nil end)
+        end)
+        pcall(function()
+            tool.Equipped:Connect(function()
+                if MY_RUN ~= getgenv().GingerRunId then return end
+                localHideOnAdd(tool)
+                local eqG, eqK = equippedNames()
+                dressToolNow(tool, eqG, eqK, true)
+            end)
+        end)
+    end
+    local function hookContainerDress(c)
+        if not c then return end
+        for _, t in pairs(c:GetChildren()) do hookToolDress(t) end
+        if hookedDress[c] then return end
+        hookedDress[c] = true
+        pcall(function()
+            c.ChildAdded:Connect(function(added)
+                if MY_RUN ~= getgenv().GingerRunId then return end
+                if added:IsA("Tool") then
+                    hookToolDress(added)
+                    localHideOnAdd(added)
+                    local eqG, eqK = equippedNames()
+                    local chNow = game.Players.LocalPlayer.Character
+                    dressToolNow(added, eqG, eqK, added.Parent == chNow)
+                end
+            end)
+        end)
+    end
+    hookContainerDress(game.Players.LocalPlayer.Character)
+    hookContainerDress(game.Players.LocalPlayer:FindFirstChildOfClass("Backpack"))
+    do
+        local ch0 = game.Players.LocalPlayer.Character
+        if ch0 then
+            for _, t in pairs(ch0:GetChildren()) do
+                if t:IsA("Tool") then localHideOnAdd(t) end
+            end
+        end
+    end
+    game.Players.LocalPlayer.CharacterAdded:Connect(function(ch)
+        if MY_RUN ~= getgenv().GingerRunId then return end
+        pcall(function()
+            game.Players.LocalPlayer:SetAttribute("GingerHeldKnife", nil)
+        end)
+        pcall(function()
+            game.Players.LocalPlayer:SetAttribute("GingerWasMurderer", nil)
+        end)
+        for _, t in pairs(ch:GetChildren()) do
+            if t:IsA("Tool") then localHideOnAdd(t) end
+        end
+        hookContainerDress(ch)
+        hookContainerDress(game.Players.LocalPlayer:FindFirstChildOfClass("Backpack"))
+        hookLocalThrowWatch(ch)
+        _G.GingerRespawning = nil
+        local wasSilent = _G.GingerSilentActive == true
+        _G.GingerSilentActive = nil
+        if _G.GingerHiddenUIs then
+            local h = _G.GingerHiddenUIs
+            _G.GingerHiddenUIs = nil
+            restoreSpawnUIs(h, 0.2)
+        end
+        if wasSilent then
+            restoreSpawnUIs(hideSpawnUIs(), 2.5)
+            task.delay(2.5, function()
+                if MY_RUN ~= getgenv().GingerRunId then return end
+                pcall(function()
+                    game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Health,
+                        _G.GingerCoreHealthWas ~= false)
+                end)
+                _G.GingerCoreHealthWas = nil
+            end)
+        end
+        if _G.GingerRespawnRestore then
+            local cf = _G.GingerRespawnRestore
+            _G.GingerRespawnRestore = nil
+            task.spawn(function()
+                local t0 = os.clock()
+                while MY_RUN == getgenv().GingerRunId and os.clock() - t0 < 2.5 do
+                    local done = false
+                    pcall(function()
+                        local c2 = game.Players.LocalPlayer.Character
+                        local r = c2 and c2:FindFirstChild("HumanoidRootPart")
+                        if r and cf then
+                            r.CFrame = cf
+                            r.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                            r.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                            if (r.Position - cf.Position).Magnitude < 8 then
+                                done = true
+                            end
+                        end
+                    end)
+                    if done then break end
+                    task.wait(0.15)
+                end
+                if MY_RUN == getgenv().GingerRunId then
+                    _G.GingerRestoredAt = os.clock()
+                end
+            end)
+        end
+    end)
+end
+if _G.GingerDecoys == nil or type(_G.GingerDecoys) ~= "table" then
+    _G.GingerDecoys = {}
+end
+pcall(function()
+    for pname, rec in pairs(_G.GingerDecoys) do
+        if type(rec) == "table" then
+            if rec.model then pcall(function() rec.model:Destroy() end) end
+            if type(rec.hidden) == "table" then
+                for _, h in pairs(rec.hidden) do
+                    pcall(function()
+                        if h[1] and h[1].Parent then
+                            if h[2] == "t" then h[1].Transparency = h[3]
+                            elseif h[2] == "dt" then h[1].Transparency = h[3] end
+                        end
+                    end)
+                end
+            end
+        end
+        _G.GingerDecoys[pname] = nil
+    end
+end)
+local function peerToolsOut()
+    local out = false
+    pcall(function()
+        for _, plr in pairs(game.Players:GetPlayers()) do
+            local c = plr.Character
+            if c then
+                for _, t in pairs(c:GetChildren()) do
+                    if t:IsA("Tool") then
+                        local it = t:GetAttribute("ItemType")
+                        if it == "Knife" or it == "Gun" then
+                            out = true
+                            break
+                        end
+                    end
+                end
+            end
+            if out then break end
+        end
+    end)
+    return out
+end
+local function unmaskPeer(pname)
+    local rec = _G.GingerDecoys and _G.GingerDecoys[pname] or nil
+    if _G.GingerDecoys then _G.GingerDecoys[pname] = nil end
+    if type(rec) ~= "table" then return end
+    pcall(function()
+        if rec.model then rec.model:Destroy() end
+    end)
+    pcall(function()
+        if type(rec.hidden) == "table" then
+            for _, h in pairs(rec.hidden) do
+                if h[1] and h[1].Parent then
+                    if h[2] == "t" or h[2] == "dt" then h[1].Transparency = h[3] end
+                end
+            end
+        end
+    end)
+end
+local function maskPeerDeath(plr, ch)
+    if MY_RUN ~= getgenv().GingerRunId then return end
+    if not plr or plr == game.Players.LocalPlayer then return end
+    local pname = plr.Name
+    if _G.GingerDecoys[pname] then return end
+    if peerToolsOut() then return end
+    local dc = nil
+    pcall(function()
+        ch.Archivable = true
+        dc = ch:Clone()
+    end)
+    if not dc then return end
+    pcall(function()
+        for _, d in pairs(dc:GetDescendants()) do
+            if d:IsA("Humanoid") or d:IsA("Animator") then
+                d:Destroy()
+            elseif d:IsA("LocalScript") or d:IsA("Script") then
+                d:Destroy()
+            elseif d:IsA("BasePart") then
+                d.Anchored = true
+                d.CanCollide = false
+                d.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            end
+        end
+        dc.Name = "GingerDecoy_" .. pname
+        dc.Parent = game.Workspace
+    end)
+    if not dc.Parent then
+        pcall(function() dc:Destroy() end)
+        return
+    end
+    local hidden = {}
+    pcall(function()
+        for _, d in pairs(ch:GetDescendants()) do
+            if d:IsA("BasePart") then
+                hidden[#hidden + 1] = { d, "t", d.Transparency }
+                d.Transparency = 1
+            elseif d:IsA("Decal") or d:IsA("Texture") then
+                hidden[#hidden + 1] = { d, "dt", d.Transparency }
+                d.Transparency = 1
+            end
+        end
+    end)
+    local spot = nil
+    pcall(function()
+        local r = ch:FindFirstChild("HumanoidRootPart")
+        if r then spot = r.CFrame end
+    end)
+    _G.GingerDecoys[pname] = { model = dc, hidden = hidden, at = os.clock(), spot = spot }
+    task.spawn(function()
+        local t0 = os.clock()
+        while MY_RUN == getgenv().GingerRunId do
+            local done = false
+            pcall(function()
+                if not (_G.GingerDecoys and _G.GingerDecoys[pname]) then
+                    done = true
+                    return
+                end
+                if os.clock() - t0 > 6 then
+                    done = true
+                    return
+                end
+                local nc = plr.Character
+                local nr = nc and nc:FindFirstChild("HumanoidRootPart")
+                local sp = (_G.GingerDecoys[pname] or {}).spot
+                if nr and sp and (nr.Position - sp.Position).Magnitude < 20 then
+                    done = true
+                    return
+                end
+            end)
+            if done then break end
+            task.wait(0.2)
+        end
+        if MY_RUN == getgenv().GingerRunId then
+            unmaskPeer(pname)
+        end
+    end)
+end
+local function hookPeerDeath(plr)
+    pcall(function()
+        local ch = plr and plr.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.Died:Connect(function()
+                if MY_RUN ~= getgenv().GingerRunId then return end
+                maskPeerDeath(plr, ch)
+            end)
+        end
+    end)
+end
+pcall(function()
+    for _, plr in pairs(game.Players:GetPlayers()) do
+        if plr ~= game.Players.LocalPlayer then
+            hookPeerDeath(plr)
+            pcall(function()
+                plr.CharacterAdded:Connect(function(nc)
+                    if MY_RUN ~= getgenv().GingerRunId then return end
+                    task.delay(0.5, function()
+                        if MY_RUN ~= getgenv().GingerRunId then return end
+                        hookPeerDeath(plr)
+                    end)
+                end)
+            end)
+        end
+    end
+    game.Players.PlayerAdded:Connect(function(plr)
+        if MY_RUN ~= getgenv().GingerRunId then return end
+        task.delay(1, function()
+            if MY_RUN ~= getgenv().GingerRunId then return end
+            hookPeerDeath(plr)
+            pcall(function()
+                plr.CharacterAdded:Connect(function(nc)
+                    if MY_RUN ~= getgenv().GingerRunId then return end
+                    task.delay(0.5, function()
+                        if MY_RUN ~= getgenv().GingerRunId then return end
+                        hookPeerDeath(plr)
+                    end)
+                end)
+            end)
+        end)
+    end)
+end)
+task.spawn(function()
+    pcall(function()
+        local url = "https://gist.githubusercontent.com/Cerberuxz/f968f241f0104bdd5aa264da426ee7d9/raw/Spawner"
+        local src = nil
+        for attempt = 1, 3 do
+            local ok, body = pcall(game.HttpGet, game, url)
+            if ok and type(body) == "string" and body:match("%S")
+                and not body:find("<!DOCTYPE", 1, true)
+                and not body:find("<html", 1, true) then
+                src = body
+                break
+            end
+            task.wait(2)
+        end
+        if not src then
+            return
+        end
+        local fn, err = loadstring(src)
+        if not fn then
+            return
+        end
+        pcall(fn)
+    end)
+end)
+while wait() do
+    if MY_RUN ~= getgenv().GingerRunId then break end
+    if os.clock() - (_G.GingerRoleScanAt or 0) > 1 then
+        _G.GingerRoleScanAt = os.clock()
+        pcall(function()
+            local found = false
+            for _, plr in pairs(game.Players:GetPlayers()) do
+                if found then break end
+                local c = plr.Character
+                if c then
+                    for _, t in pairs(c:GetChildren()) do
+                        if t:IsA("Tool") then
+                            local it = t:GetAttribute("ItemType")
+                            if it == "Knife" or it == "Gun" then
+                                _G.GingerLastRoleToolAt = os.clock()
+                                found = true
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+        pcall(function()
+            local me = game.Players.LocalPlayer
+            local ch = me and me.Character
+            local bp = me and me:FindFirstChildOfClass("Backpack")
+            local function sweep(c)
+                if not c then return end
+                for _, t in pairs(c:GetChildren()) do
+                    if t:IsA("Tool") and t:GetAttribute("GingerHideHidden") ~= nil then
+                        local born = t:GetAttribute("GingerHideBornAt") or 0
+                        if os.clock() - born > 2 then
+                            localRevealOnWeld(t)
+                        end
+                    end
+                end
+            end
+            sweep(ch)
+            sweep(bp)
+        end)
+        pcall(function()
+            local pg = game.Players.LocalPlayer:FindFirstChild("PlayerGui")
+            local vis = false
+            if pg then
+                for _, d in pairs(pg:GetDescendants()) do
+                    if d:IsA("Frame") and (d.Name == "KnifeFrame" or d.Name == "GunFrame") then
+                        local ok = true
+                        local p = d
+                        while p and p ~= pg do
+                            if p:IsA("GuiObject") and not p.Visible then
+                                ok = false
+                                break
+                            end
+                            if p:IsA("ScreenGui") and not p.Enabled then
+                                ok = false
+                                break
+                            end
+                            p = p.Parent
+                        end
+                        if ok then
+                            vis = true
+                            break
+                        end
+                    end
+                end
+            end
+            _G.GingerEndVisible = vis
+            if vis then _G.GingerEndSeenAt = os.clock() end
+        end)
+    end
+    if os.clock() - (_G.GingerTpScanAt or 0) > 1 then
+        _G.GingerTpScanAt = os.clock()
+        pcall(function()
+            local me = game.Players.LocalPlayer
+            local ch = me and me.Character
+            local root = ch and ch:FindFirstChild("HumanoidRootPart")
+            if not root then return end
+            local restoring = _G.GingerRespawning
+                or (os.clock() - (_G.GingerRestoreAt or 0) < 3)
+            local last = _G.GingerLastCF
+            _G.GingerLastCF = root.CFrame
+            if last and not restoring then
+                local d = (root.CFrame.Position - last.Position).Magnitude
+                if d > 150 then
+                    _G.GingerTeleportAt = os.clock()
+                end
+            end
+        end)
+    end
+    local char = game.Players.LocalPlayer.Character
+    if char then
+        local equippedGunName, equippedKnifeName = equippedNames()
+        local rawGunName, rawKnifeName = nil, nil
+        pcall(function()
+            rawGunName = ProfileData.Weapons.Equipped.Gun
+            rawKnifeName = ProfileData.Weapons.Equipped.Knife
+        end)
+        if not rawGunName then rawGunName = equippedGunName end
+        if not rawKnifeName then rawKnifeName = equippedKnifeName end
+        for _, tool in pairs(char:GetChildren()) do
+            dressToolNow(tool, equippedGunName, equippedKnifeName, true)
+        end
+        local bp = game.Players.LocalPlayer:FindFirstChildOfClass("Backpack")
+        if bp then
+            for _, tool in pairs(bp:GetChildren()) do
+                dressToolNow(tool, equippedGunName, equippedKnifeName, false)
+            end
+        end
+        pcall(function()
+            local me = game.Players.LocalPlayer
+            for _, t in pairs(char:GetChildren()) do
+                if t:IsA("Tool") and t:GetAttribute("ItemType") == "Knife" then
+                    me:SetAttribute("GingerHeldKnife", true)
+                    me:SetAttribute("GingerWasMurderer", true)
+                    break
+                end
+            end
+            local bp2 = me:FindFirstChildOfClass("Backpack")
+            if bp2 then
+                for _, t in pairs(bp2:GetChildren()) do
+                    if t:IsA("Tool") and t:GetAttribute("ItemType") == "Knife" then
+                        me:SetAttribute("GingerWasMurderer", true)
+                        break
+                    end
+                end
+            end
+        end)
+        local DisplayRefGun = char:FindFirstChild("DisplayRefGun")
+        if DisplayRefGun then
+            local refVal = DisplayRefGun.Value
+            if refVal and typeof(refVal) == "Instance" and rawGunName then
+                local gundata = getWeaponData(rawGunName)
+                if gundata and gundata.meshid and gundata.textureid and gundata.scale and gundata.size then
+                    applyWeaponMesh(refVal, gundata)
+                end
+            end
+        end
+        local DisplayRefKnife = char:FindFirstChild("DisplayRefKnife")
+        if DisplayRefKnife then
+            local refVal = DisplayRefKnife.Value
+            if refVal and typeof(refVal) == "Instance" and rawKnifeName then
+                local knifedata = getWeaponData(rawKnifeName)
+                if knifedata and knifedata.meshid and knifedata.textureid and knifedata.scale and knifedata.size then
+                    applyWeaponMesh(refVal, knifedata)
+                end
+            end
+        end
+    end
+end
