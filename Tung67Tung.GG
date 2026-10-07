@@ -102,6 +102,27 @@ local function notify(title, text, kind)
     end)
 end
 
+--safe label text updater (tries every known library API)
+local function setLabelText(label, text)
+    if not label then return end
+    text = tostring(text)
+    pcall(function() label.Text = text end)
+    pcall(function() if type(label.Set) == "function" then label:Set(text) end end)
+    pcall(function() if type(label.SetText) == "function" then label:SetText(text) end end)
+    pcall(function() if type(label.SetLabel) == "function" then label:SetLabel(text) end end)
+    pcall(function()
+        if label.Instance and label.Instance.Text ~= nil then
+            label.Instance.Text = text
+        end
+    end)
+    pcall(function()
+        if label.TextLabel and label.TextLabel.Text ~= nil then
+            label.TextLabel.Text = text
+        end
+    end)
+    pcall(function() if type(label.SetName) == "function" then label:SetName(text) end end)
+end
+
 --avatar helper
 local function loadAvatar(imageLabel, userId)
     task.spawn(function()
@@ -511,8 +532,7 @@ local SilentAimPrediction = (function()
             drawings.tracer.Visible = on; drawings.tracer.From = center; drawings.tracer.To = ps
             drawings.tracer.Color = FOV_INNER_COLOR; drawings.tracer.Thickness = 2; drawings.tracer.Transparency = 0.5
             drawings.pm_outline.Visible, drawings.pm_outline.Position = on, ps; drawings.pm_outline.Color = FOV_OUTER_COLOR
-            drawings.pm_fill.Visible, drawings.pm_fill.Position = on, ps; drawings.pm_fill.Color = FOV_INNER_COLOR
-            drawings.pm_fill.Transparency = 0.2
+            drawings.pm_fill.Visible, drawings.pm_fill.Position = on, ps; drawings.pm_fill.Color = FOV_INNER_COLOR            drawings.pm_fill.Transparency = 0.2
         else
             drawings.tracer.Visible = false; drawings.pm_outline.Visible = false; drawings.pm_fill.Visible = false
         end
@@ -3188,8 +3208,8 @@ task.spawn(function()
     while task.wait(1) do
         pcall(function()
             local el = math.floor(tick() - infoStart)
-            infoUptime:SetName(string.format("uptime: %02d:%02d", math.floor(el/60), el%60))
-            infoPlayers:SetName("players: " .. tostring(#Players:GetPlayers()))
+            setLabelText(infoUptime, string.format("uptime: %02d:%02d", math.floor(el/60), el%60))
+            setLabelText(infoPlayers, "players: " .. tostring(#Players:GetPlayers()))
         end)
     end
 end)
@@ -3327,7 +3347,7 @@ task.spawn(function()
                     loadAvatar(targetAvatar, p.UserId)
                 end
 
-                targetHeaderLabel:SetName("Target selected !")
+                setLabelText(targetHeaderLabel, "Target selected !")
 
                 local char = p.Character
                 if char then
@@ -3339,12 +3359,10 @@ task.spawn(function()
                     local maxHp  = hum and math.floor(hum.MaxHealth) or 100
                     local dist   = (myHRP and hrp) and math.floor((myHRP.Position - hrp.Position).Magnitude) or 0
 
-                    -- Armor (text only, no bar)
                     local armorData = ArmorModule.get(p)
                     local armorCur  = armorData and math.floor(armorData.current) or 0
                     local armorMax  = armorData and math.floor(armorData.max)     or 200
 
-                    -- Status logic
                     local status
                     if hp <= 0 then
                         status = "Bozo Died"
@@ -3354,23 +3372,23 @@ task.spawn(function()
                         status = "Alive"
                     end
 
-                    targetHealthLabel:SetName("health: " .. hp .. "/" .. maxHp .. " | dist: " .. dist)
-                    targetArmorLabel:SetName("armor: "  .. armorCur .. "/" .. armorMax)
-                    targetStateLabel:SetName("status: " .. status)
+                    setLabelText(targetHealthLabel, "health: " .. hp .. "/" .. maxHp .. " | dist: " .. dist)
+                    setLabelText(targetArmorLabel,  "armor: "  .. armorCur .. "/" .. armorMax)
+                    setLabelText(targetStateLabel,  "status: " .. status)
                 else
-                    targetHealthLabel:SetName("health: — | dist: —")
-                    targetArmorLabel:SetName("armor: —")
-                    targetStateLabel:SetName("status: —")
+                    setLabelText(targetHealthLabel, "health: — | dist: —")
+                    setLabelText(targetArmorLabel,  "armor: —")
+                    setLabelText(targetStateLabel,  "status: —")
                 end
             else
                 if lastUserId ~= nil then
                     lastUserId = nil
                     targetAvatar.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
                 end
-                targetHeaderLabel:SetName("no target selected")
-                targetHealthLabel:SetName("health: — | dist: —")
-                targetArmorLabel:SetName("armor: —")
-                targetStateLabel:SetName("status: —")
+                setLabelText(targetHeaderLabel, "no target selected")
+                setLabelText(targetHealthLabel, "health: — | dist: —")
+                setLabelText(targetArmorLabel,  "armor: —")
+                setLabelText(targetStateLabel,  "status: —")
             end
         end)
     end
