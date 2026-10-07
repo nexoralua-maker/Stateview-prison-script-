@@ -2847,76 +2847,6 @@ local FakeAnims = (function()
     return M
 end)()
 
---armor module
-local ArmorModule = (function()
-    local M = {}
-
-    local ARMOR_ATTRIBUTES      = {"Armor", "ArmorPercent", "ArmorPercentage", "ArmorValue", "Shield"}
-    local ARMOR_MAX_ATTRIBUTES  = {"MaxArmor", "ArmorMax", "MaxShield"}
-    local ARMOR_VALUES          = {"Armor", "ArmorValue", "Shield"}
-    local DEFAULT_MAX_ARMOR     = 200
-
-    local function findAttribute(container, names)
-        if not container then return nil end
-        for _, n in ipairs(names) do
-            local v = container:GetAttribute(n)
-            if v ~= nil then return v, n end
-        end
-        return nil
-    end
-
-    local function findValueObject(container, names)
-        if not container then return nil end
-        for _, n in ipairs(names) do
-            local v = container:FindFirstChild(n)
-            if v and (v:IsA("NumberValue") or v:IsA("IntValue")) then
-                return v.Value, n, v
-            end
-        end
-        return nil
-    end
-
-    function M.get(targetPlayer)
-        if not targetPlayer or not targetPlayer.Parent then return nil end
-        local character = targetPlayer.Character
-        if not character then return nil end
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if not humanoid then return nil end
-
-        local armor = findAttribute(humanoid, ARMOR_ATTRIBUTES)
-        if armor ~= nil then
-            local maxArmor = findAttribute(humanoid, ARMOR_MAX_ATTRIBUTES) or DEFAULT_MAX_ARMOR
-            return { percent = math.clamp((armor / maxArmor) * 100, 0, 100), current = armor, max = maxArmor }
-        end
-
-        armor = findAttribute(character, ARMOR_ATTRIBUTES)
-        if armor ~= nil then
-            local maxArmor = findAttribute(character, ARMOR_MAX_ATTRIBUTES) or DEFAULT_MAX_ARMOR
-            return { percent = math.clamp((armor / maxArmor) * 100, 0, 100), current = armor, max = maxArmor }
-        end
-
-        for _, container in ipairs({humanoid, character}) do
-            local value = findValueObject(container, ARMOR_VALUES)
-            if value ~= nil then
-                local maxValue = findValueObject(container, ARMOR_MAX_ATTRIBUTES)
-                local max = maxValue or DEFAULT_MAX_ARMOR
-                return { percent = math.clamp((value / max) * 100, 0, 100), current = value, max = max }
-            end
-        end
-
-        return { percent = 0, current = 0, max = DEFAULT_MAX_ARMOR }
-    end
-
-    function M.getColor(percent)
-        if percent >= 75 then return Color3.fromRGB(90, 170, 255)
-        elseif percent >= 50 then return Color3.fromRGB(60, 130, 230)
-        elseif percent >= 25 then return Color3.fromRGB(45, 95, 200)
-        else return Color3.fromRGB(30, 60, 160) end
-    end
-
-    return M
-end)()
-
 --auto buy
 local AutoBuyState = { AutoFood=false, SelectedFood="[Chicken]", AutoArmor=false, SelectedArmor="[Medium Armor]", AutoGun=false, SelectedGun="[Silencer]" }
 local function SafeFireClickDetector(padName)
@@ -3225,6 +3155,23 @@ movementSec:Slider({ Text = "JumpPower", Flag = "mv_jp_power", Min = 1, Max = 10
 
 --information
 local infoSec = InformationTab:Section("profile", 1)
+local infoAvatarFrame = Instance.new("Frame")
+infoAvatarFrame.Size = UDim2.new(1, 0, 0, 130)
+infoAvatarFrame.BackgroundTransparency = 1
+local infoAvatar = Instance.new("ImageLabel")
+infoAvatar.Size = UDim2.new(0, 120, 0, 120)
+infoAvatar.Position = UDim2.new(0.5, -60, 0, 0)
+infoAvatar.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+infoAvatar.BackgroundTransparency = 0
+infoAvatar.BorderSizePixel = 0
+infoAvatar.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+infoAvatar.ScaleType = Enum.ScaleType.Crop
+infoAvatar.Parent = infoAvatarFrame
+Instance.new("UICorner", infoAvatar).CornerRadius = UDim.new(0, 12)
+loadAvatar(infoAvatar, LP.UserId)
+pcall(function()
+    infoSec:AddUIPassthrough("InfoAvatarView", { Instance = infoAvatarFrame, Height = 130 })
+end)
 infoSec:Label("username: " .. LP.Name)
 infoSec:Label("display: " .. (LP.DisplayName or LP.Name))
 infoSec:Label("user id: " .. tostring(LP.UserId))
@@ -3247,61 +3194,101 @@ task.spawn(function()
     end
 end)
 
+-- ============================================================
+-- ARMOR MODULE (no bar — text only)
+-- ============================================================
+local ArmorModule = {}
+
+local ARMOR_ATTRIBUTES      = {"Armor", "ArmorPercent", "ArmorPercentage", "ArmorValue", "Shield"}
+local ARMOR_MAX_ATTRIBUTES  = {"MaxArmor", "ArmorMax", "MaxShield"}
+local ARMOR_VALUES          = {"Armor", "ArmorValue", "Shield"}
+local DEFAULT_MAX_ARMOR     = 200
+
+local function findAttribute(container, names)
+    if not container then return nil end
+    for _, n in ipairs(names) do
+        local v = container:GetAttribute(n)
+        if v ~= nil then return v, n end
+    end
+    return nil
+end
+
+local function findValueObject(container, names)
+    if not container then return nil end
+    for _, n in ipairs(names) do
+        local v = container:FindFirstChild(n)
+        if v and (v:IsA("NumberValue") or v:IsA("IntValue")) then
+            return v.Value, n, v
+        end
+    end
+    return nil
+end
+
+function ArmorModule.get(targetPlayer)
+    if not targetPlayer or not targetPlayer.Parent then return nil end
+    local character = targetPlayer.Character
+    if not character then return nil end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+
+    local armor = findAttribute(humanoid, ARMOR_ATTRIBUTES)
+    if armor ~= nil then
+        local maxArmor = findAttribute(humanoid, ARMOR_MAX_ATTRIBUTES) or DEFAULT_MAX_ARMOR
+        return { percent = math.clamp((armor / maxArmor) * 100, 0, 100), current = armor, max = maxArmor }
+    end
+
+    armor = findAttribute(character, ARMOR_ATTRIBUTES)
+    if armor ~= nil then
+        local maxArmor = findAttribute(character, ARMOR_MAX_ATTRIBUTES) or DEFAULT_MAX_ARMOR
+        return { percent = math.clamp((armor / maxArmor) * 100, 0, 100), current = armor, max = maxArmor }
+    end
+
+    for _, container in ipairs({humanoid, character}) do
+        local value = findValueObject(container, ARMOR_VALUES)
+        if value ~= nil then
+            local maxValue = findValueObject(container, ARMOR_MAX_ATTRIBUTES)
+            local max = maxValue or DEFAULT_MAX_ARMOR
+            return { percent = math.clamp((value / max) * 100, 0, 100), current = value, max = max }
+        end
+    end
+
+    return { percent = 0, current = 0, max = DEFAULT_MAX_ARMOR }
+end
+
+function ArmorModule.getColor(percent)
+    if percent >= 75 then return Color3.fromRGB(90, 170, 255)
+    elseif percent >= 50 then return Color3.fromRGB(60, 130, 230)
+    elseif percent >= 25 then return Color3.fromRGB(45, 95, 200)
+    else return Color3.fromRGB(30, 60, 160) end
+end
+
 --target
 local selTarget = { Player = nil }
 local targetAvatarSection = TargetTab:Section("profile", 1)
 
-local targetNameLabel     = targetAvatarSection:Label("no target selected")
-local targetInfoLabel     = targetAvatarSection:Label("health: — | dist: —")
-local targetArmorLabel    = targetAvatarSection:Label("armor: —")
-local targetStatusLabel   = targetAvatarSection:Label("status: —")
+local targetAvatarFrame = Instance.new("Frame")
+targetAvatarFrame.Size = UDim2.new(1, 0, 0, 130)
+targetAvatarFrame.BackgroundTransparency = 1
 
-task.spawn(function()
-    while task.wait(0.5) do
-        pcall(function()
-            local p = selTarget.Player
-            if p and p.Parent and p.UserId then
-                targetNameLabel:SetName("target: " .. p.Name)
+local targetAvatar = Instance.new("ImageLabel")
+targetAvatar.Size = UDim2.new(0, 120, 0, 120)
+targetAvatar.Position = UDim2.new(0.5, -60, 0, 0)
+targetAvatar.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+targetAvatar.BackgroundTransparency = 0
+targetAvatar.BorderSizePixel = 0
+targetAvatar.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+targetAvatar.ScaleType = Enum.ScaleType.Crop
+targetAvatar.Parent = targetAvatarFrame
+Instance.new("UICorner", targetAvatar).CornerRadius = UDim.new(0, 12)
 
-                local char = p.Character
-                if char then
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    local myHRP = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    local hp = hum and math.floor(hum.Health) or 0
-                    local maxHp = hum and math.floor(hum.MaxHealth) or 100
-
-                    local armorData = ArmorModule.get(p)
-                    local armor = armorData and math.floor(armorData.current) or 0
-                    local armorMax = armorData and armorData.max or 200
-                    local armorPct = armorData and math.floor(armorData.percent) or 0
-
-                    local dist = (myHRP and hrp) and math.floor((myHRP.Position - hrp.Position).Magnitude) or 0
-
-                    local knocked = false
-                    local be = char:FindFirstChild("BodyEffects")
-                    if be then
-                        local ko = be:FindFirstChild("K.O")
-                        knocked = ko and ko.Value or false
-                    end
-
-                    targetInfoLabel:SetName("health: "..hp.."/"..maxHp.." | dist: "..dist)
-                    targetArmorLabel:SetName("armor: "..armor.."/"..armorMax.." ("..armorPct.."%)")
-                    targetStatusLabel:SetName("status: "..(knocked and "knocked" or "alive"))
-                else
-                    targetInfoLabel:SetName("health: — | dist: —")
-                    targetArmorLabel:SetName("armor: —")
-                    targetStatusLabel:SetName("status: —")
-                end
-            else
-                targetNameLabel:SetName("no target selected")
-                targetInfoLabel:SetName("health: — | dist: —")
-                targetArmorLabel:SetName("armor: —")
-                targetStatusLabel:SetName("status: —")
-            end
-        end)
-    end
+pcall(function()
+    targetAvatarSection:AddUIPassthrough("TargetAvatarView", { Instance = targetAvatarFrame, Height = 130 })
 end)
+
+local targetHeaderLabel = targetAvatarSection:Label("no target selected")
+local targetHealthLabel = targetAvatarSection:Label("health: — | dist: —")
+local targetArmorLabel  = targetAvatarSection:Label("armor: —")
+local targetStateLabel  = targetAvatarSection:Label("status: —")
 
 local searchState = { query = "" }
 TargetTab:Section("search", 2):Search({ Placeholder = "username", Label = "search", Live = true, Callback = function(text) searchState.query = text end })
@@ -3317,6 +3304,7 @@ local function FindPlayer(query)
     end
     return nil
 end
+
 TargetTab:Section("actions", 2):ButtonRow({
     { Text = "find", Callback = function()
         local plr = FindPlayer(searchState.query)
@@ -3325,6 +3313,68 @@ TargetTab:Section("actions", 2):ButtonRow({
     end },
     { Text = "clear", Callback = function() selTarget.Player = nil; notify("target", "cleared", "warn") end },
 })
+
+-- live updater for the profile group
+task.spawn(function()
+    local lastUserId = nil
+    while task.wait(0.25) do
+        pcall(function()
+            local p = selTarget.Player
+
+            if p and p.Parent and p.UserId then
+                if p.UserId ~= lastUserId then
+                    lastUserId = p.UserId
+                    loadAvatar(targetAvatar, p.UserId)
+                end
+
+                targetHeaderLabel:SetName("Target selected !")
+
+                local char = p.Character
+                if char then
+                    local hum    = char:FindFirstChildOfClass("Humanoid")
+                    local myHRP  = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+                    local hrp    = char:FindFirstChild("HumanoidRootPart")
+
+                    local hp     = hum and math.floor(hum.Health)    or 0
+                    local maxHp  = hum and math.floor(hum.MaxHealth) or 100
+                    local dist   = (myHRP and hrp) and math.floor((myHRP.Position - hrp.Position).Magnitude) or 0
+
+                    -- Armor (text only, no bar)
+                    local armorData = ArmorModule.get(p)
+                    local armorCur  = armorData and math.floor(armorData.current) or 0
+                    local armorMax  = armorData and math.floor(armorData.max)     or 200
+
+                    -- Status logic
+                    local status
+                    if hp <= 0 then
+                        status = "Bozo Died"
+                    elseif hp <= 20 then
+                        status = "Knocked"
+                    else
+                        status = "Alive"
+                    end
+
+                    targetHealthLabel:SetName("health: " .. hp .. "/" .. maxHp .. " | dist: " .. dist)
+                    targetArmorLabel:SetName("armor: "  .. armorCur .. "/" .. armorMax)
+                    targetStateLabel:SetName("status: " .. status)
+                else
+                    targetHealthLabel:SetName("health: — | dist: —")
+                    targetArmorLabel:SetName("armor: —")
+                    targetStateLabel:SetName("status: —")
+                end
+            else
+                if lastUserId ~= nil then
+                    lastUserId = nil
+                    targetAvatar.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+                end
+                targetHeaderLabel:SetName("no target selected")
+                targetHealthLabel:SetName("health: — | dist: —")
+                targetArmorLabel:SetName("armor: —")
+                targetStateLabel:SetName("status: —")
+            end
+        end)
+    end
+end)
 
 local spectateActive = false
 local spectateConn = nil
@@ -3478,12 +3528,15 @@ labelsSec:Toggle({ Text = "armor bar", Flag = "esp_armor", Default = false, Call
 
 --misc
 local miscSec = MiscTab:Section("misc", 1)
+
 miscSec:Toggle({ Text = "rapid fire", Flag = "misc_rf", Default = false, Callback = function(v)
     RapidFire.setEnabled(v)
     notify("rapid fire", v and "on" or "off", v and "success" or "warn")
 end })
 miscSec:Input({ Text = "fire rate", Flag = "misc_rfr", Default = "0.015", Numeric = true,
     Callback = function(v) local n = tonumber(v); if n then RapidFire.setFireRate(n) end end })
+
+-- macro (button)
 miscSec:Button({ Text = "Macro", Callback = function()
     local ok = pcall(function()
         loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Stateview-prison-script-/main/Macro"))()
@@ -3494,42 +3547,69 @@ miscSec:Button({ Text = "Macro", Callback = function()
         notify("macro", "failed to load", "error")
     end
 end })
+
+-- no slow (button)
 miscSec:Button({ Text = "No slow", Callback = function()
-    local ok = pcall(function()
+    if _G.__NO_SLOW_ACTIVE then
+        notify("no slow", "already active", "warn")
+        return
+    end
+    local ok, err = pcall(function()
         local mt = getrawmetatable(game)
+        if not mt then error("no metatable") end
         local backup
         backup = hookfunction(mt.__newindex, newcclosure(function(self, key, value)
-            if key == "WalkSpeed" and value < 16 then
+            if key == "WalkSpeed" and type(value) == "number" and value < 16 then
                 value = 16
             end
             return backup(self, key, value)
         end))
     end)
     if ok then
+        _G.__NO_SLOW_ACTIVE = true
         notify("no slow", "enabled", "success")
     else
-        notify("no slow", "failed", "error")
+        notify("no slow", "failed: " .. tostring(err), "error")
     end
 end })
+
+-- no jump cooldown (button)
 miscSec:Button({ Text = "No jump Cooldown", Callback = function()
-    local ok = pcall(function()
-        g = hookfunction(wait, function(seconds)
-            return g(0.1)
-        end)
+    if _G.__NO_JUMP_CD_ACTIVE then
+        notify("no jump cooldown", "already active", "warn")
+        return
+    end
+    if type(hookfunction) ~= "function" then
+        notify("no jump cooldown", "hookfunction not supported", "error")
+        return
+    end
+    local ok, err = pcall(function()
+        local originalWait
+        originalWait = hookfunction(wait, newcclosure(function(seconds)
+            return originalWait(0)
+        end))
     end)
     if ok then
+        _G.__NO_JUMP_CD_ACTIVE = true
         notify("no jump cooldown", "enabled", "success")
     else
-        notify("no jump cooldown", "failed", "error")
+        notify("no jump cooldown", "failed: " .. tostring(err), "error")
     end
 end })
-miscSec:Toggle({ Text = "Chatlogs", Flag = "misc_chatlogs", Default = false, Callback = function(v)
-    pcall(function()
+
+-- chatlogs (toggle, now at the bottom of the buttons)
+miscSec:Toggle({ Text = "chatlogs", Flag = "misc_chatlogs", Default = false, Callback = function(v)
+    local ok = pcall(function()
         local TextChatService = game:GetService("TextChatService")
         TextChatService.ChatWindowConfiguration.Enabled = v
     end)
-    notify("chatlogs", v and "enabled" or "disabled", v and "success" or "warn")
+    if ok then
+        notify("chatlogs", v and "enabled" or "disabled", v and "success" or "warn")
+    else
+        notify("chatlogs", "failed", "error")
+    end
 end })
+
 miscSec:Toggle({ Text = "auto reload", Flag = "misc_ar", Default = false, Callback = function(v) AutoReloadState.Enabled = v end })
 miscSec:Toggle({ Text = "anti stomp", Flag = "misc_as", Default = false, Callback = function(v) AntiStompState.Enabled = v end })
 miscSec:Toggle({ Text = "auto stomp", Flag = "misc_astomp", Default = false, Callback = function(v) StompState.Enabled = v end })
