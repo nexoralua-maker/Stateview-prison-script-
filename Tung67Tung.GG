@@ -3225,23 +3225,6 @@ movementSec:Slider({ Text = "JumpPower", Flag = "mv_jp_power", Min = 1, Max = 10
 
 --information
 local infoSec = InformationTab:Section("profile", 1)
-local infoAvatarFrame = Instance.new("Frame")
-infoAvatarFrame.Size = UDim2.new(1, 0, 0, 130)
-infoAvatarFrame.BackgroundTransparency = 1
-local infoAvatar = Instance.new("ImageLabel")
-infoAvatar.Size = UDim2.new(0, 120, 0, 120)
-infoAvatar.Position = UDim2.new(0.5, -60, 0, 0)
-infoAvatar.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-infoAvatar.BackgroundTransparency = 0
-infoAvatar.BorderSizePixel = 0
-infoAvatar.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
-infoAvatar.ScaleType = Enum.ScaleType.Crop
-infoAvatar.Parent = infoAvatarFrame
-Instance.new("UICorner", infoAvatar).CornerRadius = UDim.new(0, 12)
-loadAvatar(infoAvatar, LP.UserId)
-pcall(function()
-    infoSec:AddUIPassthrough("InfoAvatarView", { Instance = infoAvatarFrame, Height = 130 })
-end)
 infoSec:Label("username: " .. LP.Name)
 infoSec:Label("display: " .. (LP.DisplayName or LP.Name))
 infoSec:Label("user id: " .. tostring(LP.UserId))
@@ -3268,95 +3251,56 @@ end)
 local selTarget = { Player = nil }
 local targetAvatarSection = TargetTab:Section("profile", 1)
 
--- avatar
-local targetAvatarFrame = Instance.new("Frame")
-targetAvatarFrame.Size = UDim2.new(1, 0, 0, 130)
-targetAvatarFrame.BackgroundTransparency = 1
-local targetAvatar = Instance.new("ImageLabel")
-targetAvatar.Size = UDim2.new(0, 120, 0, 120)
-targetAvatar.Position = UDim2.new(0.5, -60, 0, 0)
-targetAvatar.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-targetAvatar.BackgroundTransparency = 0
-targetAvatar.BorderSizePixel = 0
-targetAvatar.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
-targetAvatar.ScaleType = Enum.ScaleType.Crop
-targetAvatar.Parent = targetAvatarFrame
-Instance.new("UICorner", targetAvatar).CornerRadius = UDim.new(0, 12)
-pcall(function()
-    targetAvatarSection:AddUIPassthrough("TargetAvatarView", { Instance = targetAvatarFrame, Height = 130 })
-end)
+local targetNameLabel     = targetAvatarSection:Label("no target selected")
+local targetInfoLabel     = targetAvatarSection:Label("health: — | dist: —")
+local targetArmorLabel    = targetAvatarSection:Label("armor: —")
+local targetStatusLabel   = targetAvatarSection:Label("status: —")
 
-local targetNameLabel = targetAvatarSection:Label("no target selected")
-local targetInfoLabel = targetAvatarSection:Label("health: — | armor: — | dist: —")
+task.spawn(function()
+    while task.wait(0.5) do
+        pcall(function()
+            local p = selTarget.Player
+            if p and p.Parent and p.UserId then
+                targetNameLabel:SetName("target: " .. p.Name)
 
--- character viewport preview
-local previewFrame = Instance.new("Frame")
-previewFrame.Size = UDim2.new(1, 0, 0, 220)
-previewFrame.BackgroundTransparency = 1
+                local char = p.Character
+                if char then
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    local myHRP = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    local hp = hum and math.floor(hum.Health) or 0
+                    local maxHp = hum and math.floor(hum.MaxHealth) or 100
 
-local vp = Instance.new("ViewportFrame")
-vp.Size = UDim2.new(1, 0, 1, 0)
-vp.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
-vp.BorderSizePixel = 0
-vp.Ambient = Color3.fromRGB(160, 160, 170)
-vp.LightColor = Color3.fromRGB(255, 255, 255)
-vp.LightDirection = Vector3.new(-0.4, -1, -0.6)
-vp.Parent = previewFrame
-Instance.new("UICorner", vp).CornerRadius = UDim.new(0, 10)
-local vpStroke = Instance.new("UIStroke")
-vpStroke.Color = Color3.fromRGB(45, 25, 70)
-vpStroke.Thickness = 1
-vpStroke.Parent = vp
+                    local armorData = ArmorModule.get(p)
+                    local armor = armorData and math.floor(armorData.current) or 0
+                    local armorMax = armorData and armorData.max or 200
+                    local armorPct = armorData and math.floor(armorData.percent) or 0
 
-local previewCam = Instance.new("Camera")
-previewCam.FieldOfView = 28
-vp.CurrentCamera = previewCam
-previewCam.Parent = vp
+                    local dist = (myHRP and hrp) and math.floor((myHRP.Position - hrp.Position).Magnitude) or 0
 
-local previewModel = Instance.new("Model")
-previewModel.Name = "PreviewCharacter"
-previewModel.Parent = vp
+                    local knocked = false
+                    local be = char:FindFirstChild("BodyEffects")
+                    if be then
+                        local ko = be:FindFirstChild("K.O")
+                        knocked = ko and ko.Value or false
+                    end
 
-local function buildPreview(plr)
-    previewModel:ClearAllChildren()
-    if not plr or not plr.Character then return end
-    local char = plr.Character
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    char.Archivable = true
-    local clone = char:Clone()
-    char.Archivable = false
-
-    for _, obj in ipairs(clone:GetDescendants()) do
-        if obj:IsA("BasePart") then
-            obj.Anchored = true
-            obj.CanCollide = false
-            obj.CanTouch = false
-            obj.CanQuery = false
-        elseif obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("Sound")
-            or obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
-            or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles")
-            or obj:IsA("Highlight") or obj:IsA("BillboardGui") or obj:IsA("SurfaceGui")
-            or obj:IsA("ForceField") or obj:IsA("Accessory") or obj:IsA("Tool") then
-            obj:Destroy()
-        end
+                    targetInfoLabel:SetName("health: "..hp.."/"..maxHp.." | dist: "..dist)
+                    targetArmorLabel:SetName("armor: "..armor.."/"..armorMax.." ("..armorPct.."%)")
+                    targetStatusLabel:SetName("status: "..(knocked and "knocked" or "alive"))
+                else
+                    targetInfoLabel:SetName("health: — | dist: —")
+                    targetArmorLabel:SetName("armor: —")
+                    targetStatusLabel:SetName("status: —")
+                end
+            else
+                targetNameLabel:SetName("no target selected")
+                targetInfoLabel:SetName("health: — | dist: —")
+                targetArmorLabel:SetName("armor: —")
+                targetStatusLabel:SetName("status: —")
+            end
+        end)
     end
-
-    for _, obj in ipairs(clone:GetChildren()) do
-        if obj:IsA("Humanoid") then obj:Destroy() end
-    end
-
-    clone.Parent = previewModel
-
-    local root = clone:FindFirstChild("HumanoidRootPart") or clone:FindFirstChildWhichIsA("BasePart")
-    if root then clone:PivotTo(CFrame.new(0, 0, 0)) end
-
-    previewCam.CFrame = CFrame.new(Vector3.new(0, 0.5, -6.5), Vector3.new(0, 0.5, 0))
-end
-
-pcall(function()
-    targetAvatarSection:AddUIPassthrough("TargetPreviewView", { Instance = previewFrame, Height = 220 })
 end)
 
 local searchState = { query = "" }
@@ -3381,55 +3325,6 @@ TargetTab:Section("actions", 2):ButtonRow({
     end },
     { Text = "clear", Callback = function() selTarget.Player = nil; notify("target", "cleared", "warn") end },
 })
-
-task.spawn(function()
-    local lastUserId, lastChar = nil, nil
-    while task.wait(0.5) do
-        pcall(function()
-            local p = selTarget.Player
-            if p and p.Parent and p.UserId then
-                if p.UserId ~= lastUserId then
-                    lastUserId = p.UserId
-                    loadAvatar(targetAvatar, p.UserId)
-                end
-                targetNameLabel:SetName("target: " .. p.Name)
-                local char = p.Character
-                if char then
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    local myHRP = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    local hp = hum and math.floor(hum.Health) or 0
-                    local armorData = ArmorModule.get(p)
-                    local armor = armorData and math.floor(armorData.current) or 0
-                    local dist = (myHRP and hrp) and math.floor((myHRP.Position - hrp.Position).Magnitude) or 0
-                    targetInfoLabel:SetName("health: "..hp.." | armor: "..armor.." | dist: "..dist)
-
-                    if char ~= lastChar then
-                        lastChar = char
-                        buildPreview(p)
-                    end
-                else
-                    targetInfoLabel:SetName("health: — | armor: — | dist: —")
-                    if lastChar ~= nil then
-                        lastChar = nil
-                        previewModel:ClearAllChildren()
-                    end
-                end
-            else
-                if lastUserId ~= nil then
-                    lastUserId = nil
-                    targetAvatar.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
-                end
-                if lastChar ~= nil then
-                    lastChar = nil
-                    previewModel:ClearAllChildren()
-                end
-                targetNameLabel:SetName("no target selected")
-                targetInfoLabel:SetName("health: — | armor: — | dist: —")
-            end
-        end)
-    end
-end)
 
 local spectateActive = false
 local spectateConn = nil
