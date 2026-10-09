@@ -1,0 +1,591 @@
+-- ============================================================
+--  AUTO KATANA (fully draggable GUI + X close button)
+--  LocalScript — StarterPlayer > StarterPlayerScripts
+-- ============================================================
+
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local Stats            = game:GetService("Stats")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+
+-- ============================================================
+--  GUI  (built FIRST so it always appears)
+-- ============================================================
+local playerGui = player:WaitForChild("PlayerGui")
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoKatanaGui"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.DisplayOrder = 999
+screenGui.IgnoreGuiInset = true
+screenGui.Parent = playerGui
+
+-- ---------- MAIN PANEL (Dark grey) ----------
+local panel = Instance.new("Frame")
+panel.Name = "Panel"
+panel.Size = UDim2.new(0, 190, 0, 90)
+panel.Position = UDim2.new(0, 20, 0, 20)
+panel.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+panel.BorderSizePixel = 0
+panel.Active = true
+panel.Parent = screenGui
+
+local panelCorner = Instance.new("UICorner")
+panelCorner.CornerRadius = UDim.new(0, 10)
+panelCorner.Parent = panel
+
+local panelStroke = Instance.new("UIStroke")
+panelStroke.Color = Color3.fromRGB(90, 90, 90)
+panelStroke.Thickness = 2
+panelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+panelStroke.Parent = panel
+
+-- ---------- TITLE (purple text) ----------
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.Size = UDim2.new(1, -30, 0, 30) -- leave room for the X
+title.Position = UDim2.new(0, 15, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "Crispy.gg"
+title.TextColor3 = Color3.fromRGB(170, 90, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = panel
+
+-- ---------- X CLOSE BUTTON (no background) ----------
+local closeButton = Instance.new("TextButton")
+closeButton.Name = "CloseButton"
+closeButton.Size = UDim2.new(0, 28, 0, 28)
+closeButton.Position = UDim2.new(1, -32, 0, 2)
+closeButton.BackgroundTransparency = 1 -- fully transparent background
+closeButton.BorderSizePixel = 0
+closeButton.Text = "X"
+closeButton.TextColor3 = Color3.fromRGB(220, 80, 80)
+closeButton.Font = Enum.Font.GothamBold
+closeButton.TextSize = 18
+closeButton.AutoButtonColor = false
+closeButton.Active = true
+closeButton.Parent = panel
+
+-- ---------- TOGGLE BUTTON (Light grey) ----------
+local button = Instance.new("TextButton")
+button.Name = "AutoKatanaToggle"
+button.Size = UDim2.new(1, -20, 0, 44)
+button.Position = UDim2.new(0, 10, 0, 36)
+button.BackgroundColor3 = Color3.fromRGB(211, 211, 211)
+button.BorderSizePixel = 0
+button.Text = "Auto Katana: OFF"
+button.TextColor3 = Color3.fromRGB(30, 30, 30)
+button.Font = Enum.Font.GothamBold
+button.TextSize = 16
+button.AutoButtonColor = false
+button.Active = true
+button.Parent = panel
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = button
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(255, 80, 80)
+stroke.Thickness = 2
+stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+stroke.Parent = button
+
+local padding = Instance.new("UIPadding")
+padding.PaddingLeft  = UDim.new(0, 8)
+padding.PaddingRight = UDim.new(0, 8)
+padding.Parent = button
+
+-- ============================================================
+--  DRAG  (whole panel is draggable; button clicks still work)
+-- ============================================================
+local dragging      = false
+local dragStart     = nil
+local dragStartPos  = nil
+local moved         = false
+
+local function beginDrag(input)
+	dragging     = true
+	moved        = false
+	dragStart    = input.Position
+	dragStartPos = panel.Position
+end
+
+local function endDrag()
+	dragging = false
+end
+
+-- Start drag from panel background or the toggle button
+-- (NOT from the X button, so it can be clicked cleanly)
+panel.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+	or input.UserInputType == Enum.UserInputType.Touch then
+		beginDrag(input)
+	end
+end)
+
+button.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+	or input.UserInputType == Enum.UserInputType.Touch then
+		beginDrag(input)
+	end
+end)
+
+-- Track movement
+UserInputService.InputChanged:Connect(function(input)
+	if not dragging then return end
+	if input.UserInputType == Enum.UserInputType.MouseMovement
+	or input.UserInputType == Enum.UserInputType.Touch then
+		local delta = input.Position - dragStart
+		if math.abs(delta.X) > 3 or math.abs(delta.Y) > 3 then
+			moved = true
+		end
+		panel.Position = UDim2.new(
+			dragStartPos.X.Scale,
+			dragStartPos.X.Offset + delta.X,
+			dragStartPos.Y.Scale,
+			dragStartPos.Y.Offset + delta.Y
+		)
+	end
+end)
+
+-- Stop drag on release (anywhere)
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+	or input.UserInputType == Enum.UserInputType.Touch then
+		endDrag()
+	end
+end)
+
+panel.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+	or input.UserInputType == Enum.UserInputType.Touch then
+		endDrag()
+	end
+end)
+
+-- ============================================================
+--  CONFIG
+-- ============================================================
+local TOOL_NAME      = "katana"
+local CLICK_DELAY    = 0.1
+
+local TP_OUT_TIME    = 0.7
+local ORBIT_DURATION = 0.11
+
+local TP_RANGE       = 100
+local ORBIT_RADIUS   = 2
+local ORBIT_SPEED    = 1000
+
+local PING_BASED_TIMING   = true
+local PING_TIMING_MODE    = "half"
+local PING_TIMING_MULT    = 1.0
+local PING_TIMING_CLAMP   = 0.35
+
+local GRIP_ON_TARGET = true
+local GRIP_DISTANCE  = 1.0
+
+local USE_PREDICTION    = true
+local PREDICT_MODE      = "ping"
+local PING_MULTIPLIER   = 1.0
+local EXTRA_PING_OFFSET = 0.0
+local INCLUDE_ACCEL     = false
+
+-- ============================================================
+--  STATE
+-- ============================================================
+local enabled      = false
+local startTime    = 0
+local elapsed      = 0
+
+local savedCFrame  = nil
+local dashedOut    = false
+local dashedBack   = false
+
+local orbiting     = false
+local orbitTarget  = nil
+local orbitAngle   = 0
+local orbitConn    = nil
+
+local curOutTime   = TP_OUT_TIME
+local curOrbitDur  = ORBIT_DURATION
+local curBackTime  = TP_OUT_TIME + ORBIT_DURATION
+
+local velHistory = {}
+
+-- ============================================================
+--  HELPERS
+-- ============================================================
+local function getKatana()
+	local character = player.Character
+	if character then
+		for _, obj in ipairs(character:GetChildren()) do
+			if obj:IsA("Tool") and obj.Name == TOOL_NAME then
+				return obj
+			end
+		end
+	end
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if backpack then
+		for _, obj in ipairs(backpack:GetChildren()) do
+			if obj:IsA("Tool") and obj.Name == TOOL_NAME then
+				return obj
+			end
+		end
+	end
+	return nil
+end
+
+local function equipKatana()
+	local character = player.Character or player.CharacterAdded:Wait()
+	local humanoid  = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return false end
+
+	local tool = getKatana()
+	if not tool then
+		warn("[AutoKatana] No tool named: " .. TOOL_NAME)
+		return false
+	end
+
+	if tool.Parent ~= character then
+		humanoid:EquipTool(tool)
+		task.wait(0.15)
+	end
+	return tool.Parent == character
+end
+
+local function getPingRTT()
+	local ok, pingMs = pcall(function()
+		return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+	end)
+	if ok and pingMs and pingMs > 0 then
+		return pingMs / 1000
+	end
+	local ok2, p = pcall(function() return player:GetNetworkPing() end)
+	if ok2 and p then return p end
+	return 0.1
+end
+
+local function getPing()
+	return getPingRTT() * 0.5
+end
+
+local function getPingTimingDelay()
+	if not PING_BASED_TIMING then return 0 end
+	local rtt = getPingRTT()
+	local base
+	if PING_TIMING_MODE == "full" then
+		base = rtt
+	elseif PING_TIMING_MODE == "mult" then
+		base = rtt * PING_TIMING_MULT
+	else
+		base = rtt * 0.5
+	end
+	if base > PING_TIMING_CLAMP then base = PING_TIMING_CLAMP end
+	return base
+end
+
+local function predictPosition(targetRoot, targetPlayer)
+	if not USE_PREDICTION then
+		return targetRoot.Position
+	end
+
+	local pos = targetRoot.Position
+	local vel = targetRoot.AssemblyLinearVelocity
+	local ping = getPing() * PING_MULTIPLIER + EXTRA_PING_OFFSET
+
+	if PREDICT_MODE == "ping" or PREDICT_MODE == "combined" or PREDICT_MODE == "velocity" then
+		pos = pos + vel * ping
+	end
+
+	if INCLUDE_ACCEL and targetPlayer then
+		local now = os.clock()
+		local h = velHistory[targetPlayer]
+		if h then
+			local dt = now - h.time
+			if dt > 0 and dt < 0.5 then
+				local accel = (vel - h.vel) / dt
+				pos = pos + 0.5 * accel * (ping * ping)
+			end
+		end
+		velHistory[targetPlayer] = {vel = vel, time = now}
+	end
+
+	return pos
+end
+
+local function getMyRoot()
+	local character = player.Character
+	if not character then return nil end
+	return character:FindFirstChild("HumanoidRootPart")
+end
+
+local function getMyHumanoid()
+	local character = player.Character
+	if not character then return nil end
+	return character:FindFirstChildOfClass("Humanoid")
+end
+
+local function findNearestPlayer()
+	local myRoot = getMyRoot()
+	if not myRoot then return nil, nil end
+
+	local nearestRoot, nearestPlayer, nearestDist = nil, nil, math.huge
+	for _, other in ipairs(Players:GetPlayers()) do
+		if other ~= player and other.Character then
+			local otherRoot = other.Character:FindFirstChild("HumanoidRootPart")
+			local otherHum  = other.Character:FindFirstChildOfClass("Humanoid")
+			if otherRoot and otherHum and otherHum.Health > 0 then
+				local dist = (otherRoot.Position - myRoot.Position).Magnitude
+				if dist <= TP_RANGE and dist < nearestDist then
+					nearestRoot = otherRoot
+					nearestPlayer = other
+					nearestDist = dist
+				end
+			end
+		end
+	end
+	return nearestRoot, nearestPlayer
+end
+
+local function applyGrip(targetRoot, myRoot)
+	if not GRIP_ON_TARGET then return end
+	if not targetRoot or not myRoot then return end
+
+	local tool = getKatana()
+	if not tool or tool.Parent ~= player.Character then return end
+
+	local handle = tool:FindFirstChild("Handle")
+	if not handle then return end
+
+	local targetPos = targetRoot.Position
+	local dir = targetPos - myRoot.Position
+	if dir.Magnitude > 0.001 then
+		dir = dir.Unit
+	else
+		dir = Vector3.new(1, 0, 0)
+	end
+
+	local gripPos = targetPos - dir * GRIP_DISTANCE
+	handle.CFrame = CFrame.lookAt(gripPos, targetPos)
+end
+
+local function startOrbit(targetRoot)
+	if orbiting then return end
+	orbiting    = true
+	orbitTarget = targetRoot
+	orbitAngle  = 0
+
+	orbitConn = RunService.RenderStepped:Connect(function(dt)
+		if not orbiting or not orbitTarget then return end
+
+		local myRoot = getMyRoot()
+		if not myRoot then return end
+
+		orbitAngle = orbitAngle + dt * ORBIT_SPEED
+
+		local targetPos = orbitTarget.Position
+		local offset = Vector3.new(
+			math.cos(orbitAngle) * ORBIT_RADIUS,
+			0,
+			math.sin(orbitAngle) * ORBIT_RADIUS
+		)
+		local newPos = targetPos + offset
+		local lookAt = Vector3.new(targetPos.X, newPos.Y, targetPos.Z)
+		myRoot.CFrame = CFrame.lookAt(newPos, lookAt)
+
+		applyGrip(orbitTarget, myRoot)
+	end)
+end
+
+local function stopOrbit()
+	orbiting    = false
+	orbitTarget = nil
+	if orbitConn then
+		orbitConn:Disconnect()
+		orbitConn = nil
+	end
+end
+
+local function dashOut()
+	local myRoot = getMyRoot()
+	if not myRoot then return end
+
+	local targetRoot, targetPlayer = findNearestPlayer()
+	if not targetRoot then return end
+
+	savedCFrame = myRoot.CFrame
+
+	local humanoid = getMyHumanoid()
+	if humanoid then humanoid.AutoRotate = false end
+
+	local predictedPos = predictPosition(targetRoot, targetPlayer)
+
+	local startPos = predictedPos + Vector3.new(ORBIT_RADIUS, 0, 0)
+	local lookAt   = Vector3.new(predictedPos.X, startPos.Y, predictedPos.Z)
+	myRoot.CFrame = CFrame.lookAt(startPos, lookAt)
+
+	startOrbit(targetRoot)
+end
+
+local function dashBack()
+	stopOrbit()
+
+	if savedCFrame then
+		local myRoot = getMyRoot()
+		if myRoot then
+			myRoot.CFrame = savedCFrame
+		end
+	end
+
+	local humanoid = getMyHumanoid()
+	if humanoid then humanoid.AutoRotate = true end
+
+	savedCFrame = nil
+end
+
+local function resetCycle()
+	local delay = getPingTimingDelay()
+	curOutTime  = TP_OUT_TIME    + delay
+	curOrbitDur = ORBIT_DURATION + delay
+	curBackTime = curOutTime + curOrbitDur
+
+	startTime   = os.clock()
+	elapsed     = 0
+	dashedOut   = false
+	dashedBack  = false
+	savedCFrame = nil
+end
+
+-- ============================================================
+--  CLICK LOOP
+-- ============================================================
+task.spawn(function()
+	while true do
+		if enabled then
+			local character = player.Character
+			if character then
+				local tool = getKatana()
+				if tool then
+					if tool.Parent ~= character then
+						local humanoid = character:FindFirstChildOfClass("Humanoid")
+						if humanoid then
+							humanoid:EquipTool(tool)
+							task.wait(0.1)
+						end
+					end
+					if tool.Parent == character then
+						tool:Activate()
+					end
+				end
+			end
+		end
+		task.wait(CLICK_DELAY)
+	end
+end)
+
+-- ============================================================
+--  MAIN CYCLE
+-- ============================================================
+RunService.RenderStepped:Connect(function()
+	if not enabled then return end
+
+	elapsed = os.clock() - startTime
+
+	if not dashedOut and elapsed >= curOutTime then
+		dashedOut = true
+		dashOut()
+	end
+
+	if not dashedBack and elapsed >= curBackTime then
+		dashedBack = true
+		dashBack()
+		resetCycle()
+	end
+end)
+
+-- ============================================================
+--  ENABLE / DISABLE
+-- ============================================================
+local function setEnabled(state)
+	enabled = state
+
+	if enabled then
+		button.Text = "Auto Katana: ON"
+		button.BackgroundColor3 = Color3.fromRGB(190, 220, 190)
+		stroke.Color = Color3.fromRGB(80, 255, 120)
+	else
+		button.Text = "Auto Katana: OFF"
+		button.BackgroundColor3 = Color3.fromRGB(211, 211, 211)
+		stroke.Color = Color3.fromRGB(255, 80, 80)
+
+		stopOrbit()
+		if savedCFrame then
+			local myRoot = getMyRoot()
+			if myRoot then myRoot.CFrame = savedCFrame end
+			savedCFrame = nil
+		end
+		local humanoid = getMyHumanoid()
+		if humanoid then humanoid.AutoRotate = true end
+
+		dashedOut  = false
+		dashedBack = false
+	end
+end
+
+button.MouseButton1Click:Connect(function()
+	if moved then return end
+	setEnabled(not enabled)
+end)
+
+-- ============================================================
+--  CLOSE BUTTON
+-- ============================================================
+closeButton.MouseEnter:Connect(function()
+	closeButton.TextColor3 = Color3.fromRGB(255, 60, 60)
+end)
+
+closeButton.MouseLeave:Connect(function()
+	closeButton.TextColor3 = Color3.fromRGB(220, 80, 80)
+end)
+
+closeButton.MouseButton1Click:Connect(function()
+	-- turn everything off first
+	setEnabled(false)
+	screenGui:Destroy()
+end)
+
+-- ============================================================
+--  RESPAWN HANDLING
+-- ============================================================
+local function onCharacter(character)
+	local humanoid = character:WaitForChild("Humanoid", 5)
+	if humanoid then
+		humanoid.Died:Connect(function()
+			stopOrbit()
+			if savedCFrame then
+				local myRoot = getMyRoot()
+				if myRoot then myRoot.CFrame = savedCFrame end
+				savedCFrame = nil
+			end
+			task.wait(2)
+			if enabled then
+				resetCycle()
+				task.spawn(equipKatana)
+			end
+		end)
+	end
+	task.wait(1)
+	if enabled then
+		resetCycle()
+		task.spawn(equipKatana)
+	end
+end
+
+if player.Character then onCharacter(player.Character) end
+player.CharacterAdded:Connect(onCharacter)
