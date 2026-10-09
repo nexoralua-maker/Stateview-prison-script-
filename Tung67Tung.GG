@@ -102,7 +102,7 @@ local function notify(title, text, kind)
     end)
 end
 
---safe label text updater (tries every known library API)
+--safe label text updater
 local function setLabelText(label, text)
     if not label then return end
     text = tostring(text)
@@ -532,7 +532,8 @@ local SilentAimPrediction = (function()
             drawings.tracer.Visible = on; drawings.tracer.From = center; drawings.tracer.To = ps
             drawings.tracer.Color = FOV_INNER_COLOR; drawings.tracer.Thickness = 2; drawings.tracer.Transparency = 0.5
             drawings.pm_outline.Visible, drawings.pm_outline.Position = on, ps; drawings.pm_outline.Color = FOV_OUTER_COLOR
-            drawings.pm_fill.Visible, drawings.pm_fill.Position = on, ps; drawings.pm_fill.Color = FOV_INNER_COLOR            drawings.pm_fill.Transparency = 0.2
+            drawings.pm_fill.Visible, drawings.pm_fill.Position = on, ps; drawings.pm_fill.Color = FOV_INNER_COLOR
+            drawings.pm_fill.Transparency = 0.2
         else
             drawings.tracer.Visible = false; drawings.pm_outline.Visible = false; drawings.pm_fill.Visible = false
         end
@@ -1110,6 +1111,74 @@ local CSync = (function()
     return M
 end)()
 
+--cframe speed
+local CFrameSpeed = (function()
+    local M = { enabled = false, speed = 100 }
+
+    local connection
+    local characterConn
+    local deathConn
+
+    local function moveCharacter(dt)
+        if not M.enabled then return end
+        local char = player.Character
+        if not char then return end
+
+        local hrp      = char:FindFirstChild("HumanoidRootPart")
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not hrp or not humanoid then return end
+
+        local dir = humanoid.MoveDirection
+        if dir.Magnitude < 0.01 then return end
+
+        hrp.CFrame = hrp.CFrame + dir.Unit * M.speed * dt
+    end
+
+    local function startCFrame()
+        if connection then return end
+        connection = RunService.RenderStepped:Connect(moveCharacter)
+    end
+
+    local function stopCFrame()
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
+    end
+
+    local function onCharacterAdded(char)
+        stopCFrame()
+        if deathConn then deathConn:Disconnect(); deathConn = nil end
+
+        local hum = char:WaitForChild("Humanoid", 5)
+        if not hum then return end
+
+        if M.enabled then
+            startCFrame()
+        end
+
+        deathConn = hum.Died:Connect(function()
+            stopCFrame()
+        end)
+    end
+
+    if player.Character then
+        onCharacterAdded(player.Character)
+    end
+    characterConn = player.CharacterAdded:Connect(onCharacterAdded)
+
+    function M.setEnabled(v)
+        M.enabled = v and true or false
+        if M.enabled then startCFrame() else stopCFrame() end
+    end
+
+    function M.setSpeed(v)
+        M.speed = math.clamp(tonumber(v) or 100, 1, 100)
+    end
+
+    return M
+end)()
+
 --fly
 local Fly = (function()
     local M = {
@@ -1472,6 +1541,146 @@ local JumpPower = (function()
             task.wait(0.5)
             if M.enabled then setup() end
         end)
+    end
+
+    return M
+end)()
+
+--knock stomp
+local KnockStomp = (function()
+    local State = {
+        knockstomp = {
+            isactive       = false,
+            detectionrange = math.huge,
+            userange       = false,
+            originalcframe = nil,
+            targetonly     = false,
+        }
+    }
+
+    local function hasCharacter(plr)
+        return plr
+            and plr.Character
+            and plr.Character:FindFirstChild("Humanoid")
+            and plr.Character:FindFirstChild("HumanoidRootPart")
+    end
+
+    local function isKnocked(plr)
+        if not hasCharacter(plr) then return false end
+        local char = plr.Character
+        if char:GetAttribute("Knocked") then return true end
+        local bodyEffects = char:FindFirstChild("BodyEffects")
+        if bodyEffects and bodyEffects:FindFirstChild("K.O") and bodyEffects["K.O"].Value then
+            return true
+        end
+        return false
+    end
+
+    local function isDead(plr)
+        if not (plr and plr.Character) then return true end
+        local char = plr.Character
+        if char:GetAttribute("Dead") then return true end
+        local hum = char:FindFirstChild("Humanoid")
+        if hum and hum.Health <= 0 then return true end
+        return false
+    end
+
+    local M = {}
+
+    function M.FindNearbyKnocked()
+        local char = LP.Character
+        if not (char and char:FindFirstChild("HumanoidRootPart")) then
+            return nil, nil, nil
+        end
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr == LP then continue end
+            if not plr.Character then continue end
+            if isDead(plr) then continue end
+            if not isKnocked(plr) then continue end
+            local folder = Workspace:FindFirstChild(plr.Name)
+            if folder and folder:FindFirstChild("HB") then
+                return folder.HB, plr.Character, plr
+            end
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                return hrp, plr.Character, plr
+            end
+        end
+        return nil, nil, nil
+    end
+
+    function M.GetTargetKnocked()
+        if not State.knockstomp.targetonly then
+            return M.FindNearbyKnocked()
+        end
+        return M.FindNearbyKnocked()
+    end
+
+    function M.Loop()
+        while State.knockstomp.isactive do
+            local char = LP.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                local hrp = char.HumanoidRootPart
+
+                local hitbox, targetChar, targetPlr = M.FindNearbyKnocked()
+
+                if hitbox and targetPlr then
+                    State.knockstomp.originalcframe = hrp.CFrame
+
+                    local pos = hitbox.Position
+                    hrp.CFrame = CFrame.new(pos.X, pos.Y, pos.Z)
+                    hrp.Velocity = Vector3.new(0, 0, 0)
+                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+
+                    while not (
+                        not isKnocked(targetPlr)
+                        or isDead(targetPlr)
+                        or not State.knockstomp.isactive
+                    ) do
+                        if hitbox and hitbox.Parent then
+                            local p = hitbox.Position
+                            hrp.CFrame = CFrame.new(p.X, p.Y, p.Z)
+                            hrp.Velocity = Vector3.new(0, 0, 0)
+                            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        end
+
+                        pcall(function()
+                            ReplicatedStorage.MainEvent:FireServer("Stomp")
+                        end)
+                        pcall(function()
+                            ReplicatedStorage.MAINEVENT:FireServer("STOMP")
+                        end)
+
+                        task.wait(0.05)
+                    end
+
+                    if State.knockstomp.originalcframe then
+                        hrp.CFrame = State.knockstomp.originalcframe
+                        hrp.Velocity = Vector3.new(0, 0, 0)
+                        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    end
+                end
+            end
+            task.wait(0.3)
+        end
+    end
+
+    function M.Start()
+        if State.knockstomp.isactive then return end
+        State.knockstomp.isactive = true
+        task.spawn(M.Loop)
+    end
+
+    function M.Stop()
+        State.knockstomp.isactive = false
+        local char = LP.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and State.knockstomp.originalcframe then
+            local hrp = char.HumanoidRootPart
+            hrp.CFrame = State.knockstomp.originalcframe
+            hrp.Velocity = Vector3.new(0, 0, 0)
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        end
+        State.knockstomp.originalcframe = nil
     end
 
     return M
@@ -3172,6 +3381,24 @@ movementSec:Toggle({ Text = "JumpPower", Flag = "mv_jp", Default = false, Callba
 end })
 movementSec:Slider({ Text = "JumpPower", Flag = "mv_jp_power", Min = 1, Max = 100, Default = 50, Decimals = 0,
     Callback = function(v) JumpPower.setPower(v) end })
+movementSec:Toggle({ Text = "Cframe", Flag = "mv_cframe", Default = false, Callback = function(v)
+    CFrameSpeed.setEnabled(v)
+    notify("movement", v and "cframe on" or "cframe off", v and "success" or "warn")
+end })
+movementSec:Slider({ Text = "Cframe speed", Flag = "mv_cframe_speed", Min = 1, Max = 100, Default = 100, Decimals = 0,
+    Callback = function(v) CFrameSpeed.setSpeed(v) end })
+
+local ragePosSec = RagebotTab:Section("Rage Position", 1)
+ragePosSec:Button({ Text = "Auto katana", Callback = function()
+    local ok, err = pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Stateview-prison-script-/main/Katanaaayyyy"))()
+    end)
+    if ok then
+        notify("auto katana", "loaded", "success")
+    else
+        notify("auto katana", "failed: " .. tostring(err), "error")
+    end
+end })
 
 --information
 local infoSec = InformationTab:Section("profile", 1)
@@ -3453,9 +3680,11 @@ utilSec:Toggle({
                 notify("auto kill", "no target selected — using nearest", "warn")
             end
             AutoKill.setEnabled(true)
-            notify("auto kill", "enabled", "success")
+            KnockStomp.Start()
+            notify("auto kill", "enabled (katana + knock stomp)", "success")
         else
             AutoKill.setEnabled(false)
+            KnockStomp.Stop()
             notify("auto kill", "disabled", "warn")
         end
     end,
