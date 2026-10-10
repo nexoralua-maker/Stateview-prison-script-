@@ -1546,15 +1546,13 @@ local JumpPower = (function()
     return M
 end)()
 
---knock stomp
+--knock stomp (target only)
 local KnockStomp = (function()
     local State = {
         knockstomp = {
             isactive       = false,
-            detectionrange = math.huge,
-            userange       = false,
             originalcframe = nil,
-            targetonly     = false,
+            targetName     = nil,
         }
     }
 
@@ -1587,33 +1585,28 @@ local KnockStomp = (function()
 
     local M = {}
 
-    function M.FindNearbyKnocked()
-        local char = LP.Character
-        if not (char and char:FindFirstChild("HumanoidRootPart")) then
-            return nil, nil, nil
-        end
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr == LP then continue end
-            if not plr.Character then continue end
-            if isDead(plr) then continue end
-            if not isKnocked(plr) then continue end
-            local folder = Workspace:FindFirstChild(plr.Name)
-            if folder and folder:FindFirstChild("HB") then
-                return folder.HB, plr.Character, plr
-            end
-            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                return hrp, plr.Character, plr
-            end
-        end
-        return nil, nil, nil
-    end
+    -- Only returns the targeted player if they are knocked
+    function M.FindTargetKnocked()
+        local name = State.knockstomp.targetName
+        if not name or name == "" then return nil, nil, nil end
 
-    function M.GetTargetKnocked()
-        if not State.knockstomp.targetonly then
-            return M.FindNearbyKnocked()
+        local plr = Players:FindFirstChild(name)
+        if not plr or plr == LP then return nil, nil, nil end
+        if not plr.Character then return nil, nil, nil end
+        if isDead(plr) then return nil, nil, nil end
+        if not isKnocked(plr) then return nil, nil, nil end
+
+        local folder = Workspace:FindFirstChild(plr.Name)
+        if folder and folder:FindFirstChild("HB") then
+            return folder.HB, plr.Character, plr
         end
-        return M.FindNearbyKnocked()
+
+        local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            return hrp, plr.Character, plr
+        end
+
+        return nil, nil, nil
     end
 
     function M.Loop()
@@ -1622,7 +1615,7 @@ local KnockStomp = (function()
             if char and char:FindFirstChild("HumanoidRootPart") then
                 local hrp = char.HumanoidRootPart
 
-                local hitbox, targetChar, targetPlr = M.FindNearbyKnocked()
+                local hitbox, targetChar, targetPlr = M.FindTargetKnocked()
 
                 if hitbox and targetPlr then
                     State.knockstomp.originalcframe = hrp.CFrame
@@ -1665,6 +1658,10 @@ local KnockStomp = (function()
         end
     end
 
+    function M.setTargetName(name)
+        State.knockstomp.targetName = name
+    end
+
     function M.Start()
         if State.knockstomp.isactive then return end
         State.knockstomp.isactive = true
@@ -1673,6 +1670,7 @@ local KnockStomp = (function()
 
     function M.Stop()
         State.knockstomp.isactive = false
+        State.knockstomp.targetName = nil
         local char = LP.Character
         if char and char:FindFirstChild("HumanoidRootPart") and State.knockstomp.originalcframe then
             local hrp = char.HumanoidRootPart
@@ -3673,15 +3671,17 @@ utilSec:Toggle({
     Text = "Auto kill", Flag = "target_autokill", Default = false,
     Callback = function(v)
         if v then
-            if selTarget.Player then
-                AutoKill.setTargetName(selTarget.Player.Name)
-            else
-                AutoKill.setTargetName(nil)
-                notify("auto kill", "no target selected — using nearest", "warn")
+            if not selTarget.Player then
+                notify("auto kill", "select a target first", "warn")
+                if Toggles and Toggles.target_autokill then Toggles.target_autokill:SetValue(false) end
+                return
             end
+            local name = selTarget.Player.Name
+            AutoKill.setTargetName(name)
             AutoKill.setEnabled(true)
+            KnockStomp.setTargetName(name)
             KnockStomp.Start()
-            notify("auto kill", "enabled (katana + knock stomp)", "success")
+            notify("auto kill", "enabled on " .. name, "success")
         else
             AutoKill.setEnabled(false)
             KnockStomp.Stop()
