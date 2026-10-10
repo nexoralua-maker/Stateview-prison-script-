@@ -1546,6 +1546,134 @@ local JumpPower = (function()
     return M
 end)()
 
+--anti mod (group 693335996)
+local AntiMod = (function()
+    local STAFF_GROUP_ID   = 693335996
+    local SCAN_DELAY       = 2
+    local JOIN_CHECK_DELAY = 1
+
+    local M = { enabled = false }
+    local trackedStaff = {}
+    local conns = {}
+    local scanTask = nil
+
+    local function alert(title, text)
+        notify(title, text, "warn")
+        warn(("[ANTI-MOD] %s | %s"):format(title, text))
+    end
+
+    local function GetModCount()
+        local count = 0
+        for _ in pairs(trackedStaff) do count = count + 1 end
+        return count
+    end
+
+    local function IsMod(player)
+        if not player or not player.Parent then return false end
+        local ok, result = pcall(function()
+            return player:IsInGroup(STAFF_GROUP_ID)
+        end)
+        return ok and result == true
+    end
+
+    local function GetRole(player)
+        local ok, role = pcall(function()
+            return player:GetRoleInGroup(STAFF_GROUP_ID)
+        end)
+        if ok and role and role ~= "" then return role end
+        return "Staff"
+    end
+
+    local function RegisterMod(player)
+        if not trackedStaff[player.UserId] then
+            local role = GetRole(player)
+            trackedStaff[player.UserId] = { name = player.Name, role = role }
+            return role
+        end
+        return trackedStaff[player.UserId].role
+    end
+
+    local function UnregisterMod(player)
+        local entry = trackedStaff[player.UserId]
+        trackedStaff[player.UserId] = nil
+        return entry
+    end
+
+    local function CheckForMods()
+        trackedStaff = {}
+        local found = {}
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP and IsMod(plr) then
+                local role = RegisterMod(plr)
+                table.insert(found, ("%s (%s)"):format(plr.Name, role))
+            end
+        end
+        if #found > 0 then
+            alert("Staff detected!", table.concat(found, ", "))
+        end
+        return #found
+    end
+
+    local function start()
+        scanTask = task.spawn(function()
+            task.wait(SCAN_DELAY)
+            if not M.enabled then return end
+            if CheckForMods() == 0 then
+                notify("anti mod", "server is clean — no staff detected", "success")
+            end
+        end)
+
+        conns[#conns + 1] = Players.PlayerAdded:Connect(function(plr)
+            task.wait(JOIN_CHECK_DELAY)
+            if not M.enabled then return end
+            if plr == LP then return end
+            if IsMod(plr) then
+                local role = RegisterMod(plr)
+                alert(
+                    "Staff detected!",
+                    ("%s (%s) — %d staff in server"):format(plr.Name, role, GetModCount())
+                )
+            end
+        end)
+
+        conns[#conns + 1] = Players.PlayerRemoving:Connect(function(plr)
+            if not M.enabled then return end
+            local entry = UnregisterMod(plr)
+            if entry then
+                notify(
+                    "staff left",
+                    ("%s (%s) — %d staff remaining"):format(entry.name, entry.role, GetModCount()),
+                    "warn"
+                )
+            end
+        end)
+    end
+
+    local function stop()
+        if scanTask then pcall(task.cancel, scanTask); scanTask = nil end
+        for _, c in ipairs(conns) do
+            if c and c.Disconnect then pcall(function() c:Disconnect() end) end
+        end
+        conns = {}
+        trackedStaff = {}
+    end
+
+    function M.setEnabled(v)
+        local want = v and true or false
+        if want == M.enabled then return end
+        M.enabled = want
+        if want then
+            start()
+            notify("anti mod", "enabled", "success")
+        else
+            stop()
+            notify("anti mod", "disabled", "warn")
+        end
+    end
+
+    return M
+end)()
+
 --knock stomp (target only)
 local KnockStomp = (function()
     local State = {
@@ -1578,14 +1706,13 @@ local KnockStomp = (function()
         if not (plr and plr.Character) then return true end
         local char = plr.Character
         if char:GetAttribute("Dead") then return true end
-        local hum = char:FindFirstChild("Humanoid")
+        local hum = char:FindFirstChildOfClass("Humanoid")
         if hum and hum.Health <= 0 then return true end
         return false
     end
 
     local M = {}
 
-    -- Only returns the targeted player if they are knocked
     function M.FindTargetKnocked()
         local name = State.knockstomp.targetName
         if not name or name == "" then return nil, nil, nil end
@@ -1755,21 +1882,7 @@ local AutoKill = (function()
             local p = Players:FindFirstChild(targetName)
             if p and p ~= player and p.Character then return p end
         end
-        local myChar = player.Character
-        if not myChar then return nil end
-        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
-        if not myRoot then return nil end
-        local nearest, bestDist = nil, math.huge
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= player and p.Character then
-                local r = p.Character:FindFirstChild("HumanoidRootPart")
-                if r then
-                    local d = (r.Position - myRoot.Position).Magnitude
-                    if d < bestDist then bestDist = d; nearest = p end
-                end
-            end
-        end
-        return nearest
+        return nil
     end
 
     local function getRealTargetPosition(tgtRoot)
@@ -3681,6 +3794,7 @@ utilSec:Toggle({
             AutoKill.setEnabled(true)
             KnockStomp.setTargetName(name)
             KnockStomp.Start()
+            notify("auto kill", "Make sure u Aimlock the target player", "warn")
             notify("auto kill", "enabled on " .. name, "success")
         else
             AutoKill.setEnabled(false)
@@ -3844,7 +3958,12 @@ miscSec:Button({ Text = "No jump Cooldown", Callback = function()
     end
 end })
 
--- chatlogs (toggle, now at the bottom of the buttons)
+-- anti mod (toggle)
+miscSec:Toggle({ Text = "Anti mod", Flag = "misc_antimod", Default = false, Callback = function(v)
+    AntiMod.setEnabled(v)
+end })
+
+-- chatlogs (toggle)
 miscSec:Toggle({ Text = "chatlogs", Flag = "misc_chatlogs", Default = false, Callback = function(v)
     local ok = pcall(function()
         local TextChatService = game:GetService("TextChatService")
