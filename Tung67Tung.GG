@@ -211,7 +211,19 @@ local Aimlock = (function()
         end
     end
     local function has_char(p) return p and p.Character and p.Character:FindFirstChild("Humanoid") ~= nil end
-    local function is_knocked(p) if not has_char(p) then return false end; local be = p.Character:FindFirstChild("BodyEffects"); if not be then return false end; local ko = be:FindFirstChild("K.O"); return ko and ko.Value or false end
+
+    local function is_knocked(plr)
+        if not (plr and plr.Character) then return false end
+        local char = plr.Character
+        if char:GetAttribute("Knocked") then return true end
+        local bodyFx = char:FindFirstChild("BodyEffects")
+        if bodyFx then
+            local ko = bodyFx:FindFirstChild("K.O")
+            if ko and ko.Value then return true end
+        end
+        return false
+    end
+
     local function is_grabbed(p) if not has_char(p) then return false end; return p.Character:FindFirstChild("GRABBING_CONSTRAINT") ~= nil end
     local function is_visible(targetChar, targetPart)
         if not targetChar or not targetPart then return false end
@@ -405,15 +417,18 @@ local Aimlock = (function()
     return M
 end)()
 
---silent aim
+--silent aim (optimized)
 local SilentAimPrediction = (function()
     local M = { enabled=false, hookInstalled=false,
-        state = { target=nil, isTargetting=false, predicted_position=Vector3.new(1,1,1) },
-        ghost_model=nil, ghost_owner=nil }
+        state = { target=nil, isTargetting=false, predicted_position=Vector3.new(1,1,1) } }
     local FOV_RADIUS_MULT, H_PREDICTION, V_PREDICTION = 1.5, 0.134, 0.134
     local FOV_BASE, FOV_TRANSPARENCY = 80, 0.5
     local AIM_PART, WALLCHECK = "Head", false
     local FOV_VISIBLE, FOV_INNER_COLOR, FOV_OUTER_COLOR = true, WHITE, WHITE
+
+    local SCAN_INTERVAL = 1/25
+    local nextScan = 0
+
     local game_support = {
         [2788229376]={Remote="MainEvent",Argument="UpdateMousePosI"},[12238627497]={Remote="MainEvent",Argument="UpdateMousePos"},
         [5602055394]={Remote="MAINEVENT",Argument="MousePos"},[17403265390]={Remote="MAINEVENT",Argument="MOUSE"},
@@ -433,6 +448,7 @@ local SilentAimPrediction = (function()
             if r and r:IsA("RemoteEvent") then remote = r; mouse_argument = "MOUSE"; break end
         end
     end
+
     local drawings
     local function ensureDrawings()
         if drawings then return end
@@ -447,97 +463,130 @@ local SilentAimPrediction = (function()
             pm_outline=mkC(false,WHITE,5), pm_fill=mkC(true,DARK_PURPLE,5) }
         drawings.tracer.Visible = false
     end
+
     local function screen_center() local vp = camera.ViewportSize; return Vector2.new(vp.X/2, vp.Y/2) end
     local function has_char(p) return p and p.Character and p.Character:FindFirstChild("Humanoid") ~= nil end
-    local function w2s(pos) local p, on = camera:WorldToViewportPoint(pos); return Vector2.new(p.X, p.Y), on end
-    local function is_knocked(p) if not has_char(p) then return false end; local be = p.Character:FindFirstChild("BodyEffects"); if not be then return false end; local ko = be:FindFirstChild("K.O"); return ko and ko.Value or false end
+    local function w2s(pos) local p, on = camera:WorldToViewportPoint(pos); return Vector2.new(p.X, p.Y), on and p.Z > 0 end
+
+    local function is_knocked(plr)
+        if not (plr and plr.Character) then return false end
+        local char = plr.Character
+        if char:GetAttribute("Knocked") then return true end
+        local bodyFx = char:FindFirstChild("BodyEffects")
+        if bodyFx then
+            local ko = bodyFx:FindFirstChild("K.O")
+            if ko and ko.Value then return true end
+        end
+        return false
+    end
+
     local function is_grabbed(p) if not has_char(p) then return false end; return p.Character:FindFirstChild("GRABBING_CONSTRAINT") ~= nil end
+
     local function get_closest_player()
         local center = screen_center(); local radius = FOV_BASE * FOV_RADIUS_MULT; local closest
         for _, p in ipairs(Players:GetPlayers()) do
             if p == player then continue end
-            if not has_char(p) then continue end
-            local part = ResolveClosestPart(p.Character, AIM_PART); if not part then continue end
+            local char = p.Character
+            if not char then continue end
+            local part = char:FindFirstChild(AIM_PART) or char:FindFirstChild("HumanoidRootPart")
+            if not part then continue end
             local sp, on = w2s(part.Position); if not on then continue end
             if is_knocked(p) or is_grabbed(p) then continue end
-            local d = (center - sp).Magnitude
+            local dx, dy = center.X - sp.X, center.Y - sp.Y
+            local d = math.sqrt(dx*dx + dy*dy)
             if d <= radius then radius = d; closest = p end
         end
         return closest
     end
+
     local function get_predicted_position()
         local target = M.state.target
-        if not target or not has_char(target) then return Vector3.new(0, 0, 0) end
-        local aim_part = ResolveClosestPart(target.Character, AIM_PART)
+        if not target then return Vector3.new(0, 0, 0) end
+        local char = target.Character
+        if not char then return Vector3.new(0, 0, 0) end
+        local aim_part = char:FindFirstChild(AIM_PART) or char:FindFirstChild("HumanoidRootPart")
         if not aim_part then return Vector3.new(0, 0, 0) end
         local pos, vel = aim_part.Position, aim_part.AssemblyLinearVelocity
         return Vector3.new(pos.X + vel.X*H_PREDICTION, pos.Y + vel.Y*V_PREDICTION, pos.Z + vel.Z*H_PREDICTION)
     end
-    local function cleanup_ghost() if M.ghost_model then M.ghost_model:Destroy(); M.ghost_model, M.ghost_owner = nil, nil end end
-    local function build_ghost(p)
-        cleanup_ghost(); if not has_char(p) then return end
-        local char = p.Character; char.Archivable = true
-        local clone = char:Clone(); char.Archivable = false; clone.Name = "SilentAimPredictionGhost"
-        for _, obj in ipairs(clone:GetDescendants()) do
-            if obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("Sound") or obj:IsA("ParticleEmitter") or obj:IsA("Decal") or obj:IsA("Texture") or obj:IsA("Highlight") then obj:Destroy()
-            elseif obj:IsA("BasePart") then
-                obj.Anchored, obj.CanCollide, obj.CanTouch, obj.CanQuery, obj.Massless = true, false, false, false, true
-                obj.Transparency = 0.85; obj.Material = Enum.Material.ForceField; obj.Color = DARK_PURPLE
-            end
-        end
-        clone.PrimaryPart = clone:FindFirstChild("HumanoidRootPart") or clone:FindFirstChildWhichIsA("BasePart")
-        clone.Parent = workspace; M.ghost_model, M.ghost_owner = clone, p
-    end
-    local function update_ghost(pp)
-        if not M.ghost_model or not M.state.target then return end
-        if M.ghost_owner ~= M.state.target then build_ghost(M.state.target); if not M.ghost_model then return end end
-        local real_hrp = M.state.target.Character:FindFirstChild("HumanoidRootPart"); if not real_hrp then return end
-        M.ghost_model:PivotTo(CFrame.new(pp) * (real_hrp.CFrame - real_hrp.CFrame.Position))
-    end
+
     local function install_hook()
         if M.hookInstalled then return end; M.hookInstalled = true
         local old
         old = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-            local method = getnamecallmethod(); local args = { ... }
-            if not checkcaller() and method == "FireServer" and typeof(args[1]) == "string" and typeof(args[2]) == "Vector3" then
-                if M.enabled and M.state.isTargetting and M.state.target then args[2] = M.state.predicted_position end
+            local method = getnamecallmethod()
+            if not checkcaller() and method == "FireServer" then
+                local args = { ... }
+                if typeof(args[1]) == "string" and typeof(args[2]) == "Vector3" then
+                    if M.enabled and M.state.isTargetting and M.state.target then
+                        args[2] = M.state.predicted_position
+                    end
+                end
                 return old(self, table.unpack(args))
             end
             return old(self, ...)
         end))
     end
+
     RunService.RenderStepped:Connect(function()
         if not M.enabled or not drawings then
             if drawings then for _, d in pairs(drawings) do d.Visible = false end end
-            M.state.target, M.state.isTargetting = nil, false; cleanup_ghost(); return
+            M.state.target, M.state.isTargetting = nil, false
+            return
         end
-        local nt = get_closest_player()
-        if nt ~= M.state.target then cleanup_ghost() end
-        M.state.target = nt; M.state.isTargetting = nt ~= nil
+
+        local now = tick()
+        if now >= nextScan then
+            nextScan = now + SCAN_INTERVAL
+            local nt = get_closest_player()
+            M.state.target = nt
+            M.state.isTargetting = nt ~= nil
+        end
+
+        if M.state.target then
+            local c = M.state.target.Character
+            if not c or not c:FindFirstChild("HumanoidRootPart") then
+                M.state.target = nil
+                M.state.isTargetting = false
+            end
+        end
+
         if M.state.isTargetting then
             M.state.predicted_position = get_predicted_position()
-            if not M.ghost_model or M.ghost_owner ~= M.state.target then build_ghost(M.state.target) end
-            update_ghost(M.state.predicted_position)
-        else cleanup_ghost() end
+        end
+
         local center = screen_center(); local radius = FOV_BASE * FOV_RADIUS_MULT
-        drawings.fov_outside.Visible = FOV_VISIBLE; drawings.fov_outside.Radius = radius
-        drawings.fov_outside.Color = FOV_OUTER_COLOR; drawings.fov_outside.Position = center
-        drawings.fov_inside.Visible = FOV_VISIBLE; drawings.fov_inside.Radius = radius
-        drawings.fov_inside.Color = FOV_INNER_COLOR; drawings.fov_inside.Transparency = FOV_TRANSPARENCY
+        drawings.fov_outside.Visible = FOV_VISIBLE
+        drawings.fov_outside.Radius = radius
+        drawings.fov_outside.Color = FOV_OUTER_COLOR
+        drawings.fov_outside.Position = center
+        drawings.fov_inside.Visible = FOV_VISIBLE
+        drawings.fov_inside.Radius = radius
+        drawings.fov_inside.Color = FOV_INNER_COLOR
+        drawings.fov_inside.Transparency = FOV_TRANSPARENCY
         drawings.fov_inside.Position = center
-        drawings.center_dot.Visible, drawings.center_dot.Position = true, center
+        drawings.center_dot.Visible = true
+        drawings.center_dot.Position = center
         drawings.center_dot.Color = FOV_INNER_COLOR
+
         if M.state.isTargetting then
             local ps, on = w2s(M.state.predicted_position)
-            drawings.tracer.Visible = on; drawings.tracer.From = center; drawings.tracer.To = ps
-            drawings.tracer.Color = FOV_INNER_COLOR; drawings.tracer.Thickness = 2; drawings.tracer.Transparency = 0.5
-            drawings.pm_outline.Visible, drawings.pm_outline.Position = on, ps; drawings.pm_outline.Color = FOV_OUTER_COLOR
-            drawings.pm_fill.Visible, drawings.pm_fill.Position = on, ps; drawings.pm_fill.Color = FOV_INNER_COLOR
+            drawings.tracer.Visible = on
+            if on then
+                drawings.tracer.From = center; drawings.tracer.To = ps
+                drawings.tracer.Color = FOV_INNER_COLOR; drawings.tracer.Thickness = 2; drawings.tracer.Transparency = 0.5
+                drawings.pm_outline.Position = ps; drawings.pm_fill.Position = ps
+            end
+            drawings.pm_outline.Visible = on; drawings.pm_outline.Color = FOV_OUTER_COLOR
+            drawings.pm_fill.Visible = on; drawings.pm_fill.Color = FOV_INNER_COLOR
             drawings.pm_fill.Transparency = 0.2
         else
-            drawings.tracer.Visible = false; drawings.pm_outline.Visible = false; drawings.pm_fill.Visible = false
+            drawings.tracer.Visible = false
+            drawings.pm_outline.Visible = false
+            drawings.pm_fill.Visible = false
         end
     end)
+
     local function hook_gun(character)
         if not character then return end
         character.ChildAdded:Connect(function(tool)
@@ -551,11 +600,13 @@ local SilentAimPrediction = (function()
         end)
     end
     if player.Character then hook_gun(player.Character) end
-    player.CharacterAdded:Connect(function(c) hook_gun(c); cleanup_ghost() end)
+    player.CharacterAdded:Connect(hook_gun)
+
     function M.setEnabled(state)
         M.enabled = state and true or false
         if M.enabled then ensureDrawings(); install_hook()
-        else cleanup_ghost(); M.state.target, M.state.isTargetting = nil, false
+        else
+            M.state.target, M.state.isTargetting = nil, false
             if drawings then for _, d in pairs(drawings) do d.Visible = false end end
         end
     end
@@ -1672,6 +1723,156 @@ local AntiMod = (function()
     end
 
     return M
+end)()
+
+--hit sounds
+local HitSounds = (function()
+    local SOUNDS = {
+        ["Call of Duty"] = "rbxassetid://5952120301",
+        Bubble           = "rbxassetid://6534947588",
+        Error            = "rbxassetid://160715357",
+        Lazer            = "rbxassetid://130791043",
+        Pop              = "rbxassetid://198598793",
+        OSU              = "rbxassetid://7147454322",
+        Neverlose        = "rbxassetid://7216848832",
+        Bameware         = "rbxassetid://3124331820",
+        Hitmarker        = "rbxassetid://160432334",
+        skeet            = "rbxassetid://4817809188",
+        Rust             = "rbxassetid://5043539486",
+        ["Bow Hit"]      = "rbxassetid://1053296915",
+        Bow              = "rbxassetid://3442683707",
+        ["TF2 Hitsound"] = "rbxassetid://3455144981",
+        ["TF2 Critical"] = "rbxassetid://296102734",
+    }
+
+    local State = {
+        Enabled    = false,
+        Sound      = "Hitmarker",
+        Volume     = 5,
+        HitWindow  = 0.5,
+        Cooldown   = 0.05,
+        LastAttack = 0,
+        LastPlay   = 0,
+        LastHealth = {},
+    }
+
+    local function PlaySound()
+        local id = SOUNDS[State.Sound]
+        if not id then return end
+
+        local sound   = Instance.new("Sound")
+        sound.SoundId = id
+        sound.Volume  = State.Volume
+        sound.Parent  = Workspace
+        sound:Play()
+
+        local cleaned = false
+        local function cleanup()
+            if cleaned then return end
+            cleaned = true
+            if sound and sound.Parent then sound:Destroy() end
+        end
+        sound.Ended:Connect(cleanup)
+        task.delay(5, cleanup)
+    end
+
+    local function MarkAttack()
+        State.LastAttack = tick()
+    end
+
+    local function HookTool(tool)
+        if tool:IsA("Tool") then
+            tool.Activated:Connect(MarkAttack)
+        end
+    end
+
+    local function HookCharacter(char)
+        for _, child in ipairs(char:GetChildren()) do
+            HookTool(child)
+        end
+        char.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then HookTool(child) end
+        end)
+    end
+
+    if LP.Character then HookCharacter(LP.Character) end
+    LP.CharacterAdded:Connect(HookCharacter)
+
+    pcall(function()
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            if getnamecallmethod() == "FireServer" and checkcaller() then
+                local args = {...}
+                if typeof(args[1]) == "string" then
+                    local lower = string.lower(args[1])
+                    if lower:find("shoot") or lower:find("fire")
+                    or lower:find("hit")   or lower:find("damage")
+                    or lower:find("attack")or lower:find("swing")
+                    or lower:find("melee") or lower:find("punch") then
+                        MarkAttack()
+                    end
+                end
+                if typeof(args[1]) == "Vector3" or typeof(args[2]) == "Vector3" then
+                    MarkAttack()
+                end
+            end
+            return oldNamecall(self, ...)
+        end)
+    end)
+
+    local connection = RunService.Heartbeat:Connect(function()
+        if not State.Enabled then return end
+
+        local now = tick()
+
+        if now - State.LastPlay < State.Cooldown then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LP and p.Character then
+                    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                    if hum then State.LastHealth[p.UserId] = hum.Health end
+                end
+            end
+            return
+        end
+
+        local attackedRecently = (now - State.LastAttack) < State.HitWindow
+
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p == LP or not p.Character then continue end
+            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+            if not hum then continue end
+
+            local health     = hum.Health
+            local lastHealth = State.LastHealth[p.UserId] or health
+
+            if health < lastHealth and attackedRecently then
+                PlaySound()
+                State.LastPlay = now
+            end
+
+            State.LastHealth[p.UserId] = health
+        end
+    end)
+
+    LP.CharacterAdded:Connect(function()
+        State.LastHealth = {}
+    end)
+    Players.PlayerRemoving:Connect(function(p)
+        State.LastHealth[p.UserId] = nil
+    end)
+
+    return {
+        SetEnabled = function(v) State.Enabled = v and true or false end,
+        SetSound   = function(name) if SOUNDS[name] then State.Sound = name end end,
+        SetVolume  = function(v) State.Volume = math.clamp(tonumber(v) or 5, 0, 10) end,
+        SetHitWindow = function(v) State.HitWindow = tonumber(v) or 0.5 end,
+        GetSounds  = function() return SOUNDS end,
+        IsEnabled  = function() return State.Enabled end,
+        Destroy    = function()
+            if connection then connection:Disconnect() connection = nil end
+            State.LastHealth = {}
+        end,
+    }
 end)()
 
 --knock stomp (target only)
@@ -3794,7 +3995,7 @@ utilSec:Toggle({
             AutoKill.setEnabled(true)
             KnockStomp.setTargetName(name)
             KnockStomp.Start()
-            notify("auto kill", "Make sure u Aimlock the target player", "warn")
+            notify("auto kill", "If u want Auto kill Using gun Use aimlock if u wnat auto kill wth katana use auto katana on Ragebot tab", "warn")
             notify("auto kill", "enabled on " .. name, "success")
         else
             AutoKill.setEnabled(false)
@@ -4010,7 +4211,7 @@ for _, slot in ipairs(slotOrder) do
         end })
 end
 
-local tracerSec = MiscTab:Section("tracers", 2)
+local tracerSec = MiscTab:Section("Bullet tracers", 2)
 tracerSec:Toggle({ Text = "enabled", Flag = "bt_enabled", Default = false, Callback = function(v)
     BulletTracer.setEnabled(v)
     notify("tracers", v and "on" or "off", v and "success" or "warn")
@@ -4032,6 +4233,25 @@ buySec:Dropdown({ Text = "armor type", Flag = "ab_armort", Options = { "[medium 
 buySec:Toggle({ Text = "auto buy guns", Flag = "ab_gun", Default = false, Callback = function(v) AutoBuyState.AutoGun = v end })
 buySec:Dropdown({ Text = "gun types", Flag = "ab_gunt", Options = { "[silencer]","[usp]","[tactical shotgun]" }, Default = "[silencer]",
     Callback = function(v) local map = { ["[silencer]"]="[Silencer]",["[usp]"]="[USP]",["[tactical shotgun]"]="[Tactical Shotgun]" }; AutoBuyState.SelectedGun = map[v] or "[Silencer]" end })
+
+local hitSoundSec = MiscTab:Section("Hit Sounds", 1)
+
+hitSoundSec:Toggle({ Text = "Enable", Flag = "hs_enabled", Default = false, Callback = function(v)
+    HitSounds.SetEnabled(v)
+    notify("hit sounds", v and "enabled" or "disabled", v and "success" or "warn")
+end })
+
+hitSoundSec:Dropdown({ Text = "Sounds", Flag = "hs_sound",
+    Options = {
+        "Call of Duty", "Bubble", "Error", "Lazer", "Pop", "OSU",
+        "Neverlose", "Bameware", "Hitmarker", "skeet", "Rust",
+        "Bow Hit", "Bow", "TF2 Hitsound", "TF2 Critical",
+    },
+    Default = "Hitmarker",
+    Callback = function(v) HitSounds.SetSound(v) end })
+
+hitSoundSec:Slider({ Text = "Volume", Flag = "hs_volume", Min = 0, Max = 10, Default = 5, Decimals = 1,
+    Callback = function(v) HitSounds.SetVolume(v) end })
 
 --settings
 local configs = SettingsTab:Section("configs", 1)
