@@ -1,0 +1,1617 @@
+-- ============================================================
+-- SELF AURA SYSTEM — Compact Draggable GUI
+-- Includes ALL 22 auras (14 procedural + 8 asset-based)
+-- ============================================================
+
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local LocalPlayer      = Players.LocalPlayer
+
+-- Prefer gethui() — fixes input issues on many executors
+local ParentGui = (gethui and gethui())
+    or (game:GetService("CoreGui"))
+    or LocalPlayer:WaitForChild("PlayerGui")
+
+-- ============================================================
+-- ASSET-BASED AURAS
+-- ============================================================
+local aurp = {}
+local aurasst = {}
+pcall(function()
+    aurasst = {
+        ["Starlight Aura"] = game:GetObjects("rbxassetid://134645216613107")[1],
+        ["Heavenly Aura"]  = game:GetObjects("rbxassetid://139300897520961")[1],
+        ["Ribbon Aura"]    = game:GetObjects("rbxassetid://132069507632161")[1],
+        ["Sakura Aura"]    = game:GetObjects("rbxassetid://81755778619404")[1],
+        ["Angel Aura"]     = game:GetObjects("rbxassetid://97658130917593")[1],
+        ["Wind Aura"]      = game:GetObjects("rbxassetid://80694081850877")[1],
+        ["Flow Aura"]      = game:GetObjects("rbxassetid://119913533725648")[1],
+        ["Star Aura"]      = game:GetObjects("rbxassetid://73754563740680")[1],
+    }
+end)
+
+local function IsAssetAura(t)
+    return aurasst[t] ~= nil
+end
+
+-- ============================================================
+-- AURA ORDER (procedural first, then assets)
+-- ============================================================
+local AURA_ORDER = {
+    -- Procedural
+    "Angel Wings", "Halo", "Saturn Ring", "Ground", "Earthquake",
+    "Slash", "Lightning", "Electrical", "Swirl", "Wrap",
+    "Pulse", "Air", "Bubble", "Wave",
+    -- Asset-based
+    "Starlight Aura", "Heavenly Aura", "Ribbon Aura", "Sakura Aura",
+    "Angel Aura", "Wind Aura", "Flow Aura", "Star Aura",
+}
+
+-- ============================================================
+-- STATE
+-- ============================================================
+local State = {
+    auraEnabled = false,
+    auraType    = "Angel Wings",
+    auraColor   = Color3.fromRGB(255, 94, 0),
+
+    ffCharEnabled = false,
+    ffCharColor   = Color3.fromRGB(255, 94, 0),
+
+    ffToolEnabled = false,
+    ffToolColor   = Color3.fromRGB(255, 94, 0),
+
+    aurCon = nil,
+}
+
+-- ============================================================
+-- PROCEDURAL AURA BUILDER
+-- ============================================================
+local function CreateAura(AuraType, Attachment, ParentPart)
+    local Emitters = {}
+    local ExtraAttachments = {}
+
+    if AuraType == "Saturn Ring" then
+        Attachment.Name = "ParticleAttachment"
+        Attachment.CFrame = CFrame.new(0, 0, 0, 0.965, 0.259, 0, -0.259, 0.965, 0, 0, 0, 1)
+        Attachment.Axis = Vector3.new(0.966, -0.259, 0)
+        Attachment.SecondaryAxis = Vector3.new(0.259, 0.966, 0)
+
+        local p = Instance.new("ParticleEmitter")
+        p.Name = "ParticleEmitter"
+        p.Texture = "rbxassetid://14054635072"
+        p.LockedToPart = true
+        p.Brightness = 1
+        p.LightEmission = 1
+        p.LightInfluence = 0
+        p.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        p.Size = NumberSequence.new(4)
+        p.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.5, 0),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        p.Lifetime = NumberRange.new(1)
+        p.Rate = 10
+        p.Rotation = NumberRange.new(0, 360)
+        p.RotSpeed = NumberRange.new(30, 60)
+        p.Speed = NumberRange.new(0.01)
+        p.SpreadAngle = Vector2.new(0.1)
+        p.Parent = Attachment
+        table.insert(Emitters, p)
+
+    elseif AuraType == "Slash" then
+        Attachment.Name = "ParticleAttachment"
+        local e = Instance.new("ParticleEmitter")
+        e.Name = "SlashEmitter"
+        e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+        e.FlipbookFramerate = NumberRange.new(1, 1)
+        e.LightInfluence = 0
+        e.Lifetime = NumberRange.new(0.25, 0.25)
+        e.FlipbookLayout = Enum.ParticleFlipbookLayout.Grid2x2
+        e.SpreadAngle = Vector2.new(-360, 360)
+        e.LockedToPart = true
+        e.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.25, 0),
+            NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(0.75, 1),
+            NumberSequenceKeypoint.new(1, 0)
+        })
+        e.LightEmission = 1
+        e.Drag = 0
+        e.FlipbookStartRandom = false
+        e.TimeScale = 1
+        e.Squash = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        e.Speed = NumberRange.new(0.001, 0.001)
+        e.Brightness = 1
+        e.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 6), NumberSequenceKeypoint.new(0.5, 6),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        e.Enabled = true
+        e.RotSpeed = NumberRange.new(500, 1000)
+        e.ZOffset = 1
+        e.VelocityInheritance = 0
+        e.ShapeInOut = Enum.ParticleEmitterShapeInOut.Outward
+        e.Rate = 25
+        e.Texture = "rbxassetid://11189077263"
+        e.EmissionDirection = Enum.NormalId.Top
+        e.ShapePartial = 1
+        e.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        e.FlipbookMode = Enum.ParticleFlipbookMode.OneShot
+        e.Rotation = NumberRange.new(-360, 360)
+        e.Shape = Enum.ParticleEmitterShape.Box
+        e.Acceleration = Vector3.new(0, 0, 0)
+        e.Parent = Attachment
+        table.insert(Emitters, e)
+
+    elseif AuraType == "Lightning" then
+        Attachment.Name = "ParticleAttachment"
+        local e = Instance.new("ParticleEmitter")
+        e.Name = "LightningEmitter"
+        e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+        e.LightInfluence = 0
+        e.Lifetime = NumberRange.new(0.5, 1)
+        e.FlipbookLayout = Enum.ParticleFlipbookLayout.Grid4x4
+        e.SpreadAngle = Vector2.new(360, 360)
+        e.LockedToPart = true
+        e.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(0.1, 1),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        e.LightEmission = 1
+        e.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.new(0, 0.517647, 1)),
+            ColorSequenceKeypoint.new(1, Color3.new(0, 0.517647, 1))
+        })
+        e.Drag = 0
+        e.FlipbookStartRandom = false
+        e.Squash = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        e.Speed = NumberRange.new(0.5, 1)
+        e.Brightness = 10
+        e.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 6), NumberSequenceKeypoint.new(0.5, 3),
+            NumberSequenceKeypoint.new(1, 2)
+        })
+        e.RotSpeed = NumberRange.new(0, 0)
+        e.ZOffset = 1
+        e.VelocityInheritance = 0
+        e.ShapeInOut = Enum.ParticleEmitterShapeInOut.Inward
+        e.Rate = 50
+        e.Texture = "rbxassetid://16664675233"
+        e.EmissionDirection = Enum.NormalId.Top
+        e.ShapePartial = 1
+        e.Orientation = Enum.ParticleOrientation.FacingCamera
+        e.FlipbookMode = Enum.ParticleFlipbookMode.OneShot
+        e.Rotation = NumberRange.new(-360, 360)
+        e.Shape = Enum.ParticleEmitterShape.Box
+        e.Acceleration = Vector3.new(0, 0, 0)
+        e.Parent = Attachment
+        table.insert(Emitters, e)
+
+    elseif AuraType == "Swirl" then
+        Attachment.Name = "ParticleAttachment"
+        local e = Instance.new("ParticleEmitter")
+        e.Name = "SwirlEmitter"
+        e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+        e.FlipbookFramerate = NumberRange.new(1, 1)
+        e.LightInfluence = 0
+        e.Lifetime = NumberRange.new(0.1, 1)
+        e.FlipbookLayout = Enum.ParticleFlipbookLayout.None
+        e.SpreadAngle = Vector2.new(360, -360)
+        e.LockedToPart = true
+        e.Transparency = NumberSequence.new(0)
+        e.LightEmission = 0
+        e.Drag = 0
+        e.FlipbookStartRandom = false
+        e.TimeScale = 1
+        e.Squash = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        e.Speed = NumberRange.new(0.01, 0.01)
+        e.Brightness = 0
+        e.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 7), NumberSequenceKeypoint.new(0.5, 7),
+            NumberSequenceKeypoint.new(1, 0)
+        })
+        e.Enabled = true
+        e.RotSpeed = NumberRange.new(360, 360)
+        e.ZOffset = 0.2
+        e.VelocityInheritance = 0
+        e.ShapeInOut = Enum.ParticleEmitterShapeInOut.Outward
+        e.Rate = 5
+        e.Texture = "rbxassetid://14477910720"
+        e.EmissionDirection = Enum.NormalId.Top
+        e.ShapePartial = 1
+        e.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        e.FlipbookMode = Enum.ParticleFlipbookMode.Loop
+        e.Rotation = NumberRange.new(-180, 180)
+        e.Shape = Enum.ParticleEmitterShape.Box
+        e.Acceleration = Vector3.new(0, 0, 0)
+        e.Parent = Attachment
+        table.insert(Emitters, e)
+
+    elseif AuraType == "Wave" then
+        Attachment.Name = "ParticleAttachment"
+
+        local sparks = Instance.new("ParticleEmitter")
+        sparks.Name = "Sparks"
+        sparks.Lifetime = NumberRange.new(0.3, 1)
+        sparks.SpreadAngle = Vector2.new(180, -180)
+        sparks.LightEmission = 1
+        sparks.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        sparks.Drag = 3
+        sparks.VelocitySpread = 180
+        sparks.Speed = NumberRange.new(5, 15)
+        sparks.Brightness = 10
+        sparks.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0),
+            NumberSequenceKeypoint.new(0.14687, 0.4375, 0.1875),
+            NumberSequenceKeypoint.new(1, 0)
+        })
+        sparks.Acceleration = Vector3.new(0, 3, 0)
+        sparks.ZOffset = -1
+        sparks.Rate = 30
+        sparks.Texture = "rbxassetid://8611887361"
+        sparks.RotSpeed = NumberRange.new(-30, 30)
+        sparks.Orientation = Enum.ParticleOrientation.VelocityParallel
+        sparks.LockedToPart = true
+        sparks.Parent = Attachment
+        table.insert(Emitters, sparks)
+
+        local stars = Instance.new("ParticleEmitter")
+        stars.Name = "StarSparks"
+        stars.Lifetime = NumberRange.new(1, 1)
+        stars.SpreadAngle = Vector2.new(180, -180)
+        stars.LightEmission = 1
+        stars.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        stars.Drag = 3
+        stars.VelocitySpread = 180
+        stars.Speed = NumberRange.new(5, 10)
+        stars.Brightness = 10
+        stars.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0),
+            NumberSequenceKeypoint.new(0.1492, 0.6875, 0.6875),
+            NumberSequenceKeypoint.new(1, 0)
+        })
+        stars.Acceleration = Vector3.new(0, 3, 0)
+        stars.ZOffset = 2
+        stars.Texture = "rbxassetid://8611887703"
+        stars.RotSpeed = NumberRange.new(-30, 30)
+        stars.Rotation = NumberRange.new(-30, 30)
+        stars.LockedToPart = true
+        stars.Parent = Attachment
+        table.insert(Emitters, stars)
+
+        local hw1 = Instance.new("ParticleEmitter")
+        hw1.Name = "HealingWave1"
+        hw1.Lifetime = NumberRange.new(1, 1)
+        hw1.SpreadAngle = Vector2.new(10, -10)
+        hw1.LockedToPart = true
+        hw1.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.1702, 0.7, 0.0149),
+            NumberSequenceKeypoint.new(0.2254, 0.0313, 0.0313),
+            NumberSequenceKeypoint.new(0.2852, 0),
+            NumberSequenceKeypoint.new(0.7024, 0),
+            NumberSequenceKeypoint.new(0.8374, 0.9125, 0.0601),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        hw1.LightEmission = 0.4
+        hw1.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        hw1.VelocitySpread = 10
+        hw1.Speed = NumberRange.new(3, 6)
+        hw1.Brightness = 10
+        hw1.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 3.0625, 1.8806),
+            NumberSequenceKeypoint.new(0.6420, 2, 1.7619),
+            NumberSequenceKeypoint.new(1, 0.75, 0.75)
+        })
+        hw1.Rate = 10
+        hw1.Texture = "rbxassetid://8047533775"
+        hw1.RotSpeed = NumberRange.new(200, 400)
+        hw1.Rotation = NumberRange.new(-180, 180)
+        hw1.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        hw1.Parent = Attachment
+        table.insert(Emitters, hw1)
+
+        local hw2 = Instance.new("ParticleEmitter")
+        hw2.Name = "HealingWave2"
+        hw2.Lifetime = NumberRange.new(1, 1)
+        hw2.SpreadAngle = Vector2.new(10, -10)
+        hw2.LockedToPart = true
+        hw2.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.2254, 0.0313, 0.0313),
+            NumberSequenceKeypoint.new(0.6288, 0.2563, 0.0593),
+            NumberSequenceKeypoint.new(0.8374, 0.9125, 0.0601),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        hw2.LightEmission = 1
+        hw2.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        hw2.VelocitySpread = 10
+        hw2.Speed = NumberRange.new(3, 5)
+        hw2.Brightness = 10
+        hw2.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 3.125),
+            NumberSequenceKeypoint.new(0.4165, 1.375, 1.375),
+            NumberSequenceKeypoint.new(1, 0.9375, 0.9375)
+        })
+        hw2.Rate = 10
+        hw2.Texture = "rbxassetid://8047796070"
+        hw2.RotSpeed = NumberRange.new(100, 300)
+        hw2.Rotation = NumberRange.new(-180, 180)
+        hw2.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        hw2.Parent = Attachment
+        table.insert(Emitters, hw2)
+
+    elseif AuraType == "Air" then
+        Attachment.Name = "ParticleAttachment"
+        local e = Instance.new("ParticleEmitter")
+        e.Name = "Air"
+        e.Lifetime = NumberRange.new(2, 2)
+        e.SpreadAngle = Vector2.new(-360, 360)
+        e.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.5006, 0.5),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        e.LightEmission = 1
+        e.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        e.VelocitySpread = -360
+        e.Squash = NumberSequence.new(0)
+        e.Speed = NumberRange.new(0.01, 0.01)
+        e.Size = NumberSequence.new(7)
+        e.ZOffset = -1
+        e.LockedToPart = true
+        e.ShapeInOut = Enum.ParticleEmitterShapeInOut.InAndOut
+        e.Rate = 150
+        e.Texture = "rbxassetid://10558425570"
+        e.RotSpeed = NumberRange.new(200, 200)
+        e.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        e.Parent = Attachment
+        table.insert(Emitters, e)
+
+    elseif AuraType == "Bubble" then
+        Attachment.Name = "ParticleAttachment"
+
+        local bolts = Instance.new("ParticleEmitter")
+        bolts.Name = "Bolts"
+        bolts.Lifetime = NumberRange.new(0.333, 0.333)
+        bolts.LockedToPart = true
+        local trans = {0.8831,0.9826,0.1705,0.3931,0.1291,0.9207,0.4157,0.2150,0.7821,0.2320,0.7898,0.8110,0.9116,0.8746,0.4193,0.3003,0.1640,0.3960,0.7003,1}
+        local keys = {}
+        for i, v in ipairs(trans) do
+            table.insert(keys, NumberSequenceKeypoint.new((i-1)/#trans, v))
+        end
+        bolts.Transparency = NumberSequence.new(keys)
+        bolts.LightEmission = 1
+        bolts.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        bolts.Speed = NumberRange.new(0, 0)
+        bolts.Size = NumberSequence.new(4.8)
+        bolts.Rate = 12
+        bolts.Texture = "rbxassetid://1084955012"
+        bolts.Rotation = NumberRange.new(-180, 180)
+        bolts.Parent = Attachment
+        table.insert(Emitters, bolts)
+
+        local bubble = Instance.new("ParticleEmitter")
+        bubble.Name = "Bubble"
+        bubble.Lifetime = NumberRange.new(1, 1)
+        bubble.LockedToPart = true
+        bubble.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.5, 0.7),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        bubble.LightEmission = 1
+        bubble.Color = ColorSequence.new(Color3.fromRGB(122, 159, 255))
+        bubble.Speed = NumberRange.new(0, 0)
+        bubble.Size = NumberSequence.new(4)
+        bubble.Rate = 6
+        bubble.Texture = "rbxassetid://1084955488"
+        bubble.Rotation = NumberRange.new(-180, 180)
+        bubble.Parent = Attachment
+        table.insert(Emitters, bubble)
+
+    elseif AuraType == "Ground" then
+        local Ring = Instance.new("Attachment")
+        Ring.Name = "ParticleAttachment"
+        Ring.Parent = ParentPart
+        Ring.CFrame = CFrame.new(0, -3, 0)
+        Ring.Axis = Vector3.new(1, 0, 0)
+        Ring.SecondaryAxis = Vector3.new(0, 1, 0)
+        table.insert(ExtraAttachments, Ring)
+
+        local white = ColorSequence.new(Color3.new(1, 1, 1))
+        local props = {
+            Brightness = 2, Color = white, LightEmission = 1, LightInfluence = 0,
+            Orientation = Enum.ParticleOrientation.VelocityPerpendicular, LockedToPart = true,
+            EmissionDirection = Enum.NormalId.Top, Lifetime = NumberRange.new(2, 2), Rate = 20,
+            Rotation = NumberRange.new(0, 360), Speed = NumberRange.new(0.001, 0.001),
+            SpreadAngle = Vector2.new(0.001, 0.001)
+        }
+
+        local e1 = Instance.new("ParticleEmitter")
+        e1.Name = "PE1"
+        for k, v in pairs(props) do e1[k] = v end
+        e1.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.3, 2),
+            NumberSequenceKeypoint.new(0.6, 5), NumberSequenceKeypoint.new(0.8, 8),
+            NumberSequenceKeypoint.new(1, 12)
+        })
+        e1.Squash = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0.2)
+        })
+        e1.Texture = "rbxassetid://7216855136"
+        e1.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.2, 0.3),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        e1.RotSpeed = NumberRange.new(-40, 40)
+        e1.Parent = Ring
+        table.insert(Emitters, e1)
+
+        local e2 = Instance.new("ParticleEmitter")
+        e2.Name = "PE2"
+        for k, v in pairs(props) do e2[k] = v end
+        e2.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.3, 1),
+            NumberSequenceKeypoint.new(0.6, 2.5), NumberSequenceKeypoint.new(0.8, 4),
+            NumberSequenceKeypoint.new(1, 6)
+        })
+        e2.Squash = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0.2)
+        })
+        e2.Texture = "https://assetgame.roblox.com/asset/?id=12713358087&assetName=crescent"
+        e2.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)
+        })
+        e2.RotSpeed = NumberRange.new(-600, 600)
+        e2.Parent = Ring
+        table.insert(Emitters, e2)
+
+        local e3 = Instance.new("ParticleEmitter")
+        e3.Name = "PE3"
+        for k, v in pairs(props) do e3[k] = v end
+        e3.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.3, 1),
+            NumberSequenceKeypoint.new(0.6, 2.5), NumberSequenceKeypoint.new(0.8, 4),
+            NumberSequenceKeypoint.new(1, 6)
+        })
+        e3.Squash = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 2)
+        })
+        e3.Texture = "rbxassetid://7216849325"
+        e3.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.2, 0.6),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        e3.RotSpeed = NumberRange.new(-30, 30)
+        e3.Parent = Ring
+        table.insert(Emitters, e3)
+
+    elseif AuraType == "Electrical" then
+        Attachment.Name = "ParticleAttachment"
+        local e = Instance.new("ParticleEmitter")
+        e.Name = "AuraParticle"
+        e.Brightness = 10
+        e.LightEmission = 0.2
+        e.LightInfluence = 0
+        e.Orientation = Enum.ParticleOrientation.FacingCamera
+        e.Size = NumberSequence.new(2.5)
+        e.Texture = "rbxassetid://15946994390"
+        e.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0)
+        })
+        e.ZOffset = 0
+        e.EmissionDirection = Enum.NormalId.Top
+        e.Lifetime = NumberRange.new(0.25, 0.25)
+        e.Rate = 100
+        e.Rotation = NumberRange.new(-180, 180)
+        e.RotSpeed = NumberRange.new(0, 0)
+        e.Speed = NumberRange.new(0, 0)
+        e.SpreadAngle = Vector2.new(0, 0)
+        e.Shape = Enum.ParticleEmitterShape.Box
+        e.ShapeInOut = Enum.ParticleEmitterShapeInOut.Outward
+        e.ShapePartial = 1
+        e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+        e.FlipbookLayout = Enum.ParticleFlipbookLayout.Grid4x4
+        e.FlipbookMode = Enum.ParticleFlipbookMode.OneShot
+        e.FlipbookStartRandom = false
+        e.WindAffectsDrag = true
+        e.Drag = 0.5
+        e.TimeScale = 1
+        e.VelocityInheritance = 0
+        e.LockedToPart = true
+        e.Acceleration = Vector3.new(0, -2, 0)
+        e.Parent = Attachment
+        table.insert(Emitters, e)
+
+    elseif AuraType == "Wrap" then
+        Attachment.Name = "ParticleAttachment"
+
+        local A2 = Instance.new("Attachment")
+        A2.Axis = Vector3.new(0, 0, 0)
+        A2.CFrame = CFrame.new(0, -2.5, 0)
+        A2.Name = "Attachment2"
+        A2.Orientation = Vector3.new(0, 0, 0)
+        A2.SecondaryAxis = Vector3.new(0, 1, 0)
+        A2.Visible = false
+        A2.Parent = ParentPart
+        table.insert(ExtraAttachments, A2)
+
+        local wrapTrans = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.1702, 0.7, 0.0149),
+            NumberSequenceKeypoint.new(0.2254, 0.0313, 0.0313),
+            NumberSequenceKeypoint.new(0.2852, 0),
+            NumberSequenceKeypoint.new(0.7024, 0),
+            NumberSequenceKeypoint.new(0.8374, 0.9125, 0.0601),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+
+        local w1 = Instance.new("ParticleEmitter")
+        w1.Lifetime = NumberRange.new(1, 1)
+        w1.SpreadAngle = Vector2.new(0, 0)
+        w1.LockedToPart = true
+        w1.Transparency = wrapTrans
+        w1.LightEmission = 0.4
+        w1.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        w1.VelocitySpread = 5
+        w1.Speed = NumberRange.new(1)
+        w1.Brightness = 10
+        w1.Size = NumberSequence.new(5)
+        w1.Rate = 100
+        w1.Texture = "rbxassetid://8047533775"
+        w1.RotSpeed = NumberRange.new(-360, 360)
+        w1.Rotation = NumberRange.new(-360, 360)
+        w1.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        w1.Parent = Attachment
+        table.insert(Emitters, w1)
+
+        local w2 = Instance.new("ParticleEmitter")
+        w2.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        w2.Lifetime = NumberRange.new(0.5, 0.5)
+        w2.LightEmission = 1
+        w2.LockedToPart = true
+        w2.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        w2.Rate = 50
+        w2.Size = NumberSequence.new(5)
+        w2.Speed = NumberRange.new(1.5, 1.5)
+        w2.SpreadAngle = Vector2.new(0, 0)
+        w2.VelocitySpread = 0
+        w2.RotSpeed = NumberRange.new(-360, 360)
+        w2.Rotation = NumberRange.new(-360, 360)
+        w2.Texture = "rbxassetid://6700006778"
+        w2.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.0996, 0),
+            NumberSequenceKeypoint.new(0.6023, 0), NumberSequenceKeypoint.new(1, 1)
+        })
+        w2.ZOffset = 1
+        w2.Parent = A2
+        table.insert(Emitters, w2)
+
+        local w3 = Instance.new("ParticleEmitter")
+        w3.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        w3.Lifetime = NumberRange.new(1, 1)
+        w3.LightEmission = 1
+        w3.LockedToPart = true
+        w3.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        w3.Rate = 50
+        w3.Size = NumberSequence.new(10)
+        w3.Speed = NumberRange.new(0.5, 0.5)
+        w3.VelocitySpread = 0
+        w3.RotSpeed = NumberRange.new(-360, 360)
+        w3.Rotation = NumberRange.new(-360, 360)
+        w3.Texture = "rbxassetid://6119272027"
+        w3.Transparency = NumberSequence.new(0.9)
+        w3.ZOffset = 1
+        w3.Parent = A2
+        table.insert(Emitters, w3)
+
+    elseif AuraType == "Pulse" then
+        Attachment.Name = "ParticleAttachment"
+
+        local A2 = Instance.new("Attachment")
+        A2.Axis = Vector3.new(0, 0, 0)
+        A2.CFrame = CFrame.new(0, -2.5, 0)
+        A2.Name = "Attachment2"
+        A2.Orientation = Vector3.new(0, 0, 0)
+        A2.SecondaryAxis = Vector3.new(0, 1, 0)
+        A2.Visible = false
+        A2.Parent = ParentPart
+        table.insert(ExtraAttachments, A2)
+
+        local p1 = Instance.new("ParticleEmitter")
+        p1.Brightness = 10
+        p1.LightEmission = 0.2
+        p1.LightInfluence = 0
+        p1.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        p1.Size = NumberSequence.new(10)
+        p1.Texture = "rbxassetid://16509197144"
+        p1.Transparency = NumberSequence.new(0)
+        p1.ZOffset = 0
+        p1.EmissionDirection = Enum.NormalId.Top
+        p1.Lifetime = NumberRange.new(0.25, 0.25)
+        p1.LockedToPart = true
+        p1.SpreadAngle = Vector2.new(0, 0)
+        p1.Rate = 50
+        p1.Rotation = NumberRange.new(-180, 180)
+        p1.RotSpeed = NumberRange.new(100, 100)
+        p1.Speed = NumberRange.new(0, 0)
+        p1.Shape = Enum.ParticleEmitterShape.Box
+        p1.ShapeInOut = Enum.ParticleEmitterShapeInOut.Outward
+        p1.ShapePartial = 1
+        p1.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+        p1.FlipbookLayout = Enum.ParticleFlipbookLayout.Grid4x4
+        p1.FlipbookMode = Enum.ParticleFlipbookMode.OneShot
+        p1.FlipbookStartRandom = false
+        p1.WindAffectsDrag = true
+        p1.Drag = 0
+        p1.TimeScale = 1
+        p1.VelocityInheritance = 0
+        p1.Acceleration = Vector3.new(0, -2, 0)
+        p1.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        p1.Parent = A2
+        table.insert(Emitters, p1)
+
+        local p2 = Instance.new("ParticleEmitter")
+        p2.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        p2.Lifetime = NumberRange.new(1, 1)
+        p2.LightEmission = 1
+        p2.LockedToPart = true
+        p2.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        p2.Rate = 50
+        p2.Size = NumberSequence.new(10)
+        p2.Speed = NumberRange.new(0.5, 0.5)
+        p2.VelocitySpread = 0
+        p2.RotSpeed = NumberRange.new(100, 100)
+        p2.Rotation = NumberRange.new(-360, 360)
+        p2.Texture = "rbxassetid://6119272027"
+        p2.Transparency = NumberSequence.new(0.9)
+        p2.ZOffset = 1
+        p2.Parent = A2
+        table.insert(Emitters, p2)
+
+    elseif AuraType == "Earthquake" then
+        local T1 = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.863),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        local T2 = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.225),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        local offsets = {
+            CFrame.new(2.9, 0.42, 0.65, 1, 0, 0, 0, 0, -1, 0, 1, 0),
+            CFrame.new(0.91, 0.42, -2.98, 1, 0, 0, 0, 0, -1, 0, 1, 0),
+            CFrame.new(0.84, 0.06, 2.57, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+            CFrame.new(2.67, -0.84, -1.51, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+            CFrame.new(-1.63, 1.88, 2.09, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+            CFrame.new(-1.68, -0.18, -2.84, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+            CFrame.new(-3.29, 0.2, 0.32, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+            CFrame.new(-0.87, -0.53, 1.34, 0, 0, 1, 1, 0, 0, 0, 1, 0),
+            CFrame.new(-3.21, 0.91, -2.04, 0, 0, 1, 1, 0, 0, 0, 1, 0)
+        }
+        local wings = {}
+        for i, off in ipairs(offsets) do
+            local wa = Instance.new("Attachment")
+            wa.Name = "EQ_" .. i
+            wa.Parent = ParentPart
+            wa.CFrame = off
+            wa.Axis = Vector3.new(1, 0, 0)
+            wa.SecondaryAxis = Vector3.new(0, 0, 1)
+
+            local e1 = Instance.new("ParticleEmitter")
+            e1.Name = "PE1"
+            e1.Parent = wa
+            e1.Brightness = 10
+            e1.Size = NumberSequence.new(1)
+            e1.Squash = NumberSequence.new(0)
+            e1.LockedToPart = true
+            e1.Color = ColorSequence.new(Color3.new(1, 1, 1))
+            e1.LightEmission = 1
+            e1.LightInfluence = 0.65
+            e1.Orientation = Enum.ParticleOrientation.FacingCamera
+            e1.EmissionDirection = Enum.NormalId.Top
+            e1.Lifetime = NumberRange.new(1)
+            e1.Rate = 5
+            e1.Speed = NumberRange.new(0.001)
+            e1.SpreadAngle = Vector2.new(0.1, 0.1)
+            e1.Texture = "rbxassetid://9922864240"
+            e1.Transparency = T1
+            table.insert(Emitters, e1)
+
+            local e2 = Instance.new("ParticleEmitter")
+            e2.Name = "PE2"
+            e2.Parent = wa
+            e2.Brightness = 2
+            e2.Size = NumberSequence.new(0.75)
+            e2.Squash = NumberSequence.new(0)
+            e2.LockedToPart = true
+            e2.Color = ColorSequence.new(Color3.new(1, 1, 1))
+            e2.LightEmission = 1
+            e2.LightInfluence = 0
+            e2.Orientation = Enum.ParticleOrientation.FacingCamera
+            e2.EmissionDirection = Enum.NormalId.Top
+            e2.Lifetime = NumberRange.new(1)
+            e2.Rate = 5
+            e2.Speed = NumberRange.new(0.001)
+            e2.SpreadAngle = Vector2.new(0.1, 0.1)
+            e2.Texture = "rbxassetid://16444981264"
+            e2.Transparency = T2
+            table.insert(Emitters, e2)
+
+            table.insert(ExtraAttachments, wa)
+            wings[i] = wa
+        end
+
+        local Txs = {
+            { "rbxassetid://15687629443", 0.5, -2, NumberSequence.new({
+                NumberSequenceKeypoint.new(0,0.3), NumberSequenceKeypoint.new(0.018,0.3),
+                NumberSequenceKeypoint.new(0.019,0), NumberSequenceKeypoint.new(0.991,0),
+                NumberSequenceKeypoint.new(0.992,0.3), NumberSequenceKeypoint.new(1,0.3)
+            }), 0.15, 0.15 },
+            { "rbxassetid://15687532616", 0.5, -0.8, NumberSequence.new({
+                NumberSequenceKeypoint.new(0,1), NumberSequenceKeypoint.new(0.018,1),
+                NumberSequenceKeypoint.new(0.019,0), NumberSequenceKeypoint.new(0.798,0),
+                NumberSequenceKeypoint.new(0.847,0.546), NumberSequenceKeypoint.new(1,1)
+            }), 0.3, 0.15 },
+            { "rbxassetid://16726908900", 1, -0.8, NumberSequence.new({
+                NumberSequenceKeypoint.new(0,1), NumberSequenceKeypoint.new(0.018,1),
+                NumberSequenceKeypoint.new(0.019,0.2), NumberSequenceKeypoint.new(0.798,0.2),
+                NumberSequenceKeypoint.new(0.847,0.546), NumberSequenceKeypoint.new(1,1)
+            }), 0.25, 0.25 },
+            { "rbxassetid://623219622", 0.5, -0.8, NumberSequence.new({
+                NumberSequenceKeypoint.new(0,1), NumberSequenceKeypoint.new(0.018,1),
+                NumberSequenceKeypoint.new(0.019,0.2), NumberSequenceKeypoint.new(0.798,0.2),
+                NumberSequenceKeypoint.new(0.847,0.546), NumberSequenceKeypoint.new(1,1)
+            }), 0.25, 0.25 }
+        }
+
+        for _, pair in ipairs({
+            {wings[2], wings[4]}, {wings[4], wings[1]}, {wings[1], wings[3]}, {wings[3], wings[8]},
+            {wings[3], wings[5]}, {wings[5], wings[7]}, {wings[7], wings[9]}, {wings[7], wings[6]}
+        }) do
+            for i = 1, 4 do
+                local sel = Txs[i]
+                local beam = Instance.new("Beam")
+                beam.Parent = ParentPart
+                beam.Attachment0 = pair[1]
+                beam.Attachment1 = pair[2]
+                beam.FaceCamera = true
+                beam.Segments = 10
+                beam.Brightness = 5
+                beam.Color = ColorSequence.new(Color3.new(1, 1, 1))
+                beam.LightEmission = 1
+                beam.LightInfluence = 0
+                beam.Texture = sel[1]
+                beam.TextureLength = sel[2]
+                beam.TextureSpeed = sel[3]
+                beam.Transparency = sel[4]
+                beam.Width0 = sel[5]
+                beam.Width1 = sel[6]
+                table.insert(Emitters, beam)
+            end
+        end
+
+    elseif AuraType == "Halo" then
+        local Character = ParentPart.Parent
+        if not Character then return Emitters, ExtraAttachments end
+        local Head = Character:FindFirstChild("Head")
+        if not Head then return Emitters, ExtraAttachments end
+
+        local Halo = Instance.new("Attachment")
+        Halo.Name = "HaloAttachment"
+        Halo.CFrame = CFrame.new(-0.05, 0.933012962, 0.25881958,
+            0.965931654, -0.249973103, 0.0670034066,
+            0.258797228, 0.933025956, -0.249973089,
+            -2.9373914e-05, 0.258797228, 0.965931654)
+        Halo.Axis = Vector3.new(0.965931654, 0.258797228, -0.00002937)
+        Halo.SecondaryAxis = Vector3.new(-0.249973103, 0.933025956, 0.258797228)
+        Halo.Parent = Head
+        table.insert(ExtraAttachments, Halo)
+
+        local e1 = Instance.new("ParticleEmitter")
+        e1.Name = "PE1"
+        e1.Brightness = 2
+        e1.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        e1.LightEmission = 1
+        e1.LightInfluence = 0
+        e1.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        e1.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 2.5), NumberSequenceKeypoint.new(1, 3)
+        })
+        e1.Squash = NumberSequence.new(0)
+        e1.Texture = "rbxassetid://8819682608"
+        e1.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0),
+            NumberSequenceKeypoint.new(0.8, 0), NumberSequenceKeypoint.new(1, 1)
+        })
+        e1.EmissionDirection = Enum.NormalId.Top
+        e1.Lifetime = NumberRange.new(1, 1)
+        e1.Rate = 7
+        e1.Rotation = NumberRange.new(0, 360)
+        e1.RotSpeed = NumberRange.new(-400, 400)
+        e1.Speed = NumberRange.new(0.001)
+        e1.SpreadAngle = Vector2.new(5, 5)
+        e1.Shape = Enum.ParticleEmitterShape.Box
+        e1.LockedToPart = true
+        e1.Parent = Halo
+        table.insert(Emitters, e1)
+
+        local e2 = Instance.new("ParticleEmitter")
+        e2.Name = "PE2"
+        e2.Brightness = 2
+        e2.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        e2.LightEmission = 1
+        e2.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        e2.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 2), NumberSequenceKeypoint.new(1, 3)
+        })
+        e2.Squash = NumberSequence.new(0)
+        e2.Texture = "rbxassetid://8819682608"
+        e2.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0),
+            NumberSequenceKeypoint.new(0.8, 0), NumberSequenceKeypoint.new(1, 1)
+        })
+        e2.EmissionDirection = Enum.NormalId.Top
+        e2.Lifetime = NumberRange.new(1, 1)
+        e2.Rate = 7
+        e2.Rotation = NumberRange.new(0, 360)
+        e2.RotSpeed = NumberRange.new(-400, 400)
+        e2.Speed = NumberRange.new(0.001)
+        e2.SpreadAngle = Vector2.new(5, 5)
+        e2.Shape = Enum.ParticleEmitterShape.Box
+        e2.LockedToPart = true
+        e2.Parent = Halo
+        table.insert(Emitters, e2)
+
+    elseif AuraType == "Angel Wings" then
+        local A1 = Instance.new("Attachment")
+        A1.Name = "AW1"
+        A1.CFrame = CFrame.new(2, 0.5, 1) * CFrame.fromMatrix(
+            Vector3.new(),
+            Vector3.new(0.965929627, 0, 0.258804798),
+            Vector3.new(0, 1, 0),
+            Vector3.new(-0.258804798, 0, 0.965929627))
+        A1.Axis = Vector3.new(0.965929627, 0, 0.258804798)
+        A1.SecondaryAxis = Vector3.new(0, 1, 0)
+        A1.Parent = ParentPart
+        table.insert(ExtraAttachments, A1)
+
+        local e1 = Instance.new("ParticleEmitter")
+        e1.Name = "PE1"
+        e1.Brightness = 2
+        e1.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        e1.LightEmission = 1
+        e1.LightInfluence = 0
+        e1.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        e1.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 2.75), NumberSequenceKeypoint.new(1, 3.5)
+        })
+        e1.Squash = NumberSequence.new(0)
+        e1.Texture = "http://www.roblox.com/asset/?id=13267054240"
+        e1.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.9444),
+            NumberSequenceKeypoint.new(0.5, 0.2),
+            NumberSequenceKeypoint.new(0.8, 0.8),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        e1.LockedToPart = true
+        e1.EmissionDirection = Enum.NormalId.Front
+        e1.Lifetime = NumberRange.new(1, 1)
+        e1.Rate = 4
+        e1.Rotation = NumberRange.new(-15, -15)
+        e1.Speed = NumberRange.new(0.05, 0.05)
+        e1.Parent = A1
+        table.insert(Emitters, e1)
+
+        local A2 = Instance.new("Attachment")
+        A2.Name = "AW2"
+        A2.CFrame = CFrame.new(-2, 0.5, 1) * CFrame.fromMatrix(
+            Vector3.new(),
+            Vector3.new(0.965929627, 0, -0.258804798),
+            Vector3.new(0, 1, 0),
+            Vector3.new(0.258804798, 0, 0.965929627))
+        A2.Axis = Vector3.new(0.965929627, 0, -0.258804798)
+        A2.SecondaryAxis = Vector3.new(0, 1, 0)
+        A2.Parent = ParentPart
+        table.insert(ExtraAttachments, A2)
+
+        local e2 = Instance.new("ParticleEmitter")
+        e2.Name = "PE2"
+        e2.Brightness = 2
+        e2.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+        e2.LightEmission = 1
+        e2.LightInfluence = 0
+        e2.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+        e2.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 2.75), NumberSequenceKeypoint.new(1, 3.5)
+        })
+        e2.Squash = NumberSequence.new(0)
+        e2.Texture = "http://www.roblox.com/asset/?id=13267054240"
+        e2.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.9444),
+            NumberSequenceKeypoint.new(0.5, 0.2),
+            NumberSequenceKeypoint.new(0.8, 0.8),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        e2.LockedToPart = true
+        e2.EmissionDirection = Enum.NormalId.Back
+        e2.Lifetime = NumberRange.new(1, 1)
+        e2.Rate = 4
+        e2.Rotation = NumberRange.new(-15, -15)
+        e2.Speed = NumberRange.new(0.05, 0.05)
+        e2.Parent = A2
+        table.insert(Emitters, e2)
+    end
+
+    return Emitters, ExtraAttachments
+end
+
+-- ============================================================
+-- AURA LOGIC
+-- ============================================================
+local function getTargetPart(auraType, char)
+    if auraType == "Angel Wings" then
+        return char:FindFirstChild("UpperTorso")
+    elseif auraType == "Halo" then
+        return char:FindFirstChild("Head")
+    elseif auraType == "Electrical" or auraType == "Lightning" or auraType == "Swirl"
+        or auraType == "Wave" or auraType == "Air" or auraType == "Bubble" then
+        return char:FindFirstChild("HumanoidRootPart")
+    else
+        return char:FindFirstChild("LowerTorso") or char:FindFirstChild("HumanoidRootPart")
+    end
+end
+
+local function updaurcol()
+    local col = State.auraColor
+    local seq = ColorSequence.new(col)
+    for i = 1, #aurp do
+        local p = aurp[i]
+        if p and p.Parent then
+            if p:IsA("ParticleEmitter") or p:IsA("Trail") or p:IsA("Beam") then
+                p.Color = seq
+            elseif p:IsA("PointLight") then
+                p.Color = col
+            end
+            for _, d in ipairs(p:GetDescendants()) do
+                if d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Beam") then
+                    d.Color = seq
+                elseif d:IsA("PointLight") then
+                    d.Color = col
+                end
+            end
+        end
+    end
+end
+
+local function clraur()
+    for i = 1, #aurp do
+        if aurp[i] then aurp[i]:Destroy() end
+    end
+    table.clear(aurp)
+end
+
+local function applaur()
+    clraur()
+    if not State.auraEnabled then return end
+
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    -- ═══════════════════════════════════════════════════
+    -- Asset-based aura (clone from asset)
+    -- ═══════════════════════════════════════════════════
+    if IsAssetAura(State.auraType) then
+        local asset = aurasst[State.auraType]
+        if not asset then return end
+        local clo = asset:Clone()
+        for _, m_p in ipairs(clo:GetChildren()) do
+            local targ = char:FindFirstChild(m_p.Name)
+            if targ then
+                for _, eff in ipairs(m_p:GetChildren()) do
+                    eff.Name   = "\0"
+                    eff.Parent = targ
+                    table.insert(aurp, eff)
+                end
+            end
+        end
+        clo:Destroy()
+        updaurcol()
+        return
+    end
+
+    -- ═══════════════════════════════════════════════════
+    -- Procedural aura (built in code)
+    -- ═══════════════════════════════════════════════════
+    local target = getTargetPart(State.auraType, char)
+    if not target then return end
+
+    local Attachment = Instance.new("Attachment")
+    if State.auraType == "Angel Wings" then
+        Attachment.Position = Vector3.new(0, 0.5, 0)
+    end
+    Attachment.Parent = target
+
+    local Emitters, ExtraAttachments = CreateAura(State.auraType, Attachment, target)
+
+    -- Track everything so we can clean it later
+    table.insert(aurp, Attachment)
+    for _, e in ipairs(Emitters) do table.insert(aurp, e) end
+    for _, a in ipairs(ExtraAttachments) do table.insert(aurp, a) end
+
+    updaurcol()
+end
+
+local function setAuraEnabled(v)
+    State.auraEnabled = v
+    if v then
+        applaur()
+        if not State.aurCon then
+            State.aurCon = LocalPlayer.CharacterAdded:Connect(function()
+                task.wait(1)
+                if State.auraEnabled then applaur() end
+            end)
+        end
+    else
+        clraur()
+    end
+end
+
+-- ============================================================
+-- FORCEFIELD LOGIC
+-- ============================================================
+local function appFF(char, col, en)
+    if not char then return end
+    for _, p in ipairs(char:GetDescendants()) do
+        if p:IsA("BasePart") and not p:FindFirstAncestorOfClass("Tool") then
+            if en then
+                if p.Material ~= Enum.Material.ForceField then
+                    p.Material = Enum.Material.ForceField
+                    p.Color    = col
+                end
+            else
+                p.Material = Enum.Material.Plastic
+            end
+        end
+    end
+end
+
+local function appTFF(char, col, en)
+    if not char then return end
+    for _, t in ipairs(char:GetChildren()) do
+        if t:IsA("Tool") then
+            for _, p in ipairs(t:GetDescendants()) do
+                if p:IsA("BasePart") then
+                    if en then
+                        if p.Material ~= Enum.Material.ForceField then
+                            p.Material = Enum.Material.ForceField
+                            p.Color    = col
+                        end
+                    else
+                        p.Material = Enum.Material.Plastic
+                    end
+                end
+            end
+        end
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    if not (State.ffCharEnabled or State.ffToolEnabled) then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    if State.ffCharEnabled then appFF(char, State.ffCharColor, true) end
+    if State.ffToolEnabled then appTFF(char, State.ffToolColor, true) end
+end)
+
+-- ============================================================
+-- GUI HELPERS
+-- ============================================================
+local ACCENT   = Color3.fromRGB(255, 128, 0)
+local BG       = Color3.fromRGB(22, 22, 28)
+local BG_DARK  = Color3.fromRGB(15, 15, 18)
+local BG_ROW   = Color3.fromRGB(32, 32, 40)
+local TEXT     = Color3.fromRGB(240, 240, 240)
+local TEXT_DIM = Color3.fromRGB(150, 150, 160)
+
+local function corner(parent, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r or 8)
+    c.Parent = parent
+    return c
+end
+
+local function new(class, props, parent)
+    local o = Instance.new(class)
+    for k, v in pairs(props) do o[k] = v end
+    o.Parent = parent
+    return o
+end
+
+-- ============================================================
+-- ROOT
+-- ============================================================
+if ParentGui:FindFirstChild("SelfAuraGUI") then
+    ParentGui.SelfAuraGUI:Destroy()
+end
+
+local gui = new("ScreenGui", {
+    Name           = "SelfAuraGUI",
+    ResetOnSpawn   = false,
+    IgnoreGuiInset = true,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+}, ParentGui)
+
+local W, H = 240, 400
+
+local main = new("Frame", {
+    Size             = UDim2.new(0, W, 0, H),
+    Position         = UDim2.new(0.5, -W/2, 0.5, -H/2),
+    BackgroundColor3 = BG,
+    BorderSizePixel  = 0,
+    Active           = true,
+}, gui)
+corner(main, 10)
+
+new("UIStroke", { Color = ACCENT, Thickness = 1, Transparency = 0.5 }, main)
+
+-- Top bar
+local topbar = new("Frame", {
+    Size             = UDim2.new(1, 0, 0, 30),
+    BackgroundColor3 = BG_DARK,
+    BorderSizePixel  = 0,
+    Active           = true,
+}, main)
+corner(topbar, 10)
+
+new("Frame", {
+    Size             = UDim2.new(1, 0, 0, 10),
+    Position         = UDim2.new(0, 0, 1, -10),
+    BackgroundColor3 = BG_DARK,
+    BorderSizePixel  = 0,
+    Active           = false,
+}, topbar)
+
+new("Frame", {
+    Size             = UDim2.new(0, 6, 0, 6),
+    Position         = UDim2.new(0, 12, 0.5, -3),
+    BackgroundColor3 = ACCENT,
+    BorderSizePixel  = 0,
+    Active           = false,
+}, topbar)
+
+new("TextLabel", {
+    Size                   = UDim2.new(1, -80, 1, 0),
+    Position               = UDim2.new(0, 26, 0, 0),
+    BackgroundTransparency = 1,
+    Text                   = "Self Aura",
+    TextColor3             = TEXT,
+    TextSize               = 13,
+    Font                   = Enum.Font.GothamBold,
+    TextXAlignment         = Enum.TextXAlignment.Left,
+    Active                 = false,
+}, topbar)
+
+local closeBtn = new("TextButton", {
+    Size             = UDim2.new(0, 20, 0, 20),
+    Position         = UDim2.new(1, -26, 0.5, -10),
+    BackgroundColor3 = Color3.fromRGB(45, 45, 55),
+    Text             = "×",
+    TextColor3       = TEXT,
+    TextSize         = 14,
+    Font             = Enum.Font.GothamBold,
+    BorderSizePixel  = 0,
+}, topbar)
+corner(closeBtn, 5)
+
+-- Scroll area
+local scroll = new("ScrollingFrame", {
+    Size                   = UDim2.new(1, 0, 1, -30),
+    Position               = UDim2.new(0, 0, 0, 30),
+    BackgroundTransparency = 1,
+    BorderSizePixel        = 0,
+    ScrollBarThickness     = 3,
+    ScrollBarImageColor3   = ACCENT,
+    CanvasSize             = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize    = Enum.AutomaticSize.Y,
+}, main)
+
+new("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }, scroll)
+new("UIPadding", {
+    PaddingTop = UDim.new(0, 6), PaddingLeft = UDim.new(0, 8),
+    PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 10),
+}, scroll)
+
+-- ============================================================
+-- COMPONENTS
+-- ============================================================
+local function makeSection(titleText)
+    local sec = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 18),
+        BackgroundTransparency = 1,
+    }, scroll)
+    new("TextLabel", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = titleText,
+        TextColor3 = ACCENT,
+        TextSize = 11,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false,
+    }, sec)
+end
+
+local function makeToggleRow(labelText, callback)
+    local row = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 26),
+        BackgroundColor3 = BG_ROW,
+        BorderSizePixel = 0,
+    }, scroll)
+    corner(row, 6)
+
+    new("TextLabel", {
+        Size = UDim2.new(1, -60, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1,
+        Text = labelText,
+        TextColor3 = TEXT,
+        TextSize = 12,
+        Font = Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false,
+    }, row)
+
+    local track = new("Frame", {
+        Size = UDim2.new(0, 36, 0, 18),
+        Position = UDim2.new(1, -46, 0.5, -9),
+        BackgroundColor3 = Color3.fromRGB(50, 50, 58),
+        BorderSizePixel = 0,
+        Active = false,
+    }, row)
+    corner(track, 9)
+
+    local knob = new("Frame", {
+        Size = UDim2.new(0, 14, 0, 14),
+        Position = UDim2.new(0, 2, 0.5, -7),
+        BackgroundColor3 = Color3.fromRGB(220, 220, 230),
+        BorderSizePixel = 0,
+        Active = false,
+    }, track)
+    corner(knob, 7)
+
+    local btn = new("TextButton", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "",
+    }, track)
+
+    local state = false
+    local function render()
+        local tPos   = state and UDim2.new(0, 20, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+        local tColor = state and ACCENT or Color3.fromRGB(50, 50, 58)
+        TweenService:Create(knob,  TweenInfo.new(0.13), { Position = tPos }):Play()
+        TweenService:Create(track, TweenInfo.new(0.13), { BackgroundColor3 = tColor }):Play()
+    end
+    render()
+
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        render()
+        if callback then callback(state) end
+    end)
+end
+
+local function makeColorPicker(labelText, initialColor, callback)
+    local container = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 90),
+        BackgroundColor3 = BG_ROW,
+        BorderSizePixel = 0,
+    }, scroll)
+    corner(container, 6)
+
+    local header = new("Frame", {
+        Size = UDim2.new(1, -20, 0, 22),
+        Position = UDim2.new(0, 10, 0, 2),
+        BackgroundTransparency = 1,
+    }, container)
+
+    new("TextLabel", {
+        Size = UDim2.new(1, -30, 1, 0),
+        BackgroundTransparency = 1,
+        Text = labelText,
+        TextColor3 = TEXT,
+        TextSize = 12,
+        Font = Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false,
+    }, header)
+
+    local preview = new("Frame", {
+        Size = UDim2.new(0, 18, 0, 18),
+        Position = UDim2.new(1, -18, 0.5, -9),
+        BackgroundColor3 = initialColor,
+        BorderSizePixel = 0,
+        Active = false,
+    }, header)
+    corner(preview, 4)
+
+    local currentColor = initialColor
+    local function applyColor()
+        preview.BackgroundColor3 = currentColor
+        if callback then callback(currentColor) end
+    end
+
+    local labels, keys = {"R","G","B"}, {"R","G","B"}
+
+    for idx = 1, 3 do
+        local yOff = (idx - 1) * 20
+
+        local row = new("Frame", {
+            Size = UDim2.new(1, -20, 0, 18),
+            Position = UDim2.new(0, 10, 0, 26 + yOff),
+            BackgroundTransparency = 1,
+        }, container)
+
+        new("TextLabel", {
+            Size = UDim2.new(0, 14, 1, 0),
+            BackgroundTransparency = 1,
+            Text = labels[idx],
+            TextColor3 = TEXT_DIM,
+            TextSize = 11,
+            Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Active = false,
+        }, row)
+
+        local track = new("Frame", {
+            Size = UDim2.new(1, -50, 0, 5),
+            Position = UDim2.new(0, 16, 0.5, -2.5),
+            BackgroundColor3 = Color3.fromRGB(50, 50, 58),
+            BorderSizePixel = 0,
+        }, row)
+        corner(track, 2)
+
+        local fill = new("Frame", {
+            Size = UDim2.new(currentColor[keys[idx]], 0, 1, 0),
+            BackgroundColor3 = ACCENT,
+            BorderSizePixel = 0,
+            Active = false,
+        }, track)
+        corner(fill, 2)
+
+        local handle = new("Frame", {
+            Size = UDim2.new(0, 10, 0, 10),
+            Position = UDim2.new(currentColor[keys[idx]], -5, 0.5, -5),
+            BackgroundColor3 = Color3.fromRGB(240, 240, 240),
+            BorderSizePixel = 0,
+            Active = false,
+        }, track)
+        corner(handle, 5)
+
+        local valLbl = new("TextLabel", {
+            Size = UDim2.new(0, 30, 1, 0),
+            Position = UDim2.new(1, -30, 0, 0),
+            BackgroundTransparency = 1,
+            Text = string.format("%d", math.floor(currentColor[keys[idx]] * 255)),
+            TextColor3 = TEXT,
+            TextSize = 11,
+            Font = Enum.Font.Gotham,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            Active = false,
+        }, row)
+
+        local btn = new("TextButton", {
+            Size = UDim2.new(1, 0, 2, 0),
+            Position = UDim2.new(0, 0, 0.5, -8),
+            BackgroundTransparency = 1,
+            Text = "",
+        }, track)
+
+        local dragging = false
+        local function update(input)
+            local tp = track.AbsolutePosition
+            local ts = track.AbsoluteSize
+            local pct = math.clamp((input.Position.X - tp.X) / ts.X, 0, 1)
+            local r, g, b = currentColor.R, currentColor.G, currentColor.B
+            if idx == 1 then r = pct elseif idx == 2 then g = pct else b = pct end
+            currentColor = Color3.new(r, g, b)
+            fill.Size       = UDim2.new(pct, 0, 1, 0)
+            handle.Position = UDim2.new(pct, -5, 0.5, -5)
+            valLbl.Text     = string.format("%d", math.floor(pct * 255))
+            applyColor()
+        end
+
+        btn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                update(input)
+            end
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if not dragging then return end
+            if input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch then
+                update(input)
+            end
+        end)
+
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
+            end
+        end)
+    end
+end
+
+local function makeCycleRow(labelText, items, initialValue, callback)
+    local row = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 28),
+        BackgroundColor3 = BG_ROW,
+        BorderSizePixel = 0,
+    }, scroll)
+    corner(row, 6)
+
+    new("TextLabel", {
+        Size = UDim2.new(0.35, -10, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1,
+        Text = labelText,
+        TextColor3 = TEXT,
+        TextSize = 12,
+        Font = Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Active = false,
+    }, row)
+
+    local prevBtn = new("TextButton", {
+        Size = UDim2.new(0, 18, 0, 18),
+        Position = UDim2.new(1, -160, 0.5, -9),
+        BackgroundColor3 = Color3.fromRGB(50, 50, 58),
+        Text = "◄", TextColor3 = TEXT, TextSize = 10,
+        Font = Enum.Font.GothamBold, BorderSizePixel = 0,
+    }, row)
+    corner(prevBtn, 4)
+
+    local valLbl = new("TextLabel", {
+        Size = UDim2.new(0, 120, 1, 0),
+        Position = UDim2.new(1, -140, 0, 0),
+        BackgroundTransparency = 1,
+        Text = tostring(initialValue),
+        TextColor3 = ACCENT,
+        TextSize = 10,
+        Font = Enum.Font.GothamBold,
+        Active = false,
+    }, row)
+
+    local nextBtn = new("TextButton", {
+        Size = UDim2.new(0, 18, 0, 18),
+        Position = UDim2.new(1, -20, 0.5, -9),
+        BackgroundColor3 = Color3.fromRGB(50, 50, 58),
+        Text = "►", TextColor3 = TEXT, TextSize = 10,
+        Font = Enum.Font.GothamBold, BorderSizePixel = 0,
+    }, row)
+    corner(nextBtn, 4)
+
+    local index = table.find(items, initialValue) or 1
+    local function render()
+        valLbl.Text = items[index]
+        if callback then callback(items[index]) end
+    end
+    render()
+
+    prevBtn.MouseButton1Click:Connect(function()
+        index = index - 1
+        if index < 1 then index = #items end
+        render()
+    end)
+    nextBtn.MouseButton1Click:Connect(function()
+        index = index + 1
+        if index > #items then index = 1 end
+        render()
+    end)
+end
+
+-- ============================================================
+-- BUILD
+-- ============================================================
+makeSection("AURA")
+makeToggleRow("Apply Aura", function(v) setAuraEnabled(v) end)
+makeCycleRow("Aura Type", AURA_ORDER, "Angel Wings", function(v)
+    State.auraType = v
+    if State.auraEnabled then applaur() end
+end)
+makeColorPicker("Aura Color", State.auraColor, function(c)
+    State.auraColor = c
+    updaurcol()
+end)
+
+makeSection("CHARACTER FORCEFIELD")
+makeToggleRow("Enabled", function(v)
+    State.ffCharEnabled = v
+    if not v and LocalPlayer.Character then
+        appFF(LocalPlayer.Character, Color3.new(1,1,1), false)
+    end
+end)
+makeColorPicker("FF Color", State.ffCharColor, function(c)
+    State.ffCharColor = c
+end)
+
+makeSection("TOOLS FORCEFIELD")
+makeToggleRow("Enabled", function(v)
+    State.ffToolEnabled = v
+    if not v and LocalPlayer.Character then
+        appTFF(LocalPlayer.Character, Color3.new(1,1,1), false)
+    end
+end)
+makeColorPicker("Tools FF Color", State.ffToolColor, function(c)
+    State.ffToolColor = c
+end)
+
+-- ============================================================
+-- DRAGGING
+-- ============================================================
+do
+    local dragging = false
+    local dragStart, startPos
+
+    topbar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging  = true
+            dragStart = input.Position
+            startPos  = main.Position
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            local delta = input.Position - dragStart
+            main.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+end
+
+-- ============================================================
+-- CLOSE
+-- ============================================================
+closeBtn.MouseButton1Click:Connect(function()
+    setAuraEnabled(false)
+    if State.ffCharEnabled and LocalPlayer.Character then
+        appFF(LocalPlayer.Character, Color3.new(1,1,1), false)
+    end
+    if State.ffToolEnabled and LocalPlayer.Character then
+        appTFF(LocalPlayer.Character, Color3.new(1,1,1), false)
+    end
+    gui:Destroy()
+end)
+
+print("[Self Aura] Loaded — 22 auras available. Drag the top bar.")
