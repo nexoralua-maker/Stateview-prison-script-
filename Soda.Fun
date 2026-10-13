@@ -12,11 +12,8 @@ do
     local ok, result = pcall(function()
         return loadstring(game:HttpGet("https://raw.githubusercontent.com/linemaster2/storage/main/Drawing.lua"))()
     end)
-    if ok and result then
-        Drawing = result
-    else
-        Drawing = { new = function() return setmetatable({}, {__index = function() return nil end, __newindex = function() end}) end }
-    end
+    if ok and result then Drawing = result
+    else Drawing = {new = function() return setmetatable({}, {__index=function() return nil end, __newindex=function() end}) end} end
 end
 
 --====================================================================
@@ -26,61 +23,48 @@ local Library = {}
 do
     local FONT_FACE
     do
-        local ok, f = pcall(function()
-            return Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Bold)
-        end)
+        local ok, f = pcall(function() return Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Bold) end)
         FONT_FACE = ok and f or Enum.Font.GothamBold
     end
 
     Library = {
-        Name = "Soda.Fun";
-        Open = true;
+        Name = "Soda.Fun"; Open = true;
         Accent = Color3.fromRGB(255, 20, 80);
         AccentGradient = {Color3.fromRGB(255, 20, 80), Color3.fromRGB(60, 120, 255)};
         FontFace = FONT_FACE;
-        Pages = {};
-        Sections = {};
-        Flags = {};
-        UnNamedFlags = 0;
-        ThemeObjects = {};
-        Instances = {};
-        Holder = nil;
-        OldSize = nil;
-        ScreenGUI = nil;
-        DropdownOpen = false;
-        OptionListOpen = false;
+        Pages = {}; Sections = {}; Flags = {}; UnNamedFlags = 0;
+        ThemeObjects = {}; Instances = {};
+        Holder = nil; OldSize = nil; ScreenGUI = nil;
+        DropdownOpen = false; OptionListOpen = false;
         Keys = {
-            [Enum.KeyCode.Space] = "Space", [Enum.KeyCode.Return] = "Return",
-            [Enum.KeyCode.LeftShift] = "LShift", [Enum.KeyCode.RightShift] = "RShift",
-            [Enum.KeyCode.LeftControl] = "LCtrl", [Enum.KeyCode.RightControl] = "RCtrl",
-            [Enum.KeyCode.LeftAlt] = "LAlt", [Enum.KeyCode.RightAlt] = "RAlt",
-            [Enum.KeyCode.CapsLock] = "CAPS",
-            [Enum.KeyCode.One] = "1", [Enum.KeyCode.Two] = "2", [Enum.KeyCode.Three] = "3",
-            [Enum.KeyCode.Four] = "4", [Enum.KeyCode.Five] = "5", [Enum.KeyCode.Six] = "6",
-            [Enum.KeyCode.Seven] = "7", [Enum.KeyCode.Eight] = "8", [Enum.KeyCode.Nine] = "9",
-            [Enum.KeyCode.Zero] = "0",
-            [Enum.KeyCode.KeypadOne] = "Num1", [Enum.KeyCode.KeypadTwo] = "Num2",
-            [Enum.KeyCode.KeypadThree] = "Num3", [Enum.KeyCode.KeypadFour] = "Num4",
-            [Enum.KeyCode.KeypadFive] = "Num5", [Enum.KeyCode.KeypadSix] = "Num6",
-            [Enum.KeyCode.KeypadSeven] = "Num7", [Enum.KeyCode.KeypadEight] = "Num8",
-            [Enum.KeyCode.KeypadNine] = "Num9", [Enum.KeyCode.KeypadZero] = "Num0",
-            [Enum.KeyCode.Minus] = "-", [Enum.KeyCode.Equals] = "=",
-            [Enum.KeyCode.Tilde] = "~", [Enum.KeyCode.LeftBracket] = "[",
-            [Enum.KeyCode.RightBracket] = "]", [Enum.KeyCode.RightParenthesis] = ")",
-            [Enum.KeyCode.LeftParenthesis] = "(", [Enum.KeyCode.Semicolon] = ",",
-            [Enum.KeyCode.Quote] = "'", [Enum.KeyCode.BackSlash] = "\\",
-            [Enum.KeyCode.Comma] = ",", [Enum.KeyCode.Period] = ".",
-            [Enum.KeyCode.Slash] = "/", [Enum.KeyCode.Asterisk] = "*",
-            [Enum.KeyCode.Plus] = "+", [Enum.KeyCode.Backquote] = "`",
-            [Enum.UserInputType.MouseButton1] = "MB1",
-            [Enum.UserInputType.MouseButton2] = "MB2",
-            [Enum.UserInputType.MouseButton3] = "MB3"
+            [Enum.KeyCode.Space]="Space",[Enum.KeyCode.Return]="Return",
+            [Enum.KeyCode.LeftShift]="LShift",[Enum.KeyCode.RightShift]="RShift",
+            [Enum.KeyCode.LeftControl]="LCtrl",[Enum.KeyCode.RightControl]="RCtrl",
+            [Enum.KeyCode.LeftAlt]="LAlt",[Enum.KeyCode.RightAlt]="RAlt",
+            [Enum.KeyCode.CapsLock]="CAPS",
+            [Enum.KeyCode.One]="1",[Enum.KeyCode.Two]="2",[Enum.KeyCode.Three]="3",
+            [Enum.KeyCode.Four]="4",[Enum.KeyCode.Five]="5",[Enum.KeyCode.Six]="6",
+            [Enum.KeyCode.Seven]="7",[Enum.KeyCode.Eight]="8",[Enum.KeyCode.Nine]="9",
+            [Enum.KeyCode.Zero]="0",
+            [Enum.KeyCode.KeypadOne]="Num1",[Enum.KeyCode.KeypadTwo]="Num2",
+            [Enum.KeyCode.KeypadThree]="Num3",[Enum.KeyCode.KeypadFour]="Num4",
+            [Enum.KeyCode.KeypadFive]="Num5",[Enum.KeyCode.KeypadSix]="Num6",
+            [Enum.KeyCode.KeypadSeven]="Num7",[Enum.KeyCode.KeypadEight]="Num8",
+            [Enum.KeyCode.KeypadNine]="Num9",[Enum.KeyCode.KeypadZero]="Num0",
+            [Enum.KeyCode.Minus]="-",[Enum.KeyCode.Equals]="=",
+            [Enum.KeyCode.Tilde]="~",[Enum.KeyCode.LeftBracket]="[",
+            [Enum.KeyCode.RightBracket]="]",[Enum.KeyCode.RightParenthesis]=")",
+            [Enum.KeyCode.LeftParenthesis]="(",[Enum.KeyCode.Semicolon]=",",
+            [Enum.KeyCode.Quote]="'",[Enum.KeyCode.BackSlash]="\\",
+            [Enum.KeyCode.Comma]=",",[Enum.KeyCode.Period]=".",
+            [Enum.KeyCode.Slash]="/",[Enum.KeyCode.Asterisk]="*",
+            [Enum.KeyCode.Plus]="+",[Enum.KeyCode.Backquote]="`",
+            [Enum.UserInputType.MouseButton1]="MB1",
+            [Enum.UserInputType.MouseButton2]="MB2",
+            [Enum.UserInputType.MouseButton3]="MB3"
         };
-        Connections = {};
-        FontSize = 12;
-        VisValues = {};
-        UIKey = Enum.KeyCode.Insert;
-        Notifs = {};
+        Connections = {}; FontSize = 12; VisValues = {};
+        UIKey = Enum.KeyCode.Insert; Notifs = {};
     }
 
     local Flags = {}
@@ -102,24 +86,24 @@ do
 
         function Library:ApplyTheme(instance, rotation)
             rotation = rotation or 0
-            instance.BackgroundColor3 = Color3.new(1, 1, 1)
-            local gradient = Instance.new("UIGradient")
-            gradient.Color = ColorSequence.new(Library.AccentGradient[1], Library.AccentGradient[2])
-            gradient.Rotation = rotation
-            gradient.Parent = instance
-            table.insert(Library.ThemeObjects, gradient)
-            return gradient
+            instance.BackgroundColor3 = Color3.new(1,1,1)
+            local g = Instance.new("UIGradient")
+            g.Color = ColorSequence.new(Library.AccentGradient[1], Library.AccentGradient[2])
+            g.Rotation = rotation
+            g.Parent = instance
+            table.insert(Library.ThemeObjects, g)
+            return g
         end
 
         function Library:ApplyTextTheme(instance, rotation)
             rotation = rotation or 0
-            instance.TextColor3 = Color3.new(1, 1, 1)
-            local gradient = Instance.new("UIGradient")
-            gradient.Color = ColorSequence.new(Library.AccentGradient[1], Library.AccentGradient[2])
-            gradient.Rotation = rotation
-            gradient.Parent = instance
-            table.insert(Library.ThemeObjects, gradient)
-            return gradient
+            instance.TextColor3 = Color3.new(1,1,1)
+            local g = Instance.new("UIGradient")
+            g.Color = ColorSequence.new(Library.AccentGradient[1], Library.AccentGradient[2])
+            g.Rotation = rotation
+            g.Parent = instance
+            table.insert(Library.ThemeObjects, g)
+            return g
         end
 
         function Library:SetOpen(bool)
@@ -159,7 +143,7 @@ do
         end
     end
 
-    --// Notifications
+    -- Notifications
     function Library:updateNotifsPositions()
         for i, v in pairs(Library.Notifs) do
             TweenService:Create(v.Container, TweenInfo.new(1, Enum.EasingStyle.Exponential), {Position = UDim2.new(0, 20, 0, 20 + (i * 25))}):Play()
@@ -232,7 +216,7 @@ do
         return notification
     end
 
-    --// Main Window / Pages / Sections
+    -- Main Window / Pages / Sections
     do
         local Pages = Library.Pages
         local Sections = Library.Sections
@@ -455,54 +439,35 @@ do
             return setmetatable(Section, Library.Sections)
         end
 
-        --// Nest (scrollable container)
         function Sections:Nest(Properties)
             if not Properties then Properties = {} end
-            local Section = {
-                Name = Properties.Name or "Section",
-                RealSection = self,
-                Size = Properties.size or Properties.Size or 200,
-                Elements = {},
-                Content = {},
-            }
+            local Section = {Name = Properties.Name or "Section", RealSection = self, Size = Properties.size or Properties.Size or 200, Elements = {}, Content = {}}
 
             local ScrollHolder = Instance.new("Frame", Section.RealSection.Elements.SectionContent)
             local NewScroll = Instance.new('ScrollingFrame', ScrollHolder)
-            local UICorner2 = Instance.new('UICorner', ScrollHolder)
             local ScrollContent = Instance.new('Frame', NewScroll)
             local UIListLayout = Instance.new('UIListLayout', ScrollContent)
 
             ScrollHolder.Size = Section.Size == "Fill" and UDim2.new(1, 0, 1, 0) or UDim2.new(1, 0, 0, Section.Size)
-            ScrollHolder.BackgroundTransparency = 1
-            ScrollHolder.BorderSizePixel = 0
-            ScrollHolder.ClipsDescendants = true
+            ScrollHolder.BackgroundTransparency = 1; ScrollHolder.BorderSizePixel = 0; ScrollHolder.ClipsDescendants = true
+            local UICorner2 = Instance.new('UICorner', ScrollHolder)
 
-            NewScroll.Size = UDim2.new(1, 0, 1, 0)
-            NewScroll.BackgroundTransparency = 1
-            NewScroll.BorderSizePixel = 0
-            NewScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-            NewScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-            NewScroll.ScrollBarThickness = 4
-            NewScroll.ScrollBarImageColor3 = Library.Accent
-            NewScroll.TopImage = ""
-            NewScroll.BottomImage = ""
-            NewScroll.VerticalScrollBarInset = Enum.ScrollBarInset.Always
-            NewScroll.ClipsDescendants = true
+            NewScroll.Size = UDim2.new(1, 0, 1, 0); NewScroll.BackgroundTransparency = 1; NewScroll.BorderSizePixel = 0
+            NewScroll.CanvasSize = UDim2.new(0, 0, 0, 0); NewScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+            NewScroll.ScrollBarThickness = 4; NewScroll.ScrollBarImageColor3 = Library.Accent
+            NewScroll.TopImage = ""; NewScroll.BottomImage = ""
+            NewScroll.VerticalScrollBarInset = Enum.ScrollBarInset.Always; NewScroll.ClipsDescendants = true
             table.insert(Library.ThemeObjects, NewScroll)
 
-            ScrollContent.Position = UDim2.new(0, 6, 0, 5)
-            ScrollContent.Size = UDim2.new(1, -12, 0, 0)
-            ScrollContent.BackgroundTransparency = 1
-            ScrollContent.AutomaticSize = Enum.AutomaticSize.Y
-
-            UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-            UIListLayout.Padding = UDim.new(0, 6)
+            ScrollContent.Position = UDim2.new(0, 6, 0, 5); ScrollContent.Size = UDim2.new(1, -12, 0, 0)
+            ScrollContent.BackgroundTransparency = 1; ScrollContent.AutomaticSize = Enum.AutomaticSize.Y
+            UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder; UIListLayout.Padding = UDim.new(0, 6)
 
             Section.Elements = {SectionContent = ScrollContent}
             return setmetatable(Section, Library.Sections)
         end
 
-        --// Toggle
+        -- Toggle
         function Sections:Toggle(Properties)
             if not Properties then Properties = {} end
             local Toggle = {
@@ -564,7 +529,7 @@ do
             return Toggle
         end
 
-        --// Slider
+        -- Slider
         function Sections:Slider(Properties)
             if not Properties then Properties = {} end
             local Slider = {
@@ -581,6 +546,7 @@ do
             local TextValue = ("[value]" .. Slider.Sub)
 
             local NewSlider = Instance.new('TextButton', Slider.Section.Elements.SectionContent)
+            NewSlider.LayoutOrder = Properties.LayoutOrder or 0
             local SliderTitle = Instance.new('TextLabel', NewSlider)
             local ToggleFrame = Instance.new('Frame', NewSlider)
             local FillHold = Instance.new('Frame', ToggleFrame)
@@ -639,7 +605,7 @@ do
             return Slider
         end
 
-        --// Textbox
+        -- Textbox
         function Sections:Textbox(Properties)
             Properties = Properties or {}
             local Textbox = {
@@ -672,19 +638,18 @@ do
             TextBox.FocusLost:Connect(function()
                 Textbox.Callback(TextBox.Text); Library.Flags[Textbox.Flag] = TextBox.Text
             end)
+            TextBox:GetPropertyChangedSignal("Text"):Connect(function()
+                Library.Flags[Textbox.Flag] = TextBox.Text
+            end)
             local function set(str) TextBox.Text = str; Library.Flags[Textbox.Flag] = str; Textbox.Callback(str) end
             Flags[Textbox.Flag] = set; Library.Flags[Textbox.Flag] = TextBox.Text
             return Textbox
         end
 
-        --// Button
+        -- Button
         function Sections:Button(Properties)
             Properties = Properties or {}
-            local Button = {
-                Window = self.Window, Page = self.Page, Section = self,
-                Name = Properties.Name or "button",
-                Callback = (Properties.callback or Properties.Callback or function() end),
-            }
+            local Button = {Window = self.Window, Page = self.Page, Section = self, Name = Properties.Name or "button", Callback = (Properties.callback or Properties.Callback or function() end)}
             local NewButton = Instance.new("TextButton")
             NewButton.LayoutOrder = Properties.LayoutOrder or 0
             NewButton.FontFace = Library.FontFace; NewButton.Text = ""; NewButton.TextSize = 14
@@ -711,7 +676,7 @@ do
             end)
         end
 
-        --// List (dropdown)
+        -- List
         function Sections:List(Properties)
             Properties = Properties or {}
             local Dropdown = {
@@ -905,7 +870,7 @@ do
             Dropdown:Set(Dropdown.State); return Dropdown
         end
 
-        --// Watermark
+        -- Watermark
         function Library:Watermark(Properties)
             local Watermark = {Name = (Properties.Name or Properties.name or "v1.0"); AnimateText = nil;}
             local Outline = Instance.new("Frame")
@@ -1099,9 +1064,6 @@ do
     local RS          = game:GetService("ReplicatedStorage")
     local LocalPlayer = Players.LocalPlayer
 
-    ---------------------------------------------------------------
-    -- Kill state
-    ---------------------------------------------------------------
     local kill = {
         enabled         = false,
         mode            = "Auto Flame Kill",
@@ -1115,21 +1077,16 @@ do
         selectedMelee   = "Combat",
         flameOffset     = Vector3.new(-2, 8, 2),
         autoAmmo        = true,
-
-        -- Bring
         bringEnabled    = false,
         bringConn       = nil,
         bringStartPos   = nil,
         lastGrabAttempt = 0,
         _bringToggle    = nil,
-
-        -- Auto Bag
         autoBagEnabled  = false,
         autoBagConn     = nil,
         bagAlertCd      = 0,
     }
 
-    -- Track spawn
     do
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -1140,15 +1097,10 @@ do
         end)
     end
 
-    ---------------------------------------------------------------
-    -- Helpers
-    ---------------------------------------------------------------
     local function killNotify(msg) Soda:Notification(msg, 2) end
-
     local function clearPhysics(hrp)
         if hrp then pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", nil) end) end
     end
-
     local function findPlayerByQuery(query)
         if not query or query == "" then return nil end
         local q = query:lower():gsub("^@", "")
@@ -1161,20 +1113,14 @@ do
         return nil
     end
 
-    ---------------------------------------------------------------
-    -- FLAME KILL TICK
-    ---------------------------------------------------------------
     local function flameKillTick()
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         local backpack = LocalPlayer:FindFirstChild("Backpack")
         if not hrp or not hum then return end
+        local flame = char:FindFirstChild("[Flamethrower]") or (backpack and backpack:FindFirstChild("[Flamethrower]"))
 
-        local flame = char:FindFirstChild("[Flamethrower]")
-            or (backpack and backpack:FindFirstChild("[Flamethrower]"))
-
-        -- Auto buy
         if kill.autoAmmo and not kill.flameBuying then
             local noFlame = not flame
             local lowAmmo = false
@@ -1198,7 +1144,6 @@ do
                         local cd = flameShop:FindFirstChildWhichIsA("ClickDetector", true)
                         if cd then fireclickdetector(cd); task.wait(0.25) end
                     end
-
                     if kill.enabled and kill.autoAmmo and ammoShop then
                         hrp.CFrame = ammoShop:GetPivot() + Vector3.new(0, 3, 0)
                         task.wait(0.3)
@@ -1210,7 +1155,6 @@ do
                             end
                         end
                     end
-
                     task.wait(0.15)
                     if hrp and kill.enabled then
                         hrp.CFrame = oldCF
@@ -1227,11 +1171,7 @@ do
         end
 
         local found = findPlayerByQuery(flags["target_player_input"] or "")
-        if not found then
-            clearPhysics(hrp)
-            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
-            return
-        end
+        if not found then clearPhysics(hrp); if kill.spawnPos then hrp.CFrame = kill.spawnPos end; return end
 
         hum.PlatformStand = true
         hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
@@ -1241,18 +1181,12 @@ do
         local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
         local tHum = tChar and tChar:FindFirstChildOfClass("Humanoid")
         local tTorso = tChar and (tChar:FindFirstChild("UpperTorso") or tChar:FindFirstChild("Torso") or tHrp)
-        if not tHrp or not tHum then
-            clearPhysics(hrp)
-            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
-            return
-        end
+        if not tHrp or not tHum then clearPhysics(hrp); if kill.spawnPos then hrp.CFrame = kill.spawnPos end; return end
 
         local pos = tHrp.Position
         if math.abs(pos.X) > 1e10 or math.abs(pos.Y) > 1e10 or math.abs(pos.Z) > 1e10 then
-            clearPhysics(hrp)
-            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
+            clearPhysics(hrp); if kill.spawnPos then hrp.CFrame = kill.spawnPos end
+            hrp.AssemblyLinearVelocity = Vector3.zero; hrp.AssemblyAngularVelocity = Vector3.zero
             return
         end
 
@@ -1263,10 +1197,8 @@ do
         local isKO = body and ((body:FindFirstChild("K.O") and body["K.O"].Value == true) or (body:FindFirstChild("KO") and body.KO.Value == true))
 
         if isDead or tChar:FindFirstChildOfClass("ForceField") then
-            clearPhysics(hrp)
-            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
+            clearPhysics(hrp); if kill.spawnPos then hrp.CFrame = kill.spawnPos end
+            hrp.AssemblyLinearVelocity = Vector3.zero; hrp.AssemblyAngularVelocity = Vector3.zero
             if flame and flame.Parent == char then flame:Deactivate() end
             return
         end
@@ -1274,20 +1206,15 @@ do
         if isKO then
             clearPhysics(hrp)
             if flame and flame.Parent == char then hum:UnequipTools() end
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
+            hrp.AssemblyLinearVelocity = Vector3.zero; hrp.AssemblyAngularVelocity = Vector3.zero
             hrp.CFrame = CFrame.new(tTorso.Position + Vector3.new(0, 2.9, 0)) * CFrame.Angles(0, math.rad(tick() * 180), 0)
             RS.MainEvent:FireServer("Stomp")
             return
         end
 
         if not flame then
-            clearPhysics(hrp)
-            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
-            if tick() - kill.lastGunNotif > 4 then
-                killNotify("Need a flamethrower!")
-                kill.lastGunNotif = tick()
-            end
+            clearPhysics(hrp); if kill.spawnPos then hrp.CFrame = kill.spawnPos end
+            if tick() - kill.lastGunNotif > 4 then killNotify("Need a flamethrower!"); kill.lastGunNotif = tick() end
             return
         end
 
@@ -1297,8 +1224,7 @@ do
 
         local aiming = false
         for _, track in pairs(hum:GetPlayingAnimationTracks()) do
-            if track.Name == "LeftAim" then aiming = true
-            else pcall(function() track:Stop() end) end
+            if track.Name == "LeftAim" then aiming = true else pcall(function() track:Stop() end) end
         end
         if not aiming then
             pcall(function()
@@ -1308,10 +1234,8 @@ do
         end
 
         if char ~= flame.Parent then hum:EquipTool(flame) end
-
         pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", tHrp) end)
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
+        hrp.AssemblyLinearVelocity = Vector3.zero; hrp.AssemblyAngularVelocity = Vector3.zero
         hrp.CFrame = CFrame.new(tTorso.Position + kill.flameOffset)
 
         if char == flame.Parent then
@@ -1324,9 +1248,6 @@ do
         end
     end
 
-    ---------------------------------------------------------------
-    -- MELEE KILL TICK
-    ---------------------------------------------------------------
     local function meleeKillTick()
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -1335,20 +1256,12 @@ do
         if not hrp or not hum then return end
 
         local found = findPlayerByQuery(flags["target_player_input"] or "")
-        if not found then
-            clearPhysics(hrp)
-            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
-            return
-        end
+        if not found then clearPhysics(hrp); if kill.spawnPos then hrp.CFrame = kill.spawnPos end; return end
 
         local tChar = found.Character
         local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
         local tHum = tChar and tChar:FindFirstChildOfClass("Humanoid")
-        if not tHrp or not tHum then
-            clearPhysics(hrp)
-            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
-            return
-        end
+        if not tHrp or not tHum then clearPhysics(hrp); if kill.spawnPos then hrp.CFrame = kill.spawnPos end; return end
 
         local body = tChar:FindFirstChild("BodyEffects")
         local sdeath = body and body:FindFirstChild("SDeath") and body.SDeath.Value == true
@@ -1356,20 +1269,12 @@ do
         local isKO = body and ((body:FindFirstChild("K.O") and body["K.O"].Value == true) or (body:FindFirstChild("KO") and body.KO.Value == true))
         local ff = tChar:FindFirstChildOfClass("ForceField")
 
-        if isDead then
-            clearPhysics(hrp)
-            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            return
-        end
+        if isDead then clearPhysics(hrp); if kill.spawnPos then hrp.CFrame = kill.spawnPos end; hrp.AssemblyLinearVelocity = Vector3.zero; return end
 
         local melee = char:FindFirstChild(kill.selectedMelee) or (backpack and backpack:FindFirstChild(kill.selectedMelee))
         if not melee then
             clearPhysics(hrp)
-            if tick() - kill.lastGunNotif > 4 then
-                killNotify("Need melee: " .. kill.selectedMelee)
-                kill.lastGunNotif = tick()
-            end
+            if tick() - kill.lastGunNotif > 4 then killNotify("Need melee: " .. kill.selectedMelee); kill.lastGunNotif = tick() end
             return
         end
 
@@ -1384,12 +1289,7 @@ do
             return
         end
 
-        if ff then
-            clearPhysics(hrp)
-            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            return
-        end
+        if ff then clearPhysics(hrp); if kill.spawnPos then hrp.CFrame = kill.spawnPos end; hrp.AssemblyLinearVelocity = Vector3.zero; return end
 
         if backpack then
             local m = backpack:FindFirstChild(kill.selectedMelee)
@@ -1406,9 +1306,6 @@ do
         end
     end
 
-    ---------------------------------------------------------------
-    -- BRING TICK
-    ---------------------------------------------------------------
     local function bringTick()
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -1427,9 +1324,7 @@ do
         if tChar:FindFirstChild("GRABBING_CONSTRAINT") or char:FindFirstChild("GRABBING_CONSTRAINT") then
             clearPhysics(hrp)
             if kill.bringStartPos then hrp.CFrame = kill.bringStartPos end
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
-
+            hrp.AssemblyLinearVelocity = Vector3.zero; hrp.AssemblyAngularVelocity = Vector3.zero
             kill.bringEnabled = false
             if kill.bringConn then kill.bringConn:Disconnect(); kill.bringConn = nil end
             killNotify("Target brought!")
@@ -1444,40 +1339,31 @@ do
         local ff = tChar:FindFirstChildOfClass("ForceField")
 
         if isDead then clearPhysics(hrp); return end
-
         if ff then
-            clearPhysics(hrp)
-            if kill.bringStartPos then hrp.CFrame = kill.bringStartPos end
+            clearPhysics(hrp); if kill.bringStartPos then hrp.CFrame = kill.bringStartPos end
             hrp.AssemblyLinearVelocity = Vector3.zero
             return
         end
-
         if not isKO then
-            if kill.mode == "Auto Flame Kill" then flameKillTick()
-            else meleeKillTick() end
+            if kill.mode == "Auto Flame Kill" then flameKillTick() else meleeKillTick() end
             return
         end
 
         local torso = tChar:FindFirstChild("UpperTorso") or tChar:FindFirstChild("LowerTorso") or tHrp
         pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", torso) end)
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
+        hrp.AssemblyLinearVelocity = Vector3.zero; hrp.AssemblyAngularVelocity = Vector3.zero
         hrp.CFrame = CFrame.new(torso.Position + Vector3.new(0, 2, 0))
 
         if backpack then
             local tool = char:FindFirstChildOfClass("Tool")
             if tool then tool.Parent = backpack end
         end
-
         if tick() - kill.lastGrabAttempt >= 0.3 then
             kill.lastGrabAttempt = tick()
             RS.MainEvent:FireServer("Grabbing", false)
         end
     end
 
-    ---------------------------------------------------------------
-    -- AUTO BAG TICK
-    ---------------------------------------------------------------
     local function autoBagTick()
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -1494,10 +1380,7 @@ do
         local myBag = char:FindFirstChild("[BrownBag]") or (backpack and backpack:FindFirstChild("[BrownBag]"))
         if not myBag then
             clearPhysics(hrp)
-            if tick() - kill.lastGunNotif > 4 then
-                killNotify("Need a [BrownBag]!")
-                kill.lastGunNotif = tick()
-            end
+            if tick() - kill.lastGunNotif > 4 then killNotify("Need a [BrownBag]!"); kill.lastGunNotif = tick() end
             return
         end
 
@@ -1516,16 +1399,9 @@ do
         clearPhysics(hrp)
         if hrp and kill.spawnPos then hrp.CFrame = kill.spawnPos end
         hrp.AssemblyLinearVelocity = Vector3.zero
-
-        if tick() - kill.bagAlertCd > 4 then
-            kill.bagAlertCd = tick()
-            killNotify("Bagged: " .. found.Name)
-        end
+        if tick() - kill.bagAlertCd > 4 then kill.bagAlertCd = tick(); killNotify("Bagged: " .. found.Name) end
     end
 
-    ---------------------------------------------------------------
-    -- Start / Stop
-    ---------------------------------------------------------------
     local function stopKill()
         if kill.conn then kill.conn:Disconnect(); kill.conn = nil end
         kill.flameBuying = false
@@ -1541,8 +1417,7 @@ do
             if hrp then
                 sethiddenproperty(hrp, "PhysicsRepRootPart", nil)
                 if kill.originalCFrame then
-                    hrp.AssemblyLinearVelocity = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
+                    hrp.AssemblyLinearVelocity = Vector3.zero; hrp.AssemblyAngularVelocity = Vector3.zero
                     hrp.CFrame = kill.originalCFrame
                     kill.originalCFrame = nil
                 end
@@ -1555,7 +1430,6 @@ do
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if hrp then kill.originalCFrame = hrp.CFrame end
-
         if kill.mode == "Auto Flame Kill" then
             kill.conn = RunService.Heartbeat:Connect(function()
                 if not kill.enabled then return end
@@ -1571,13 +1445,13 @@ do
     end
 
     ---------------------------------------------------------------
-    -- Target UI: Sections
+    -- Sections
     ---------------------------------------------------------------
     local target_left  = tab_target:Section({Name = "Target",  Side = "Left",  Size = "Fill"})
     local target_right = tab_target:Section({Name = "Preview", Side = "Right", Size = "Fill"})
 
     ---------------------------------------------------------------
-    -- RIGHT: preview headshot + info rows
+    -- RIGHT: Preview
     ---------------------------------------------------------------
     local previewFrame = Instance.new("Frame")
     previewFrame.Size = UDim2.new(1, 0, 0, 340)
@@ -1642,9 +1516,28 @@ do
     local headshotId   = addTargetRow(previewFrame, "User ID",      "---",  266, 4)
 
     ---------------------------------------------------------------
-    -- LEFT: Textbox
+    -- LEFT: Status row FIRST (so textbox callback can reference it)
     ---------------------------------------------------------------
-    local target_textbox = target_left:Textbox({
+    local statusRow = Instance.new("Frame")
+    statusRow.Size = UDim2.new(1, 0, 0, 24)
+    statusRow.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+    statusRow.BorderSizePixel = 0
+    statusRow.LayoutOrder = 5
+    statusRow.Parent = target_left.Elements.SectionContent
+    local statusCorner = Instance.new("UICorner", statusRow); statusCorner.CornerRadius = UDim.new(0, 4)
+    local statusStroke = Instance.new("UIStroke", statusRow); statusStroke.Color = Color3.fromRGB(40, 40, 40); statusStroke.Thickness = 1
+
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(1, -10, 1, 0); statusLabel.Position = UDim2.new(0, 5, 0, 0)
+    statusLabel.BackgroundTransparency = 1; statusLabel.Text = "Selected: None"
+    statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80); statusLabel.FontFace = Soda.FontFace
+    statusLabel.TextSize = 12; statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statusLabel.Parent = statusRow
+
+    ---------------------------------------------------------------
+    -- LEFT: Textbox (now statusLabel exists)
+    ---------------------------------------------------------------
+    target_left:Textbox({
         Name = "Player",
         Flag = "target_player_input",
         Placeholder = "Partial name / @username...",
@@ -1666,39 +1559,17 @@ do
             else
                 statusLabel.Text = "Selected: None"
                 statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80)
-                headshotName.Text = "None"
-                headshotUser.Text = "@---"
-                headshotId.Text   = "---"
+                headshotName.Text = "None"; headshotUser.Text = "@---"; headshotId.Text = "---"
                 headshot.Image = "rbxassetid://111122112"
             end
         end
     })
 
     ---------------------------------------------------------------
-    -- LEFT: Status row
-    ---------------------------------------------------------------
-    local statusRow = Instance.new("Frame")
-    statusRow.Size = UDim2.new(1, 0, 0, 24)
-    statusRow.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-    statusRow.BorderSizePixel = 0
-    statusRow.LayoutOrder = 5
-    statusRow.Parent = target_left.Elements.SectionContent
-    local statusCorner = Instance.new("UICorner", statusRow); statusCorner.CornerRadius = UDim.new(0, 4)
-    local statusStroke = Instance.new("UIStroke", statusRow); statusStroke.Color = Color3.fromRGB(40, 40, 40); statusStroke.Thickness = 1
-
-    local statusLabel = Instance.new("TextLabel")
-    statusLabel.Size = UDim2.new(1, -10, 1, 0); statusLabel.Position = UDim2.new(0, 5, 0, 0)
-    statusLabel.BackgroundTransparency = 1; statusLabel.Text = "Selected: None"
-    statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80); statusLabel.FontFace = Soda.FontFace
-    statusLabel.TextSize = 12; statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    statusLabel.Parent = statusRow
-
-    ---------------------------------------------------------------
     -- LEFT: Teleport
     ---------------------------------------------------------------
     target_left:Button({
-        Name = "Teleport",
-        LayoutOrder = 10,
+        Name = "Teleport", LayoutOrder = 10,
         Callback = function()
             local found = findPlayerByQuery(flags["target_player_input"] or "")
             if not found then Soda:Notification("No target selected!", 2); return end
@@ -1718,11 +1589,8 @@ do
     ---------------------------------------------------------------
     local spectateConn = nil
     local spectateActive = false
-
     target_left:Toggle({
-        Name = "Spectate",
-        Flag = "target_spectate",
-        LayoutOrder = 20,
+        Name = "Spectate", Flag = "target_spectate", LayoutOrder = 20,
         Callback = function(state)
             spectateActive = state
             local cam = workspace.CurrentCamera
@@ -1752,23 +1620,19 @@ do
     local flingEnabled = false
     local flingConn = nil
     local originalCFrameFling = nil
-
     local function setFling(enabled)
         flingEnabled = enabled
         if enabled then
             local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if hrp then originalCFrameFling = hrp.CFrame end
             if flingConn then flingConn:Disconnect() end
-
             flingConn = RunService.Heartbeat:Connect(function()
                 if not flingEnabled then
                     if flingConn then flingConn:Disconnect(); flingConn = nil end
                     return
                 end
-
                 local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 local found = findPlayerByQuery(flags["target_player_input"] or "")
-
                 if found and found.Character and myHrp then
                     local tHrp = found.Character:FindFirstChild("HumanoidRootPart")
                     local tHum = found.Character:FindFirstChildOfClass("Humanoid")
@@ -1788,68 +1652,49 @@ do
             end)
             return
         end
-
         if flingConn then flingConn:Disconnect(); flingConn = nil end
         local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if hrp then
             pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", nil) end)
             if originalCFrameFling then hrp.CFrame = originalCFrameFling; originalCFrameFling = nil end
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
+            hrp.AssemblyLinearVelocity = Vector3.zero; hrp.AssemblyAngularVelocity = Vector3.zero
         end
     end
-
     target_left:Toggle({
-        Name = "Fling",
-        Flag = "target_fling",
-        LayoutOrder = 90,
+        Name = "Fling", Flag = "target_fling", LayoutOrder = 90,
         Callback = function(state) setFling(state) end
     })
 
     ---------------------------------------------------------------
-    -- LEFT: Auto Flame Kill toggle
+    -- LEFT: Auto Flame Kill
     ---------------------------------------------------------------
     target_left:Toggle({
-        Name = "Auto Flame Kill",
-        Flag = "target_auto_flame_kill",
-        LayoutOrder = 100,
+        Name = "Auto Flame Kill", Flag = "target_auto_flame_kill", LayoutOrder = 100,
         Callback = function(state)
             kill.enabled = state
-            if state then
-                startKill()
-                killNotify("Auto Kill ON — " .. kill.mode)
-            else
-                stopKill()
-                killNotify("Auto Kill OFF")
-            end
+            if state then startKill(); killNotify("Auto Kill ON — " .. kill.mode)
+            else stopKill(); killNotify("Auto Kill OFF") end
         end
     })
 
     ---------------------------------------------------------------
-    -- LEFT: Kill Mode dropdown
+    -- LEFT: Kill Mode
     ---------------------------------------------------------------
     target_left:List({
-        Name = "Kill Mode",
-        Flag = "target_kill_mode",
-        LayoutOrder = 101,
+        Name = "Kill Mode", Flag = "target_kill_mode", LayoutOrder = 101,
         Options = {"Auto Flame Kill", "Melee Auto Kill"},
         Default = "Auto Flame Kill",
         Callback = function(value)
             kill.mode = value
-            if kill.enabled then
-                startKill()
-                killNotify("Switched to " .. value)
-            end
+            if kill.enabled then startKill(); killNotify("Switched to " .. value) end
         end
     })
 
     ---------------------------------------------------------------
-    -- LEFT: Bring toggle
+    -- LEFT: Bring
     ---------------------------------------------------------------
     local bringToggle = target_left:Toggle({
-        Name = "Bring",
-        Flag = "target_bring",
-        LayoutOrder = 102,
+        Name = "Bring", Flag = "target_bring", LayoutOrder = 102,
         Callback = function(state)
             kill.bringEnabled = state
             if state then
@@ -1857,7 +1702,6 @@ do
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
                 if hrp then kill.bringStartPos = hrp.CFrame end
                 kill.lastGrabAttempt = 0
-
                 if kill.bringConn then kill.bringConn:Disconnect() end
                 kill.bringConn = RunService.Heartbeat:Connect(function()
                     if not kill.bringEnabled then return end
@@ -1878,12 +1722,10 @@ do
     kill._bringToggle = bringToggle
 
     ---------------------------------------------------------------
-    -- LEFT: Auto Bag toggle
+    -- LEFT: Auto Bag
     ---------------------------------------------------------------
     target_left:Toggle({
-        Name = "Auto Bag",
-        Flag = "target_auto_bag",
-        LayoutOrder = 103,
+        Name = "Auto Bag", Flag = "target_auto_bag", LayoutOrder = 103,
         Callback = function(state)
             kill.autoBagEnabled = state
             if state then
@@ -1911,16 +1753,13 @@ do
     Players.PlayerRemoving:Connect(function(plr)
         local found = findPlayerByQuery(flags["target_player_input"] or "")
         if found == plr then
-            headshotName.Text = "None"
-            headshotUser.Text = "@---"
-            headshotId.Text   = "---"
+            headshotName.Text = "None"; headshotUser.Text = "@---"; headshotId.Text = "---"
             headshot.Image = "rbxassetid://111122112"
             statusLabel.Text = "Selected: None"
             statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80)
         end
     end)
 
-    -- Refresh every 2s
     task.spawn(function()
         while task.wait(2) do
             local found = findPlayerByQuery(flags["target_player_input"] or "")
@@ -1935,7 +1774,7 @@ do
 end
 
 --====================================================================
--- PLAYER CHARACTER — 14 Toggles (scrollable)
+-- PLAYER TAB — Character (left) + Movement (right)
 --====================================================================
 do
     local PC_Players    = game:GetService("Players")
@@ -1945,26 +1784,14 @@ do
     local PC_TCS        = game:GetService("TextChatService")
 
     local pc = {
-        antiPepperConn    = nil,
-        antiStompConn     = nil,
-        wasKnocked        = false,
-        autoEatConn       = nil,
-        autoEatBusy       = false,
-        noclipConn        = nil,
-        noJumpConn        = nil,
-        antiGrabConn      = nil,
-        antiGrabEnabled   = false,
-        cashAuraEnabled   = false,
-        cashAuraRadius    = 20,
-        cashAuraDelay     = 0.5,
-        godBlockEnabled   = false,
-        godBlockConn      = nil,
-        autoReloadConn    = nil,
-        autoReloadEnabled = false,
-        chatSpamTrashTalk = false,
-        chatSpamLastTime  = 0,
-        chatSpamIndex     = 1,
-        chatSpamDelay     = 3,
+        antiPepperConn=nil, antiStompConn=nil, wasKnocked=false,
+        autoEatConn=nil, autoEatBusy=false,
+        noclipConn=nil, noJumpConn=nil,
+        antiGrabConn=nil, antiGrabEnabled=false,
+        cashAuraEnabled=false, cashAuraRadius=20, cashAuraDelay=0.5,
+        godBlockEnabled=false, godBlockConn=nil,
+        autoReloadConn=nil, autoReloadEnabled=false,
+        chatSpamTrashTalk=false, chatSpamLastTime=0, chatSpamIndex=1, chatSpamDelay=3,
         trashTalkList = {
             "imagine getting cracked by Soda.Fun 💀", "Soda.Fun", "get better buddy", "skill issue",
             "get Soda.Fun today", "stop 😂", "free script btw", "mad?", "cry about it", "trash",
@@ -1975,14 +1802,12 @@ do
 
     PC_Local.CharacterAdded:Connect(function() pc.wasKnocked = false end)
 
-    local player_char_section = tab_player:Section({
-        Name = "Player Character",
-        Side = "Left",
-        Size = "Fill"
-    })
+    ---------------------------------------------------------------
+    -- LEFT: Player Character
+    ---------------------------------------------------------------
+    local player_char_section = tab_player:Section({Name = "Player Character", Side = "Left", Size = "Fill"})
     local pc_scroll = player_char_section:Nest({Size = "Fill"})
 
-    -- 1. Anti stomp
     pc_scroll:Toggle({
         Name = "Anti stomp", Flag = "pc_anti_stomp",
         Callback = function(state)
@@ -2008,7 +1833,6 @@ do
         end
     })
 
-    -- 2. Anti slow
     pc_scroll:Toggle({
         Name = "Anti slow", Flag = "pc_anti_slow",
         Callback = function(state)
@@ -2034,7 +1858,6 @@ do
         end
     })
 
-    -- 3. Anti grab
     pc_scroll:Toggle({
         Name = "Anti grab", Flag = "pc_anti_grab",
         Callback = function(state)
@@ -2059,7 +1882,6 @@ do
         end
     })
 
-    -- 4. Anti Seat
     pc_scroll:Toggle({
         Name = "Anti Seat", Flag = "pc_anti_seat",
         Callback = function(state)
@@ -2069,7 +1891,6 @@ do
         end
     })
 
-    -- 5. Anti pepperspray
     pc_scroll:Toggle({
         Name = "Anti pepperspray", Flag = "pc_anti_pepperspray",
         Callback = function(state)
@@ -2099,7 +1920,6 @@ do
         end
     })
 
-    -- 6. Auto Eat [Taco]
     pc_scroll:Toggle({
         Name = "Auto Eat [Taco]", Flag = "pc_auto_eat_taco",
         Callback = function(state)
@@ -2150,17 +1970,13 @@ do
         end
     })
 
-    -- 7. Chat Spy
     pc_scroll:Toggle({
         Name = "Chat Spy", Flag = "pc_chat_spy",
         Callback = function(state)
-            if PC_TCS.ChatWindowConfiguration then
-                PC_TCS.ChatWindowConfiguration.Enabled = state
-            end
+            if PC_TCS.ChatWindowConfiguration then PC_TCS.ChatWindowConfiguration.Enabled = state end
         end
     })
 
-    -- 8. Noclip
     pc_scroll:Toggle({
         Name = "Noclip", Flag = "pc_noclip",
         Callback = function(state)
@@ -2178,7 +1994,6 @@ do
         end
     })
 
-    -- 9. No jump cooldown
     pc_scroll:Toggle({
         Name = "No jump cooldown", Flag = "pc_no_jump_cooldown",
         Callback = function(state)
@@ -2192,7 +2007,6 @@ do
         end
     })
 
-    -- 10. Trash Talk
     pc_scroll:Toggle({
         Name = "Trash Talk", Flag = "pc_trash_talk",
         Callback = function(state) pc.chatSpamTrashTalk = state end
@@ -2220,7 +2034,6 @@ do
         end
     end)
 
-    -- 11. God Block
     pc_scroll:Toggle({
         Name = "God Block", Flag = "pc_god_block",
         Callback = function(state)
@@ -2235,10 +2048,7 @@ do
                         local block = BE:FindFirstChild("Block")
                         if block then block:Destroy() end
                         local tool = char:FindFirstChildWhichIsA("Tool")
-                        if tool and tool:FindFirstChild("Ammo") then
-                            PC_RS.MainEvent:FireServer("Block", false)
-                            return
-                        end
+                        if tool and tool:FindFirstChild("Ammo") then PC_RS.MainEvent:FireServer("Block", false); return end
                         PC_RS.MainEvent:FireServer("Block", true)
                         task.wait(0.2)
                         PC_RS.MainEvent:FireServer("Block", false)
@@ -2248,7 +2058,6 @@ do
         end
     })
 
-    -- 12. Auto block
     pc_scroll:Toggle({
         Name = "Auto block", Flag = "pc_auto_block",
         Callback = function(state)
@@ -2288,7 +2097,6 @@ do
         end
     })
 
-    -- 13. Cash aura
     pc_scroll:Toggle({
         Name = "Cash aura", Flag = "pc_cash_aura",
         Callback = function(state)
@@ -2320,7 +2128,6 @@ do
         end
     })
 
-    -- 14. Auto reload
     pc_scroll:Toggle({
         Name = "Auto reload", Flag = "pc_auto_reload",
         Callback = function(state)
@@ -2346,6 +2153,45 @@ do
             end
         end
     })
+
+    ---------------------------------------------------------------
+    -- RIGHT: Movement
+    ---------------------------------------------------------------
+    local CFrameSpeed = {Enabled = false, Speed = 20, _conn = nil}
+
+    local move_section = tab_player:Section({Name = "Movement", Side = "Right", Size = "Fill"})
+
+    local function cfsStart()
+        if CFrameSpeed._conn then return end
+        CFrameSpeed._conn = PC_RunService.Heartbeat:Connect(function(dt)
+            if not CFrameSpeed.Enabled then return end
+            local char = PC_Local.Character
+            if not char then return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hrp or not hum then return end
+            hrp.CFrame = hrp.CFrame + (hum.MoveDirection * (dt * CFrameSpeed.Speed * 10))
+        end)
+    end
+
+    local function cfsStop()
+        if CFrameSpeed._conn then CFrameSpeed._conn:Disconnect(); CFrameSpeed._conn = nil end
+    end
+
+    move_section:Toggle({
+        Name = "CFrame", Flag = "movement_cframe_enabled",
+        Callback = function(state)
+            CFrameSpeed.Enabled = state
+            if state then cfsStart(); Soda:Notification("CFrame Speed ON — " .. CFrameSpeed.Speed, 2)
+            else cfsStop(); Soda:Notification("CFrame Speed OFF", 2) end
+        end
+    })
+
+    move_section:Slider({
+        Name = "Speed", Flag = "movement_cframe_speed",
+        Min = 1, Max = 500, Default = 20, Decimals = 1,
+        Callback = function(value) CFrameSpeed.Speed = math.clamp(value, 1, 500) end
+    })
 end
 
 --====================================================================
@@ -2368,24 +2214,16 @@ toggle_btn.TextSize = 14
 toggle_btn.AutoButtonColor = false
 toggle_btn.Parent = toggle_gui
 
-local toggleCorner = Instance.new("UICorner", toggle_btn)
-toggleCorner.CornerRadius = UDim.new(0, 6)
-
-local toggleStroke = Instance.new("UIStroke", toggle_btn)
-toggleStroke.Color = Color3.fromRGB(60, 60, 60)
-
+local toggleCorner = Instance.new("UICorner", toggle_btn); toggleCorner.CornerRadius = UDim.new(0, 6)
+local toggleStroke = Instance.new("UIStroke", toggle_btn); toggleStroke.Color = Color3.fromRGB(60, 60, 60)
 local toggleGradient = Instance.new("UIGradient", toggle_btn)
 toggleGradient.Color = ColorSequence.new(Color3.fromRGB(255, 20, 80), Color3.fromRGB(60, 120, 255))
 toggleGradient.Rotation = 0
 
-toggle_btn.MouseButton1Click:Connect(function()
-    Soda:SetOpen(not Soda.Open)
-end)
-
+toggle_btn.MouseButton1Click:Connect(function() Soda:SetOpen(not Soda.Open) end)
 toggle_btn.MouseEnter:Connect(function()
     game:GetService("TweenService"):Create(toggleStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(255, 255, 255)}):Play()
 end)
-
 toggle_btn.MouseLeave:Connect(function()
     game:GetService("TweenService"):Create(toggleStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
 end)
