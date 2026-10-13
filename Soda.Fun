@@ -469,7 +469,6 @@ do
             local ScrollHolder = Instance.new("Frame", Section.RealSection.Elements.SectionContent)
             local NewScroll = Instance.new('ScrollingFrame', ScrollHolder)
             local UICorner2 = Instance.new('UICorner', ScrollHolder)
-            local UIStroke = Instance.new('UIStroke', ScrollHolder)
             local ScrollContent = Instance.new('Frame', NewScroll)
             local UIListLayout = Instance.new('UIListLayout', ScrollContent)
 
@@ -516,6 +515,7 @@ do
             }
 
             local NewToggle = Instance.new('TextButton', Toggle.Section.Elements.SectionContent)
+            NewToggle.LayoutOrder = Properties.LayoutOrder or 0
             local ToggleTitle = Instance.new('TextLabel', NewToggle)
             local ToggleFrame = Instance.new('Frame', NewToggle)
             local ToggleAccent = Instance.new('Frame', ToggleFrame)
@@ -651,6 +651,7 @@ do
             }
             local NewBox = Instance.new("Frame")
             NewBox.BackgroundTransparency = 1; NewBox.Size = UDim2.new(1, 0, 0, 24); NewBox.ZIndex = 54
+            NewBox.LayoutOrder = Properties.LayoutOrder or 0
             NewBox.Parent = Textbox.Section.Elements.SectionContent
 
             local ToggleFrame = Instance.new("Frame")
@@ -685,6 +686,7 @@ do
                 Callback = (Properties.callback or Properties.Callback or function() end),
             }
             local NewButton = Instance.new("TextButton")
+            NewButton.LayoutOrder = Properties.LayoutOrder or 0
             NewButton.FontFace = Library.FontFace; NewButton.Text = ""; NewButton.TextSize = 14
             NewButton.AutoButtonColor = false; NewButton.BackgroundTransparency = 1
             NewButton.Size = UDim2.new(1, 0, 0, 24); NewButton.ZIndex = 54; NewButton.Parent = Button.Section.Elements.SectionContent
@@ -707,6 +709,200 @@ do
                     task.wait(0.1); TweenService:Create(Label, TweenInfo.new(0.1), {TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
                 end)
             end)
+        end
+
+        --// List (dropdown)
+        function Sections:List(Properties)
+            Properties = Properties or {}
+            local Dropdown = {
+                Window = self.Window, Page = self.Page, Section = self,
+                Name = Properties.Name or Properties.name,
+                Options = (Properties.options or Properties.Options or {"1", "2", "3"}),
+                Max = (Properties.Max or Properties.max),
+                State = (Properties.state or Properties.State or Properties.def or Properties.Def or Properties.default or Properties.Default),
+                Callback = (Properties.callback or Properties.Callback or function() end),
+                Flag = (Properties.flag or Properties.Flag or Properties.pointer or Properties.Pointer or Library.NextFlag()),
+                OptionInsts = {},
+            }
+            local NewDropdown = Instance.new('Frame', Dropdown.Section.Elements.SectionContent)
+            NewDropdown.LayoutOrder = Properties.LayoutOrder or 0
+            local DropdownTitle = Instance.new('TextLabel', NewDropdown)
+            local ToggleFrame = Instance.new('TextButton', NewDropdown)
+            local ToggleContent = Instance.new('Frame', ToggleFrame)
+            local UIListLayout = Instance.new('UIListLayout', ToggleContent)
+            local DropdownTitle_2 = Instance.new('TextLabel', ToggleFrame)
+            local Icon = Instance.new('ImageLabel', ToggleFrame)
+
+            NewDropdown.Size = UDim2.new(1, 0, 0, 48); NewDropdown.BackgroundTransparency = 1; NewDropdown.ZIndex = 54
+            DropdownTitle.Size = UDim2.new(1, -10, 0, 17); DropdownTitle.BackgroundTransparency = 1
+            DropdownTitle.Text = Dropdown.Name; DropdownTitle.TextColor3 = Color3.new(0.7843, 0.7843, 0.7843)
+            DropdownTitle.FontFace = Library.FontFace; DropdownTitle.TextSize = Library.FontSize; DropdownTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+            ToggleFrame.Position = UDim2.new(0, 0, 1, -24); ToggleFrame.Size = UDim2.new(1, 0, 0, 24)
+            ToggleFrame.BackgroundColor3 = Color3.new(0.098, 0.098, 0.098); ToggleFrame.BorderSizePixel = 0
+            ToggleFrame.ZIndex = 54; ToggleFrame.AutoButtonColor = false; ToggleFrame.Text = ""
+            local UICorner_2 = Instance.new('UICorner', ToggleFrame); UICorner_2.CornerRadius = UDim.new(0, 4)
+
+            ToggleContent.Position = UDim2.new(0, 0, 1, 0); ToggleContent.Size = UDim2.new(1, 0, 0, 0)
+            ToggleContent.BackgroundColor3 = Color3.new(0.0706, 0.0706, 0.0706); ToggleContent.BorderSizePixel = 0
+            ToggleContent.ZIndex = 54; ToggleContent.ClipsDescendants = true
+            local UICorner_3 = Instance.new('UICorner', ToggleContent); UICorner_3.CornerRadius = UDim.new(0, 4)
+            UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+            DropdownTitle_2.Position = UDim2.new(0, 4, 0, 0); DropdownTitle_2.Size = UDim2.new(1, -10, 1, 0)
+            DropdownTitle_2.BackgroundTransparency = 1; DropdownTitle_2.Text = ""
+            DropdownTitle_2.TextColor3 = Color3.new(0.7843, 0.7843, 0.7843); DropdownTitle_2.FontFace = Library.FontFace
+            DropdownTitle_2.TextSize = Library.FontSize; DropdownTitle_2.TextXAlignment = Enum.TextXAlignment.Left
+
+            Icon.Position = UDim2.new(1, -25, 0, 5); Icon.Size = UDim2.new(0, 20, 0, 15)
+            Icon.BackgroundTransparency = 1; Icon.Image = "http://www.roblox.com/asset/?id=6034818372"
+            Icon.ImageColor3 = Color3.new(0.4706, 0.4706, 0.4706); Icon.ZIndex = 54
+
+            local Toggled = false; local Count = 0
+
+            Library:Connection(ToggleFrame.MouseButton1Click, function()
+                Toggled = not Toggled; Library.DropdownOpen = Toggled
+                if Toggled then
+                    NewDropdown.ZIndex = 55
+                    TweenService:Create(Icon, TweenInfo.new(0.25), {Rotation = 180}):Play()
+                    TweenService:Create(Icon, TweenInfo.new(0.25), {ImageColor3 = Color3.fromRGB(200, 200, 200)}):Play()
+                    TweenService:Create(ToggleContent, TweenInfo.new(0.25), {Size = UDim2.new(1, 0, 0, Count * 22)}):Play()
+                else
+                    TweenService:Create(Icon, TweenInfo.new(0.25), {Rotation = 0}):Play()
+                    TweenService:Create(Icon, TweenInfo.new(0.25), {ImageColor3 = Color3.fromRGB(120, 120, 120)}):Play()
+                    TweenService:Create(ToggleContent, TweenInfo.new(0.25), {Size = UDim2.new(1, 0, 0, 0)}):Play()
+                    task.wait(0.20); NewDropdown.ZIndex = 54
+                end
+            end)
+
+            Library:Connection(game:GetService("UserInputService").InputBegan, function(Input)
+                if ToggleContent.Visible and Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    if not Library:IsMouseOverFrame(ToggleContent) and not Library:IsMouseOverFrame(ToggleFrame) and not Library.OptionListOpen then
+                        Toggled = false; Library.DropdownOpen = false
+                        TweenService:Create(Icon, TweenInfo.new(0.25), {ImageColor3 = Color3.fromRGB(120, 120, 120)}):Play()
+                        TweenService:Create(Icon, TweenInfo.new(0.25), {Rotation = 0}):Play()
+                        TweenService:Create(ToggleContent, TweenInfo.new(0.25), {Size = UDim2.new(1, 0, 0, 0)}):Play()
+                        task.wait(0.20); NewDropdown.ZIndex = 54
+                    end
+                end
+            end)
+
+            local Chosen = Dropdown.Max and {} or nil
+
+            local function handleoptionclick(option, button, text, dot)
+                button.MouseButton1Click:Connect(function()
+                    if Dropdown.Max then
+                        if table.find(Chosen, option) then
+                            table.remove(Chosen, table.find(Chosen, option))
+                            DropdownTitle_2.Text = #Chosen == 0 and "" or table.concat(Chosen, ", ")
+                            TweenService:Create(text, TweenInfo.new(0.25), {TextColor3 = Color3.fromRGB(120, 120, 120)}):Play()
+                            TweenService:Create(dot, TweenInfo.new(0.25), {BackgroundTransparency = 1}):Play()
+                            TweenService:Create(text, TweenInfo.new(0.25), {Position = UDim2.new(0, 4, 0, 0)}):Play()
+                            Library.Flags[Dropdown.Flag] = Chosen; Dropdown.Callback(Chosen)
+                        else
+                            if #Chosen == Dropdown.Max then
+                                Dropdown.OptionInsts[Chosen[1]].text.Visible = false
+                                table.remove(Chosen, 1)
+                            end
+                            table.insert(Chosen, option)
+                            DropdownTitle_2.Text = #Chosen == 0 and "" or table.concat(Chosen, ", ")
+                            TweenService:Create(text, TweenInfo.new(0.25), {TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
+                            TweenService:Create(dot, TweenInfo.new(0.25), {BackgroundTransparency = 0}):Play()
+                            TweenService:Create(text, TweenInfo.new(0.25), {Position = UDim2.new(0, 20, 0, 0)}):Play()
+                            Library.Flags[Dropdown.Flag] = Chosen; Dropdown.Callback(Chosen)
+                        end
+                    else
+                        for opt, tbl in next, Dropdown.OptionInsts do
+                            if opt ~= option then
+                                TweenService:Create(tbl.text, TweenInfo.new(0.25), {TextColor3 = Color3.fromRGB(120, 120, 120)}):Play()
+                                TweenService:Create(tbl.text, TweenInfo.new(0.25), {Position = UDim2.new(0, 4, 0, 0)}):Play()
+                                TweenService:Create(tbl.dot, TweenInfo.new(0.25), {BackgroundTransparency = 1}):Play()
+                            end
+                        end
+                        Chosen = option; DropdownTitle_2.Text = option
+                        TweenService:Create(text, TweenInfo.new(0.25), {TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
+                        TweenService:Create(dot, TweenInfo.new(0.25), {BackgroundTransparency = 0}):Play()
+                        TweenService:Create(text, TweenInfo.new(0.25), {Position = UDim2.new(0, 20, 0, 0)}):Play()
+                        Library.Flags[Dropdown.Flag] = option; Dropdown.Callback(option)
+                    end
+                end)
+            end
+
+            local function createoptions(tbl)
+                for _, option in next, tbl do
+                    Dropdown.OptionInsts[option] = {}
+                    local TextButton = Instance.new('TextButton', ToggleContent)
+                    local DropdownTitle3 = Instance.new('TextLabel', TextButton)
+                    local AccentDot = Instance.new('Frame', TextButton)
+                    local OptionCorner = Instance.new('UICorner', AccentDot)
+
+                    TextButton.Size = UDim2.new(1, 0, 0, 22); TextButton.BackgroundTransparency = 1
+                    TextButton.Text = ""; TextButton.AutoButtonColor = false
+                    Dropdown.OptionInsts[option].button = TextButton
+
+                    DropdownTitle3.Position = UDim2.new(0, 20, 0, 0); DropdownTitle3.Size = UDim2.new(1, -10, 1, 0)
+                    DropdownTitle3.BackgroundTransparency = 1; DropdownTitle3.Text = option
+                    DropdownTitle3.TextColor3 = Color3.fromRGB(120, 120, 120); DropdownTitle3.FontFace = Library.FontFace
+                    DropdownTitle3.TextSize = Library.FontSize; DropdownTitle3.TextXAlignment = Enum.TextXAlignment.Left
+                    Dropdown.OptionInsts[option].text = DropdownTitle3
+
+                    AccentDot.Position = UDim2.new(0, 8, 0, 8); AccentDot.Size = UDim2.new(0, 6, 0, 6)
+                    AccentDot.BorderSizePixel = 0; Library:ApplyTheme(AccentDot, 45)
+                    Dropdown.OptionInsts[option].dot = AccentDot
+
+                    OptionCorner.CornerRadius = UDim.new(1, 0); Count += 1
+                    handleoptionclick(option, TextButton, DropdownTitle3, AccentDot)
+                end
+            end
+            createoptions(Dropdown.Options)
+
+            local set
+            set = function(option)
+                if Dropdown.Max then
+                    table.clear(Chosen); option = type(option) == "table" and option or {}
+                    for opt, tbl in next, Dropdown.OptionInsts do
+                        if not table.find(option, opt) then
+                            TweenService:Create(tbl.text, TweenInfo.new(0.25), {TextColor3 = Color3.fromRGB(120, 120, 120)}):Play()
+                            TweenService:Create(tbl.text, TweenInfo.new(0.25), {Position = UDim2.new(0, 4, 0, 0)}):Play()
+                            TweenService:Create(tbl.dot, TweenInfo.new(0.25), {BackgroundTransparency = 1}):Play()
+                        end
+                    end
+                    for _, opt in next, option do
+                        if table.find(Dropdown.Options, opt) and #Chosen < Dropdown.Max then
+                            table.insert(Chosen, opt)
+                            TweenService:Create(Dropdown.OptionInsts[opt].text, TweenInfo.new(0.25), {TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
+                            TweenService:Create(Dropdown.OptionInsts[opt].dot, TweenInfo.new(0.25), {BackgroundTransparency = 0}):Play()
+                            TweenService:Create(Dropdown.OptionInsts[opt].text, TweenInfo.new(0.25), {Position = UDim2.new(0, 20, 0, 0)}):Play()
+                        end
+                    end
+                    DropdownTitle_2.Text = #Chosen == 0 and "" or table.concat(Chosen, ", ")
+                    Library.Flags[Dropdown.Flag] = Chosen; Dropdown.Callback(Chosen)
+                end
+            end
+
+            function Dropdown:Set(option)
+                if Dropdown.Max then set(option) else
+                    for opt, tbl in next, Dropdown.OptionInsts do
+                        if opt ~= option then
+                            TweenService:Create(tbl.text, TweenInfo.new(0.25), {TextColor3 = Color3.fromRGB(120, 120, 120)}):Play()
+                            TweenService:Create(tbl.text, TweenInfo.new(0.25), {Position = UDim2.new(0, 4, 0, 0)}):Play()
+                            TweenService:Create(tbl.dot, TweenInfo.new(0.25), {BackgroundTransparency = 1}):Play()
+                        end
+                    end
+                    if table.find(Dropdown.Options, option) then
+                        Chosen = option; DropdownTitle_2.Text = option
+                        TweenService:Create(Dropdown.OptionInsts[option].text, TweenInfo.new(0.25), {TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
+                        TweenService:Create(Dropdown.OptionInsts[option].dot, TweenInfo.new(0.25), {BackgroundTransparency = 0}):Play()
+                        TweenService:Create(Dropdown.OptionInsts[option].text, TweenInfo.new(0.25), {Position = UDim2.new(0, 20, 0, 0)}):Play()
+                        Library.Flags[Dropdown.Flag] = Chosen; Dropdown.Callback(Chosen)
+                    else
+                        Chosen = nil; DropdownTitle_2.Text = ""; Library.Flags[Dropdown.Flag] = Chosen; Dropdown.Callback(Chosen)
+                    end
+                end
+            end
+
+            if Dropdown.Max then Flags[Dropdown.Flag] = set else Flags[Dropdown.Flag] = Dropdown end
+            Dropdown:Set(Dropdown.State); return Dropdown
         end
 
         --// Watermark
@@ -801,7 +997,6 @@ do
     local info_left = tab_info:Section({Name = "Avatar", Side = "Left", Size = "Fill"})
     local info_right = tab_info:Section({Name = "Info", Side = "Right", Size = "Fill"})
 
-    -- Info row builder
     local function addInfoRow(parent, label, value, order)
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1, 0, 0, 34)
@@ -839,7 +1034,6 @@ do
         return valueLabel
     end
 
-    -- LEFT: avatar
     local avatarFrame = Instance.new("Frame")
     avatarFrame.Size = UDim2.new(1, 0, 0, 240)
     avatarFrame.BackgroundTransparency = 1
@@ -878,7 +1072,6 @@ do
     avatarUsername.TextSize = 12; avatarUsername.TextXAlignment = Enum.TextXAlignment.Center
     avatarUsername.Parent = avatarFrame
 
-    -- RIGHT: info rows
     addInfoRow(info_right.Elements.SectionContent, "Display Name", LocalPlayer.DisplayName, 1)
     addInfoRow(info_right.Elements.SectionContent, "Username", "@" .. LocalPlayer.Name, 2)
     addInfoRow(info_right.Elements.SectionContent, "User ID", tostring(LocalPlayer.UserId), 3)
@@ -903,21 +1096,58 @@ end
 do
     local Players     = game:GetService("Players")
     local RunService  = game:GetService("RunService")
+    local RS          = game:GetService("ReplicatedStorage")
     local LocalPlayer = Players.LocalPlayer
 
-    local target = {
-        selectedPlayer = nil,
-        spectateActive = false,
-        flingEnabled   = false,
-        flingConn      = nil,
-        originalCFrame = nil,
-        spectateConn   = nil,
-        headshot       = nil,
-        headshotName   = nil,
-        headshotUser   = nil,
-        headshotId     = nil,
-        statusLabel    = nil,
+    ---------------------------------------------------------------
+    -- Kill state
+    ---------------------------------------------------------------
+    local kill = {
+        enabled         = false,
+        mode            = "Auto Flame Kill",
+        conn            = nil,
+        flameBuying     = false,
+        originalCFrame  = nil,
+        spawnPos        = nil,
+        lastReload      = 0,
+        reloadCooldown  = 0.5,
+        lastGunNotif    = 0,
+        selectedMelee   = "Combat",
+        flameOffset     = Vector3.new(-2, 8, 2),
+        autoAmmo        = true,
+
+        -- Bring
+        bringEnabled    = false,
+        bringConn       = nil,
+        bringStartPos   = nil,
+        lastGrabAttempt = 0,
+        _bringToggle    = nil,
+
+        -- Auto Bag
+        autoBagEnabled  = false,
+        autoBagConn     = nil,
+        bagAlertCd      = 0,
     }
+
+    -- Track spawn
+    do
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then kill.spawnPos = hrp.CFrame end
+        LocalPlayer.CharacterAdded:Connect(function(newChar)
+            local newHrp = newChar:WaitForChild("HumanoidRootPart", 5)
+            if newHrp then kill.spawnPos = newHrp.CFrame end
+        end)
+    end
+
+    ---------------------------------------------------------------
+    -- Helpers
+    ---------------------------------------------------------------
+    local function killNotify(msg) Soda:Notification(msg, 2) end
+
+    local function clearPhysics(hrp)
+        if hrp then pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", nil) end) end
+    end
 
     local function findPlayerByQuery(query)
         if not query or query == "" then return nil end
@@ -931,10 +1161,424 @@ do
         return nil
     end
 
+    ---------------------------------------------------------------
+    -- FLAME KILL TICK
+    ---------------------------------------------------------------
+    local function flameKillTick()
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local backpack = LocalPlayer:FindFirstChild("Backpack")
+        if not hrp or not hum then return end
+
+        local flame = char:FindFirstChild("[Flamethrower]")
+            or (backpack and backpack:FindFirstChild("[Flamethrower]"))
+
+        -- Auto buy
+        if kill.autoAmmo and not kill.flameBuying then
+            local noFlame = not flame
+            local lowAmmo = false
+            if flame then
+                local ammo = flame:FindFirstChild("Ammo")
+                if ammo and ammo.Value <= 5 then lowAmmo = true end
+            end
+            if noFlame or lowAmmo then
+                kill.flameBuying = true
+                task.spawn(function()
+                    clearPhysics(hrp)
+                    local ignored = workspace:FindFirstChild("Ignored")
+                    local shop = ignored and ignored:FindFirstChild("Shop")
+                    local flameShop = shop and shop:FindFirstChild("[Flamethrower] - $10130")
+                    local ammoShop = shop and shop:FindFirstChild("140 [Flamethrower Ammo] - $1126")
+                    local oldCF = hrp.CFrame
+
+                    if noFlame and flameShop then
+                        hrp.CFrame = flameShop:GetPivot() + Vector3.new(0, 3, 0)
+                        task.wait(0.3)
+                        local cd = flameShop:FindFirstChildWhichIsA("ClickDetector", true)
+                        if cd then fireclickdetector(cd); task.wait(0.25) end
+                    end
+
+                    if kill.enabled and kill.autoAmmo and ammoShop then
+                        hrp.CFrame = ammoShop:GetPivot() + Vector3.new(0, 3, 0)
+                        task.wait(0.3)
+                        local cd = ammoShop:FindFirstChildWhichIsA("ClickDetector", true)
+                        if cd then
+                            for _ = 1, 10 do
+                                if not kill.enabled then break end
+                                fireclickdetector(cd); task.wait(0.15)
+                            end
+                        end
+                    end
+
+                    task.wait(0.15)
+                    if hrp and kill.enabled then
+                        hrp.CFrame = oldCF
+                        task.wait(0.1)
+                        local c = LocalPlayer.Character
+                        local h = c and c:FindFirstChildOfClass("Humanoid")
+                        local f = c and (c:FindFirstChild("[Flamethrower]") or (backpack and backpack:FindFirstChild("[Flamethrower]")))
+                        if h and f and f.Parent == backpack then h:EquipTool(f) end
+                    end
+                    kill.flameBuying = false
+                end)
+                return
+            end
+        end
+
+        local found = findPlayerByQuery(flags["target_player_input"] or "")
+        if not found then
+            clearPhysics(hrp)
+            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
+            return
+        end
+
+        hum.PlatformStand = true
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
+
+        local tChar = found.Character
+        local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
+        local tHum = tChar and tChar:FindFirstChildOfClass("Humanoid")
+        local tTorso = tChar and (tChar:FindFirstChild("UpperTorso") or tChar:FindFirstChild("Torso") or tHrp)
+        if not tHrp or not tHum then
+            clearPhysics(hrp)
+            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
+            return
+        end
+
+        local pos = tHrp.Position
+        if math.abs(pos.X) > 1e10 or math.abs(pos.Y) > 1e10 or math.abs(pos.Z) > 1e10 then
+            clearPhysics(hrp)
+            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+            return
+        end
+
+        local body = tChar:FindFirstChild("BodyEffects")
+        local sdeath = body and body:FindFirstChild("SDeath") and body.SDeath.Value == true
+        local dead = body and body:FindFirstChild("Dead") and body.Dead.Value == true
+        local isDead = tHum.Health <= 0 or sdeath or dead
+        local isKO = body and ((body:FindFirstChild("K.O") and body["K.O"].Value == true) or (body:FindFirstChild("KO") and body.KO.Value == true))
+
+        if isDead or tChar:FindFirstChildOfClass("ForceField") then
+            clearPhysics(hrp)
+            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+            if flame and flame.Parent == char then flame:Deactivate() end
+            return
+        end
+
+        if isKO then
+            clearPhysics(hrp)
+            if flame and flame.Parent == char then hum:UnequipTools() end
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+            hrp.CFrame = CFrame.new(tTorso.Position + Vector3.new(0, 2.9, 0)) * CFrame.Angles(0, math.rad(tick() * 180), 0)
+            RS.MainEvent:FireServer("Stomp")
+            return
+        end
+
+        if not flame then
+            clearPhysics(hrp)
+            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
+            if tick() - kill.lastGunNotif > 4 then
+                killNotify("Need a flamethrower!")
+                kill.lastGunNotif = tick()
+            end
+            return
+        end
+
+        for _, child in ipairs(char:GetChildren()) do
+            if child:IsA("Tool") and child.Name ~= "[Flamethrower]" then child.Parent = backpack end
+        end
+
+        local aiming = false
+        for _, track in pairs(hum:GetPlayingAnimationTracks()) do
+            if track.Name == "LeftAim" then aiming = true
+            else pcall(function() track:Stop() end) end
+        end
+        if not aiming then
+            pcall(function()
+                local anim = RS:FindFirstChild("IM") and RS.IM:FindFirstChild("ANIM") and RS.IM.ANIM:FindFirstChild("LeftAim")
+                if anim then local loaded = hum:LoadAnimation(anim); if loaded then loaded:Play() end end
+            end)
+        end
+
+        if char ~= flame.Parent then hum:EquipTool(flame) end
+
+        pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", tHrp) end)
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        hrp.CFrame = CFrame.new(tTorso.Position + kill.flameOffset)
+
+        if char == flame.Parent then
+            flame:Activate()
+            local ammo = flame:FindFirstChild("Ammo")
+            if ammo and ammo.Value <= 0 and tick() - kill.lastReload > kill.reloadCooldown then
+                kill.lastReload = tick()
+                RS.MainEvent:FireServer("Reload", flame)
+            end
+        end
+    end
+
+    ---------------------------------------------------------------
+    -- MELEE KILL TICK
+    ---------------------------------------------------------------
+    local function meleeKillTick()
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local backpack = LocalPlayer:FindFirstChild("Backpack")
+        if not hrp or not hum then return end
+
+        local found = findPlayerByQuery(flags["target_player_input"] or "")
+        if not found then
+            clearPhysics(hrp)
+            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
+            return
+        end
+
+        local tChar = found.Character
+        local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
+        local tHum = tChar and tChar:FindFirstChildOfClass("Humanoid")
+        if not tHrp or not tHum then
+            clearPhysics(hrp)
+            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
+            return
+        end
+
+        local body = tChar:FindFirstChild("BodyEffects")
+        local sdeath = body and body:FindFirstChild("SDeath") and body.SDeath.Value == true
+        local isDead = tHum.Health <= 0 or sdeath
+        local isKO = body and ((body:FindFirstChild("K.O") and body["K.O"].Value == true) or (body:FindFirstChild("KO") and body.KO.Value == true))
+        local ff = tChar:FindFirstChildOfClass("ForceField")
+
+        if isDead then
+            clearPhysics(hrp)
+            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            return
+        end
+
+        local melee = char:FindFirstChild(kill.selectedMelee) or (backpack and backpack:FindFirstChild(kill.selectedMelee))
+        if not melee then
+            clearPhysics(hrp)
+            if tick() - kill.lastGunNotif > 4 then
+                killNotify("Need melee: " .. kill.selectedMelee)
+                kill.lastGunNotif = tick()
+            end
+            return
+        end
+
+        if isKO and not sdeath then
+            local torso = tChar:FindFirstChild("UpperTorso") or tChar:FindFirstChild("LowerTorso") or tHrp
+            pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", torso) end)
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.CFrame = CFrame.new(torso.Position) * CFrame.Angles(0, math.rad(tick() * 360), 0)
+            local tool = char:FindFirstChildOfClass("Tool")
+            if tool then tool.Parent = backpack end
+            RS.MainEvent:FireServer("Stomp")
+            return
+        end
+
+        if ff then
+            clearPhysics(hrp)
+            if kill.spawnPos then hrp.CFrame = kill.spawnPos end
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            return
+        end
+
+        if backpack then
+            local m = backpack:FindFirstChild(kill.selectedMelee)
+            if m then m.Parent = char end
+        end
+
+        local equipped = char:FindFirstChild(kill.selectedMelee)
+        if equipped then
+            pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", tHrp) end)
+            local look = Vector3.new(tHrp.Position.X, hrp.Position.Y, tHrp.Position.Z)
+            hrp.CFrame = CFrame.lookAt(tHrp.Position + Vector3.new(0, -2.5, 0), look)
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            equipped:Activate()
+        end
+    end
+
+    ---------------------------------------------------------------
+    -- BRING TICK
+    ---------------------------------------------------------------
+    local function bringTick()
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local backpack = LocalPlayer:FindFirstChild("Backpack")
+        if not hrp or not hum then return end
+
+        local found = findPlayerByQuery(flags["target_player_input"] or "")
+        if not found then clearPhysics(hrp); return end
+
+        local tChar = found.Character
+        local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
+        local tHum = tChar and tChar:FindFirstChildOfClass("Humanoid")
+        if not tHrp or not tHum then clearPhysics(hrp); return end
+
+        if tChar:FindFirstChild("GRABBING_CONSTRAINT") or char:FindFirstChild("GRABBING_CONSTRAINT") then
+            clearPhysics(hrp)
+            if kill.bringStartPos then hrp.CFrame = kill.bringStartPos end
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+
+            kill.bringEnabled = false
+            if kill.bringConn then kill.bringConn:Disconnect(); kill.bringConn = nil end
+            killNotify("Target brought!")
+            if kill._bringToggle then kill._bringToggle:Set(false) end
+            return
+        end
+
+        local body = tChar:FindFirstChild("BodyEffects")
+        local sdeath = body and body:FindFirstChild("SDeath") and body.SDeath.Value == true
+        local isKO = body and ((body:FindFirstChild("K.O") and body["K.O"].Value == true) or (body:FindFirstChild("KO") and body.KO.Value == true))
+        local isDead = tHum.Health <= 0 or sdeath
+        local ff = tChar:FindFirstChildOfClass("ForceField")
+
+        if isDead then clearPhysics(hrp); return end
+
+        if ff then
+            clearPhysics(hrp)
+            if kill.bringStartPos then hrp.CFrame = kill.bringStartPos end
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            return
+        end
+
+        if not isKO then
+            if kill.mode == "Auto Flame Kill" then flameKillTick()
+            else meleeKillTick() end
+            return
+        end
+
+        local torso = tChar:FindFirstChild("UpperTorso") or tChar:FindFirstChild("LowerTorso") or tHrp
+        pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", torso) end)
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        hrp.CFrame = CFrame.new(torso.Position + Vector3.new(0, 2, 0))
+
+        if backpack then
+            local tool = char:FindFirstChildOfClass("Tool")
+            if tool then tool.Parent = backpack end
+        end
+
+        if tick() - kill.lastGrabAttempt >= 0.3 then
+            kill.lastGrabAttempt = tick()
+            RS.MainEvent:FireServer("Grabbing", false)
+        end
+    end
+
+    ---------------------------------------------------------------
+    -- AUTO BAG TICK
+    ---------------------------------------------------------------
+    local function autoBagTick()
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local backpack = LocalPlayer:FindFirstChild("Backpack")
+        if not hrp then return end
+
+        local found = findPlayerByQuery(flags["target_player_input"] or "")
+        if not found then return end
+
+        local tChar = found.Character
+        local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
+        if not tHrp then return end
+
+        local myBag = char:FindFirstChild("[BrownBag]") or (backpack and backpack:FindFirstChild("[BrownBag]"))
+        if not myBag then
+            clearPhysics(hrp)
+            if tick() - kill.lastGunNotif > 4 then
+                killNotify("Need a [BrownBag]!")
+                kill.lastGunNotif = tick()
+            end
+            return
+        end
+
+        if not tChar:FindFirstChild("Christmas_Sock") then
+            pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", tHrp) end)
+            if backpack then
+                local bagInBackpack = backpack:FindFirstChild("[BrownBag]")
+                if bagInBackpack then bagInBackpack.Parent = char end
+            end
+            hrp.CFrame = tHrp.CFrame * CFrame.new(0, -3.5, 2.5)
+            local equippedBag = char:FindFirstChild("[BrownBag]")
+            if equippedBag then equippedBag:Activate() end
+            return
+        end
+
+        clearPhysics(hrp)
+        if hrp and kill.spawnPos then hrp.CFrame = kill.spawnPos end
+        hrp.AssemblyLinearVelocity = Vector3.zero
+
+        if tick() - kill.bagAlertCd > 4 then
+            kill.bagAlertCd = tick()
+            killNotify("Bagged: " .. found.Name)
+        end
+    end
+
+    ---------------------------------------------------------------
+    -- Start / Stop
+    ---------------------------------------------------------------
+    local function stopKill()
+        if kill.conn then kill.conn:Disconnect(); kill.conn = nil end
+        kill.flameBuying = false
+        pcall(function()
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+                hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+                hum.PlatformStand = false
+            end
+            if hrp then
+                sethiddenproperty(hrp, "PhysicsRepRootPart", nil)
+                if kill.originalCFrame then
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                    hrp.CFrame = kill.originalCFrame
+                    kill.originalCFrame = nil
+                end
+            end
+        end)
+    end
+
+    local function startKill()
+        stopKill()
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then kill.originalCFrame = hrp.CFrame end
+
+        if kill.mode == "Auto Flame Kill" then
+            kill.conn = RunService.Heartbeat:Connect(function()
+                if not kill.enabled then return end
+                if kill.flameBuying then return end
+                flameKillTick()
+            end)
+        else
+            kill.conn = RunService.Heartbeat:Connect(function()
+                if not kill.enabled then return end
+                meleeKillTick()
+            end)
+        end
+    end
+
+    ---------------------------------------------------------------
+    -- Target UI: Sections
+    ---------------------------------------------------------------
     local target_left  = tab_target:Section({Name = "Target",  Side = "Left",  Size = "Fill"})
     local target_right = tab_target:Section({Name = "Preview", Side = "Right", Size = "Fill"})
 
-    -- RIGHT: headshot + info rows (created first so textbox callback can update them)
+    ---------------------------------------------------------------
+    -- RIGHT: preview headshot + info rows
+    ---------------------------------------------------------------
     local previewFrame = Instance.new("Frame")
     previewFrame.Size = UDim2.new(1, 0, 0, 340)
     previewFrame.BackgroundTransparency = 1
@@ -949,10 +1593,8 @@ do
     headshot.BorderSizePixel = 0
     headshot.Image = "rbxassetid://111122112"
     headshot.Parent = previewFrame
-    target.headshot = headshot
 
     local headshotCorner = Instance.new("UICorner", headshot); headshotCorner.CornerRadius = UDim.new(0, 10)
-
     local headshotStroke = Instance.new("UIStroke", headshot)
     headshotStroke.Thickness = 2; headshotStroke.Color = Color3.new(1, 1, 1)
     local strokeGradient = Instance.new("UIGradient", headshotStroke)
@@ -961,10 +1603,8 @@ do
 
     local function addTargetRow(parent, label, value, yOffset, order)
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, -16, 0, 34)
-        row.Position = UDim2.new(0, 8, 0, yOffset)
-        row.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        row.BorderSizePixel = 0
+        row.Size = UDim2.new(1, -16, 0, 34); row.Position = UDim2.new(0, 8, 0, yOffset)
+        row.BackgroundColor3 = Color3.fromRGB(25, 25, 25); row.BorderSizePixel = 0
         row.LayoutOrder = order or 1
         row.Parent = parent
 
@@ -997,53 +1637,51 @@ do
         return valueLabel
     end
 
-    target.headshotName = addTargetRow(previewFrame, "Display Name", "None", 190, 2)
-    target.headshotUser = addTargetRow(previewFrame, "Username",     "@---", 228, 3)
-    target.headshotId   = addTargetRow(previewFrame, "User ID",      "---",  266, 4)
+    local headshotName = addTargetRow(previewFrame, "Display Name", "None", 190, 2)
+    local headshotUser = addTargetRow(previewFrame, "Username",     "@---", 228, 3)
+    local headshotId   = addTargetRow(previewFrame, "User ID",      "---",  266, 4)
 
-    -- LEFT: textbox
+    ---------------------------------------------------------------
+    -- LEFT: Textbox
+    ---------------------------------------------------------------
     local target_textbox = target_left:Textbox({
         Name = "Player",
         Flag = "target_player_input",
         Placeholder = "Partial name / @username...",
+        LayoutOrder = 0,
         Callback = function(text)
             local found = findPlayerByQuery(text)
-            target.selectedPlayer = found
-
             if found then
-                if target.statusLabel then
-                    target.statusLabel.Text = "Selected: " .. found.DisplayName
-                    target.statusLabel.TextColor3 = Color3.fromRGB(80, 220, 120)
-                end
-                target.headshotName.Text = found.DisplayName
-                target.headshotUser.Text = "@" .. found.Name
-                target.headshotId.Text   = tostring(found.UserId)
-
+                statusLabel.Text = "Selected: " .. found.DisplayName
+                statusLabel.TextColor3 = Color3.fromRGB(80, 220, 120)
+                headshotName.Text = found.DisplayName
+                headshotUser.Text = "@" .. found.Name
+                headshotId.Text   = tostring(found.UserId)
                 task.spawn(function()
                     local ok, thumb = pcall(function()
                         return Players:GetUserThumbnailAsync(found.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
                     end)
-                    if ok and thumb then target.headshot.Image = thumb end
+                    if ok and thumb then headshot.Image = thumb end
                 end)
             else
-                if target.statusLabel then
-                    target.statusLabel.Text = "Selected: None"
-                    target.statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80)
-                end
-                target.headshotName.Text = "None"
-                target.headshotUser.Text = "@---"
-                target.headshotId.Text   = "---"
-                target.headshot.Image = "rbxassetid://111122112"
+                statusLabel.Text = "Selected: None"
+                statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80)
+                headshotName.Text = "None"
+                headshotUser.Text = "@---"
+                headshotId.Text   = "---"
+                headshot.Image = "rbxassetid://111122112"
             end
         end
     })
 
-    -- LEFT: status row
+    ---------------------------------------------------------------
+    -- LEFT: Status row
+    ---------------------------------------------------------------
     local statusRow = Instance.new("Frame")
     statusRow.Size = UDim2.new(1, 0, 0, 24)
     statusRow.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
     statusRow.BorderSizePixel = 0
-    statusRow.LayoutOrder = 99
+    statusRow.LayoutOrder = 5
     statusRow.Parent = target_left.Elements.SectionContent
     local statusCorner = Instance.new("UICorner", statusRow); statusCorner.CornerRadius = UDim.new(0, 4)
     local statusStroke = Instance.new("UIStroke", statusRow); statusStroke.Color = Color3.fromRGB(40, 40, 40); statusStroke.Thickness = 1
@@ -1054,39 +1692,47 @@ do
     statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80); statusLabel.FontFace = Soda.FontFace
     statusLabel.TextSize = 12; statusLabel.TextXAlignment = Enum.TextXAlignment.Left
     statusLabel.Parent = statusRow
-    target.statusLabel = statusLabel
 
-    -- LEFT: Teleport button
+    ---------------------------------------------------------------
+    -- LEFT: Teleport
+    ---------------------------------------------------------------
     target_left:Button({
         Name = "Teleport",
+        LayoutOrder = 10,
         Callback = function()
-            local tgt = target.selectedPlayer
-            if not tgt then Soda:Notification("No target selected!", 2); return end
-            local char  = LocalPlayer.Character
-            local hrp   = char and char:FindFirstChild("HumanoidRootPart")
-            local tChar = tgt.Character
-            local tHrp  = tChar and tChar:FindFirstChild("HumanoidRootPart")
-            if not hrp  then Soda:Notification("Your character is missing!", 2); return end
+            local found = findPlayerByQuery(flags["target_player_input"] or "")
+            if not found then Soda:Notification("No target selected!", 2); return end
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local tChar = found.Character
+            local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
+            if not hrp then Soda:Notification("Your character is missing!", 2); return end
             if not tHrp then Soda:Notification("Target has no character!", 2); return end
             hrp.CFrame = tHrp.CFrame + Vector3.new(0, 3, 0)
-            Soda:Notification("Teleported to " .. tgt.DisplayName, 2)
+            Soda:Notification("Teleported to " .. found.DisplayName, 2)
         end
     })
 
-    -- LEFT: Spectate toggle
+    ---------------------------------------------------------------
+    -- LEFT: Spectate
+    ---------------------------------------------------------------
+    local spectateConn = nil
+    local spectateActive = false
+
     target_left:Toggle({
         Name = "Spectate",
         Flag = "target_spectate",
+        LayoutOrder = 20,
         Callback = function(state)
-            target.spectateActive = state
+            spectateActive = state
             local cam = workspace.CurrentCamera
-            if target.spectateConn then target.spectateConn:Disconnect(); target.spectateConn = nil end
+            if spectateConn then spectateConn:Disconnect(); spectateConn = nil end
             if state then
-                target.spectateConn = RunService.RenderStepped:Connect(function()
-                    if not target.spectateActive then return end
-                    local tgt = target.selectedPlayer
-                    if tgt and tgt.Character then
-                        local hum = tgt.Character:FindFirstChildOfClass("Humanoid")
+                spectateConn = RunService.RenderStepped:Connect(function()
+                    if not spectateActive then return end
+                    local found = findPlayerByQuery(flags["target_player_input"] or "")
+                    if found and found.Character then
+                        local hum = found.Character:FindFirstChildOfClass("Humanoid")
                         if hum then cam.CameraSubject = hum end
                     end
                 end)
@@ -1100,27 +1746,32 @@ do
         end
     })
 
-    -- LEFT: Fling toggle
-    local function setFling(enabled)
-        target.flingEnabled = enabled
+    ---------------------------------------------------------------
+    -- LEFT: Fling
+    ---------------------------------------------------------------
+    local flingEnabled = false
+    local flingConn = nil
+    local originalCFrameFling = nil
 
+    local function setFling(enabled)
+        flingEnabled = enabled
         if enabled then
             local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then target.originalCFrame = hrp.CFrame end
-            if target.flingConn then target.flingConn:Disconnect() end
+            if hrp then originalCFrameFling = hrp.CFrame end
+            if flingConn then flingConn:Disconnect() end
 
-            target.flingConn = RunService.Heartbeat:Connect(function()
-                if not target.flingEnabled then
-                    if target.flingConn then target.flingConn:Disconnect(); target.flingConn = nil end
+            flingConn = RunService.Heartbeat:Connect(function()
+                if not flingEnabled then
+                    if flingConn then flingConn:Disconnect(); flingConn = nil end
                     return
                 end
 
                 local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                local tgt = target.selectedPlayer
+                local found = findPlayerByQuery(flags["target_player_input"] or "")
 
-                if tgt and tgt.Character and myHrp then
-                    local tHrp = tgt.Character:FindFirstChild("HumanoidRootPart")
-                    local tHum = tgt.Character:FindFirstChildOfClass("Humanoid")
+                if found and found.Character and myHrp then
+                    local tHrp = found.Character:FindFirstChild("HumanoidRootPart")
+                    local tHum = found.Character:FindFirstChildOfClass("Humanoid")
                     if not (tHrp and tHum and tHum.Health > 0) then
                         pcall(function() sethiddenproperty(myHrp, "PhysicsRepRootPart", nil) end)
                         return
@@ -1138,11 +1789,11 @@ do
             return
         end
 
-        if target.flingConn then target.flingConn:Disconnect(); target.flingConn = nil end
+        if flingConn then flingConn:Disconnect(); flingConn = nil end
         local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if hrp then
             pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", nil) end)
-            if target.originalCFrame then hrp.CFrame = target.originalCFrame; target.originalCFrame = nil end
+            if originalCFrameFling then hrp.CFrame = originalCFrameFling; originalCFrameFling = nil end
             hrp.AssemblyLinearVelocity = Vector3.zero
             hrp.AssemblyAngularVelocity = Vector3.zero
         end
@@ -1151,17 +1802,119 @@ do
     target_left:Toggle({
         Name = "Fling",
         Flag = "target_fling",
+        LayoutOrder = 90,
         Callback = function(state) setFling(state) end
     })
 
+    ---------------------------------------------------------------
+    -- LEFT: Auto Flame Kill toggle
+    ---------------------------------------------------------------
+    target_left:Toggle({
+        Name = "Auto Flame Kill",
+        Flag = "target_auto_flame_kill",
+        LayoutOrder = 100,
+        Callback = function(state)
+            kill.enabled = state
+            if state then
+                startKill()
+                killNotify("Auto Kill ON — " .. kill.mode)
+            else
+                stopKill()
+                killNotify("Auto Kill OFF")
+            end
+        end
+    })
+
+    ---------------------------------------------------------------
+    -- LEFT: Kill Mode dropdown
+    ---------------------------------------------------------------
+    target_left:List({
+        Name = "Kill Mode",
+        Flag = "target_kill_mode",
+        LayoutOrder = 101,
+        Options = {"Auto Flame Kill", "Melee Auto Kill"},
+        Default = "Auto Flame Kill",
+        Callback = function(value)
+            kill.mode = value
+            if kill.enabled then
+                startKill()
+                killNotify("Switched to " .. value)
+            end
+        end
+    })
+
+    ---------------------------------------------------------------
+    -- LEFT: Bring toggle
+    ---------------------------------------------------------------
+    local bringToggle = target_left:Toggle({
+        Name = "Bring",
+        Flag = "target_bring",
+        LayoutOrder = 102,
+        Callback = function(state)
+            kill.bringEnabled = state
+            if state then
+                local char = LocalPlayer.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp then kill.bringStartPos = hrp.CFrame end
+                kill.lastGrabAttempt = 0
+
+                if kill.bringConn then kill.bringConn:Disconnect() end
+                kill.bringConn = RunService.Heartbeat:Connect(function()
+                    if not kill.bringEnabled then return end
+                    bringTick()
+                end)
+                killNotify("Bring ON — Mode: " .. kill.mode)
+            else
+                if kill.bringConn then kill.bringConn:Disconnect(); kill.bringConn = nil end
+                pcall(function()
+                    local char = LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if hrp then sethiddenproperty(hrp, "PhysicsRepRootPart", nil) end
+                end)
+                killNotify("Bring OFF")
+            end
+        end
+    })
+    kill._bringToggle = bringToggle
+
+    ---------------------------------------------------------------
+    -- LEFT: Auto Bag toggle
+    ---------------------------------------------------------------
+    target_left:Toggle({
+        Name = "Auto Bag",
+        Flag = "target_auto_bag",
+        LayoutOrder = 103,
+        Callback = function(state)
+            kill.autoBagEnabled = state
+            if state then
+                if kill.autoBagConn then kill.autoBagConn:Disconnect() end
+                kill.autoBagConn = RunService.Heartbeat:Connect(function()
+                    if not kill.autoBagEnabled then return end
+                    autoBagTick()
+                end)
+                killNotify("Auto Bag ON")
+            else
+                if kill.autoBagConn then kill.autoBagConn:Disconnect(); kill.autoBagConn = nil end
+                pcall(function()
+                    local char = LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if hrp then sethiddenproperty(hrp, "PhysicsRepRootPart", nil) end
+                end)
+                killNotify("Auto Bag OFF")
+            end
+        end
+    })
+
+    ---------------------------------------------------------------
     -- Auto-clear on leave
+    ---------------------------------------------------------------
     Players.PlayerRemoving:Connect(function(plr)
-        if target.selectedPlayer == plr then
-            target.selectedPlayer = nil
-            target.headshotName.Text = "None"
-            target.headshotUser.Text = "@---"
-            target.headshotId.Text   = "---"
-            target.headshot.Image = "rbxassetid://111122112"
+        local found = findPlayerByQuery(flags["target_player_input"] or "")
+        if found == plr then
+            headshotName.Text = "None"
+            headshotUser.Text = "@---"
+            headshotId.Text   = "---"
+            headshot.Image = "rbxassetid://111122112"
             statusLabel.Text = "Selected: None"
             statusLabel.TextColor3 = Color3.fromRGB(200, 80, 80)
         end
@@ -1170,452 +1923,433 @@ do
     -- Refresh every 2s
     task.spawn(function()
         while task.wait(2) do
-            local tgt = target.selectedPlayer
-            if tgt then
-                target.headshotName.Text = tgt.DisplayName
-                target.headshotUser.Text = "@" .. tgt.Name
-                target.headshotId.Text   = tostring(tgt.UserId)
-                statusLabel.Text = "Selected: " .. tgt.DisplayName
+            local found = findPlayerByQuery(flags["target_player_input"] or "")
+            if found then
+                headshotName.Text = found.DisplayName
+                headshotUser.Text = "@" .. found.Name
+                headshotId.Text   = tostring(found.UserId)
+                statusLabel.Text = "Selected: " .. found.DisplayName
             end
         end
     end)
 end
 
 --====================================================================
--- PLAYER CHARACTER — Services + State
+-- PLAYER CHARACTER — 14 Toggles (scrollable)
 --====================================================================
-local PC_Players    = game:GetService("Players")
-local PC_RunService = game:GetService("RunService")
-local PC_Local      = PC_Players.LocalPlayer
-local PC_RS         = game:GetService("ReplicatedStorage")
-local PC_TCS        = game:GetService("TextChatService")
+do
+    local PC_Players    = game:GetService("Players")
+    local PC_RunService = game:GetService("RunService")
+    local PC_Local      = PC_Players.LocalPlayer
+    local PC_RS         = game:GetService("ReplicatedStorage")
+    local PC_TCS        = game:GetService("TextChatService")
 
-local pc = {
-    antiPepperConn    = nil,
-    antiStompConn     = nil,
-    wasKnocked        = false,
-    autoEatConn       = nil,
-    autoEatBusy       = false,
-    noclipConn        = nil,
-    noJumpConn        = nil,
-    antiGrabConn      = nil,
-    antiGrabEnabled   = false,
-    cashAuraEnabled   = false,
-    cashAuraRadius    = 20,
-    cashAuraDelay     = 0.5,
-    godBlockEnabled   = false,
-    godBlockConn      = nil,
-    autoReloadConn    = nil,
-    autoReloadEnabled = false,
-    chatSpamTrashTalk = false,
-    chatSpamLastTime  = 0,
-    chatSpamIndex     = 1,
-    chatSpamDelay     = 3,
-    trashTalkList = {
-        "imagine getting cracked by Soda.Fun 💀", "Soda.Fun", "get better buddy", "skill issue",
-        "get Soda.Fun today", "stop 😂", "free script btw", "mad?", "cry about it", "trash",
-        "noob lol", "owned by Soda.Fun", "get rekt", "you're bad", "stay mad with no Soda.Fun",
-        "no Soda.Fun = no skill", "washed", "dogwater", "200 pumped by Soda.Fun"
+    local pc = {
+        antiPepperConn    = nil,
+        antiStompConn     = nil,
+        wasKnocked        = false,
+        autoEatConn       = nil,
+        autoEatBusy       = false,
+        noclipConn        = nil,
+        noJumpConn        = nil,
+        antiGrabConn      = nil,
+        antiGrabEnabled   = false,
+        cashAuraEnabled   = false,
+        cashAuraRadius    = 20,
+        cashAuraDelay     = 0.5,
+        godBlockEnabled   = false,
+        godBlockConn      = nil,
+        autoReloadConn    = nil,
+        autoReloadEnabled = false,
+        chatSpamTrashTalk = false,
+        chatSpamLastTime  = 0,
+        chatSpamIndex     = 1,
+        chatSpamDelay     = 3,
+        trashTalkList = {
+            "imagine getting cracked by Soda.Fun 💀", "Soda.Fun", "get better buddy", "skill issue",
+            "get Soda.Fun today", "stop 😂", "free script btw", "mad?", "cry about it", "trash",
+            "noob lol", "owned by Soda.Fun", "get rekt", "you're bad", "stay mad with no Soda.Fun",
+            "no Soda.Fun = no skill", "washed", "dogwater", "200 pumped by Soda.Fun"
+        }
     }
-}
 
-PC_Local.CharacterAdded:Connect(function() pc.wasKnocked = false end)
+    PC_Local.CharacterAdded:Connect(function() pc.wasKnocked = false end)
 
---====================================================================
--- PLAYER CHARACTER — Section with Scroll + 14 Toggles
---====================================================================
-local player_char_section = tab_player:Section({
-    Name = "Player Character",
-    Side = "Left",
-    Size = "Fill"
-})
+    local player_char_section = tab_player:Section({
+        Name = "Player Character",
+        Side = "Left",
+        Size = "Fill"
+    })
+    local pc_scroll = player_char_section:Nest({Size = "Fill"})
 
--- Nest = scrollable container
-local pc_scroll = player_char_section:Nest({Size = "Fill"})
-
--- 1. Anti stomp
-pc_scroll:Toggle({
-    Name = "Anti stomp",
-    Flag = "pc_anti_stomp",
-    Callback = function(state)
-        if pc.antiStompConn then pc.antiStompConn:Disconnect(); pc.antiStompConn = nil end
-        if state then
-            pc.antiStompConn = PC_RunService.Heartbeat:Connect(function()
-                local char = PC_Local.Character
-                local be = char and char:FindFirstChild("BodyEffects")
-                if be then
-                    local KO = be:FindFirstChild("K.O") or be:FindFirstChild("KO")
-                    if KO and KO.Value == true and not pc.wasKnocked then
-                        pc.wasKnocked = true
-                        local oldTime = PC_Players.RespawnTime
-                        PC_Players.RespawnTime = 0.1
-                        local hum = char:FindFirstChildWhichIsA("Humanoid")
-                        if hum then hum:ChangeState(Enum.HumanoidStateType.Dead) end
-                        char:BreakJoints()
-                        task.delay(0.2, function() PC_Players.RespawnTime = oldTime end)
-                    end
-                end
-            end)
-        end
-    end
-})
-
--- 2. Anti slow
-pc_scroll:Toggle({
-    Name = "Anti slow",
-    Flag = "pc_anti_slow",
-    Callback = function(state)
-        if state then
-            PC_RunService:BindToRenderStep("Soda_AntiSlow", Enum.RenderPriority.Camera.Value, function()
-                local char = PC_Local.Character
-                if char and char:FindFirstChild("BodyEffects") then
-                    local BE = char.BodyEffects
-                    local Movement = BE:FindFirstChild("Movement")
-                    if Movement then
-                        for _, name in ipairs({"NoWalkSpeed", "ReduceWalk", "NoJumping"}) do
-                            local item = Movement:FindFirstChild(name)
-                            if item then item:Destroy() end
+    -- 1. Anti stomp
+    pc_scroll:Toggle({
+        Name = "Anti stomp", Flag = "pc_anti_stomp",
+        Callback = function(state)
+            if pc.antiStompConn then pc.antiStompConn:Disconnect(); pc.antiStompConn = nil end
+            if state then
+                pc.antiStompConn = PC_RunService.Heartbeat:Connect(function()
+                    local char = PC_Local.Character
+                    local be = char and char:FindFirstChild("BodyEffects")
+                    if be then
+                        local KO = be:FindFirstChild("K.O") or be:FindFirstChild("KO")
+                        if KO and KO.Value == true and not pc.wasKnocked then
+                            pc.wasKnocked = true
+                            local oldTime = PC_Players.RespawnTime
+                            PC_Players.RespawnTime = 0.1
+                            local hum = char:FindFirstChildWhichIsA("Humanoid")
+                            if hum then hum:ChangeState(Enum.HumanoidStateType.Dead) end
+                            char:BreakJoints()
+                            task.delay(0.2, function() PC_Players.RespawnTime = oldTime end)
                         end
-                    end
-                    local reload = BE:FindFirstChild("Reload")
-                    if reload and reload.Value then reload.Value = false end
-                end
-            end)
-        else
-            PC_RunService:UnbindFromRenderStep("Soda_AntiSlow")
-        end
-    end
-})
-
--- 3. Anti grab
-pc_scroll:Toggle({
-    Name = "Anti grab",
-    Flag = "pc_anti_grab",
-    Callback = function(state)
-        pc.antiGrabEnabled = state
-        if pc.antiGrabConn then pc.antiGrabConn:Disconnect(); pc.antiGrabConn = nil end
-        if state then
-            pc.antiGrabConn = PC_RunService.RenderStepped:Connect(function()
-                if not pc.antiGrabEnabled then
-                    if pc.antiGrabConn then pc.antiGrabConn:Disconnect(); pc.antiGrabConn = nil end
-                    return
-                end
-                local char = PC_Local.Character
-                if not char then return end
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum and char:FindFirstChild("GRABBING_CONSTRAINT") then
-                    hum:ChangeState(Enum.HumanoidStateType.Physics); task.wait()
-                    hum:ChangeState(Enum.HumanoidStateType.GettingUp); task.wait()
-                    hum:ChangeState(Enum.HumanoidStateType.Running)
-                end
-            end)
-        end
-    end
-})
-
--- 4. Anti Seat
-pc_scroll:Toggle({
-    Name = "Anti Seat",
-    Flag = "pc_anti_seat",
-    Callback = function(state)
-        for _, s in ipairs(workspace:GetDescendants()) do
-            if s:IsA("Seat") then s.Disabled = state end
-        end
-    end
-})
-
--- 5. Anti pepperspray
-pc_scroll:Toggle({
-    Name = "Anti pepperspray",
-    Flag = "pc_anti_pepperspray",
-    Callback = function(state)
-        if pc.antiPepperConn then pc.antiPepperConn:Disconnect(); pc.antiPepperConn = nil end
-        if state then
-            pc.antiPepperConn = PC_RunService.RenderStepped:Connect(function()
-                local char = PC_Local.Character
-                if char then
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    if hum then
-                        local trail = hum:FindFirstChild("TrailEffects")
-                        if trail then trail:Destroy() end
-                    end
-                end
-                local pg = PC_Local:FindFirstChild("PlayerGui")
-                local main = pg and pg:FindFirstChild("MainScreenGui")
-                if main then
-                    for _, obj in pairs(main:GetChildren()) do
-                        if obj.Name == "PepperSpray" or obj.Name == "Blood" or obj.Name == "Action" then
-                            obj.Visible = false
-                            if obj:IsA("GuiObject") then obj.Transparency = 1 end
-                        end
-                    end
-                end
-            end)
-        end
-    end
-})
-
--- 6. Auto Eat [Taco]
-pc_scroll:Toggle({
-    Name = "Auto Eat [Taco]",
-    Flag = "pc_auto_eat_taco",
-    Callback = function(state)
-        if pc.autoEatConn then pc.autoEatConn:Disconnect(); pc.autoEatConn = nil end
-        if state then
-            pc.autoEatConn = PC_RunService.Heartbeat:Connect(function()
-                if pc.autoEatBusy then return end
-                local char = PC_Local.Character
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health < 100 then
-                    local food = char:FindFirstChild("[Taco]") or PC_Local.Backpack:FindFirstChild("[Taco]")
-                    if food then
-                        pc.autoEatBusy = true
-                        food.Parent = char
-                        food:Activate()
-                        task.wait(0.1)
-                        pc.autoEatBusy = false
-                    else
-                        local ignored = workspace:FindFirstChild("Ignored")
-                        local shop = ignored and ignored:FindFirstChild("Shop")
-                        if shop then
-                            for _, item in ipairs(shop:GetChildren()) do
-                                if item.Name:find("%[Taco%]") and item:FindFirstChild("Head") then
-                                    pc.autoEatBusy = true
-                                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                                    if hrp then
-                                        local savedPos = hrp.CFrame
-                                        hrp.CFrame = item.Head.CFrame
-                                        local cd = item:FindFirstChildOfClass("ClickDetector")
-                                        if cd then fireclickdetector(cd) end
-                                        PC_RunService:BindToRenderStep("Soda_RestoreEatPos", 199, function()
-                                            hrp.CFrame = savedPos
-                                            PC_RunService:UnbindFromRenderStep("Soda_RestoreEatPos")
-                                            pc.autoEatBusy = false
-                                        end)
-                                    end
-                                    break
-                                end
-                            end
-                        end
-                    end
-                elseif hum and hum.Health >= 100 then
-                    local heldFood = char:FindFirstChild("[Taco]")
-                    if heldFood then heldFood.Parent = PC_Local.Backpack end
-                end
-            end)
-        end
-    end
-})
-
--- 7. Chat Spy
-pc_scroll:Toggle({
-    Name = "Chat Spy",
-    Flag = "pc_chat_spy",
-    Callback = function(state)
-        if PC_TCS.ChatWindowConfiguration then
-            PC_TCS.ChatWindowConfiguration.Enabled = state
-        end
-    end
-})
-
--- 8. Noclip
-pc_scroll:Toggle({
-    Name = "Noclip",
-    Flag = "pc_noclip",
-    Callback = function(state)
-        if pc.noclipConn then pc.noclipConn:Disconnect(); pc.noclipConn = nil end
-        if state then
-            pc.noclipConn = PC_RunService.Stepped:Connect(function()
-                local char = PC_Local.Character
-                if char then
-                    for _, p in ipairs(char:GetDescendants()) do
-                        if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end
-                    end
-                end
-            end)
-        end
-    end
-})
-
--- 9. No jump cooldown
-pc_scroll:Toggle({
-    Name = "No jump cooldown",
-    Flag = "pc_no_jump_cooldown",
-    Callback = function(state)
-        local function fixJump(char)
-            local hum = char:WaitForChild("Humanoid", 5)
-            if hum then hum.UseJumpPower = not state end
-        end
-        if PC_Local.Character then fixJump(PC_Local.Character) end
-        if pc.noJumpConn then pc.noJumpConn:Disconnect() end
-        pc.noJumpConn = PC_Local.CharacterAdded:Connect(fixJump)
-    end
-})
-
--- 10. Trash Talk
-pc_scroll:Toggle({
-    Name = "Trash Talk",
-    Flag = "pc_trash_talk",
-    Callback = function(state) pc.chatSpamTrashTalk = state end
-})
-
-task.spawn(function()
-    while task.wait(0.1) do
-        if pc.chatSpamTrashTalk then
-            local now = tick()
-            if now - pc.chatSpamLastTime >= pc.chatSpamDelay then
-                local msg = pc.trashTalkList[pc.chatSpamIndex]
-                pc.chatSpamIndex = (pc.chatSpamIndex % #pc.trashTalkList) + 1
-                pcall(function()
-                    if PC_TCS.ChatVersion == Enum.ChatVersion.TextChatService then
-                        local channel = PC_TCS.TextChannels:FindFirstChild("RBXGeneral")
-                            or PC_TCS.TextChannels:FindFirstChildOfClass("TextChannel")
-                        if channel then channel:SendAsync(msg) end
-                    else
-                        local chatEvents = PC_RS:FindFirstChild("DefaultChatSystemChatEvents")
-                        if chatEvents then chatEvents.SayMessageRequest:FireServer(msg, "All") end
                     end
                 end)
-                pc.chatSpamLastTime = now
             end
         end
-    end
-end)
+    })
 
--- 11. God Block
-pc_scroll:Toggle({
-    Name = "God Block",
-    Flag = "pc_god_block",
-    Callback = function(state)
-        pc.godBlockEnabled = state
-        if pc.godBlockConn then pc.godBlockConn:Disconnect(); pc.godBlockConn = nil end
-        if state then
-            pc.godBlockConn = PC_RunService.Stepped:Connect(function()
-                if not pc.godBlockEnabled then return end
-                local char = PC_Local.Character
-                if char and char:FindFirstChild("BodyEffects") then
-                    local BE = char.BodyEffects
-                    local block = BE:FindFirstChild("Block")
-                    if block then block:Destroy() end
-                    local tool = char:FindFirstChildWhichIsA("Tool")
-                    if tool and tool:FindFirstChild("Ammo") then
-                        PC_RS.MainEvent:FireServer("Block", false)
+    -- 2. Anti slow
+    pc_scroll:Toggle({
+        Name = "Anti slow", Flag = "pc_anti_slow",
+        Callback = function(state)
+            if state then
+                PC_RunService:BindToRenderStep("Soda_AntiSlow", Enum.RenderPriority.Camera.Value, function()
+                    local char = PC_Local.Character
+                    if char and char:FindFirstChild("BodyEffects") then
+                        local BE = char.BodyEffects
+                        local Movement = BE:FindFirstChild("Movement")
+                        if Movement then
+                            for _, name in ipairs({"NoWalkSpeed", "ReduceWalk", "NoJumping"}) do
+                                local item = Movement:FindFirstChild(name)
+                                if item then item:Destroy() end
+                            end
+                        end
+                        local reload = BE:FindFirstChild("Reload")
+                        if reload and reload.Value then reload.Value = false end
+                    end
+                end)
+            else
+                PC_RunService:UnbindFromRenderStep("Soda_AntiSlow")
+            end
+        end
+    })
+
+    -- 3. Anti grab
+    pc_scroll:Toggle({
+        Name = "Anti grab", Flag = "pc_anti_grab",
+        Callback = function(state)
+            pc.antiGrabEnabled = state
+            if pc.antiGrabConn then pc.antiGrabConn:Disconnect(); pc.antiGrabConn = nil end
+            if state then
+                pc.antiGrabConn = PC_RunService.RenderStepped:Connect(function()
+                    if not pc.antiGrabEnabled then
+                        if pc.antiGrabConn then pc.antiGrabConn:Disconnect(); pc.antiGrabConn = nil end
                         return
                     end
-                    PC_RS.MainEvent:FireServer("Block", true)
-                    task.wait(0.2)
-                    PC_RS.MainEvent:FireServer("Block", false)
-                end
-            end)
+                    local char = PC_Local.Character
+                    if not char then return end
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum and char:FindFirstChild("GRABBING_CONSTRAINT") then
+                        hum:ChangeState(Enum.HumanoidStateType.Physics); task.wait()
+                        hum:ChangeState(Enum.HumanoidStateType.GettingUp); task.wait()
+                        hum:ChangeState(Enum.HumanoidStateType.Running)
+                    end
+                end)
+            end
         end
-    end
-})
+    })
 
--- 12. Auto block
-pc_scroll:Toggle({
-    Name = "Auto block",
-    Flag = "pc_auto_block",
-    Callback = function(state)
-        if state then
-            PC_RunService:BindToRenderStep("Soda_AutoBlock", 0, function()
-                local char = PC_Local.Character
-                if not char then return end
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if not hrp then return end
-                local wplayers = workspace:FindFirstChild("Players")
-                if not wplayers then return end
-                for _, other in ipairs(wplayers:GetChildren()) do
-                    if other:FindFirstChild("UpperTorso") and other:FindFirstChild("BodyEffects") then
-                        local dist = (other.UpperTorso.Position - hrp.Position).Magnitude
-                        if dist <= 15 then
-                            local tool = other:FindFirstChildWhichIsA("Tool")
-                            local attacking = other.BodyEffects:FindFirstChild("Attacking")
-                                and other.BodyEffects.Attacking.Value
-                            if attacking and tool and other.Name ~= PC_Local.Name then
-                                local foodWeapons = {
-                                    "[Popcorn]","[HotDog]","[GrenadeLauncher]","[RPG]","[SMG]","[TacticalShotgun]",
-                                    "[AK47]","[AUG]","[Glock]","[Shotgun]","[Flamethrower]","[Silencer]","[AR]",
-                                    "[Revolver]","[SilencerAR]","[LMG]","[P90]","[DrumGun]","[Double-Barrel SG]",
-                                    "[Hamburger]","[Chicken]","[Pizza]","[Cranberry]","[Donut]","[Taco]",
-                                    "[Starblox Latte]","[BrownBag]","[Weights]","[HeavyWeights]"
-                                }
-                                if not table.find(foodWeapons, tool.Name) then
-                                    PC_RS.MainEvent:FireServer("Block", PC_Local.Name)
-                                end
+    -- 4. Anti Seat
+    pc_scroll:Toggle({
+        Name = "Anti Seat", Flag = "pc_anti_seat",
+        Callback = function(state)
+            for _, s in ipairs(workspace:GetDescendants()) do
+                if s:IsA("Seat") then s.Disabled = state end
+            end
+        end
+    })
+
+    -- 5. Anti pepperspray
+    pc_scroll:Toggle({
+        Name = "Anti pepperspray", Flag = "pc_anti_pepperspray",
+        Callback = function(state)
+            if pc.antiPepperConn then pc.antiPepperConn:Disconnect(); pc.antiPepperConn = nil end
+            if state then
+                pc.antiPepperConn = PC_RunService.RenderStepped:Connect(function()
+                    local char = PC_Local.Character
+                    if char then
+                        local hum = char:FindFirstChildOfClass("Humanoid")
+                        if hum then
+                            local trail = hum:FindFirstChild("TrailEffects")
+                            if trail then trail:Destroy() end
+                        end
+                    end
+                    local pg = PC_Local:FindFirstChild("PlayerGui")
+                    local main = pg and pg:FindFirstChild("MainScreenGui")
+                    if main then
+                        for _, obj in pairs(main:GetChildren()) do
+                            if obj.Name == "PepperSpray" or obj.Name == "Blood" or obj.Name == "Action" then
+                                obj.Visible = false
+                                if obj:IsA("GuiObject") then obj.Transparency = 1 end
                             end
                         end
                     end
-                end
-            end)
-        else
-            PC_RunService:UnbindFromRenderStep("Soda_AutoBlock")
+                end)
+            end
         end
-    end
-})
+    })
 
--- 13. Cash aura
-pc_scroll:Toggle({
-    Name = "Cash aura",
-    Flag = "pc_cash_aura",
-    Callback = function(state)
-        pc.cashAuraEnabled = state
-        if state then
-            task.spawn(function()
-                while pc.cashAuraEnabled do
+    -- 6. Auto Eat [Taco]
+    pc_scroll:Toggle({
+        Name = "Auto Eat [Taco]", Flag = "pc_auto_eat_taco",
+        Callback = function(state)
+            if pc.autoEatConn then pc.autoEatConn:Disconnect(); pc.autoEatConn = nil end
+            if state then
+                pc.autoEatConn = PC_RunService.Heartbeat:Connect(function()
+                    if pc.autoEatBusy then return end
                     local char = PC_Local.Character
-                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                    if hrp then
-                        local ignored = workspace:FindFirstChild("Ignored")
-                        local drop = ignored and ignored:FindFirstChild("Drop")
-                        if drop then
-                            for _, child in ipairs(drop:GetChildren()) do
-                                if child.Name == "MoneyDrop" then
-                                    local originalPos = child:GetAttribute("OriginalPos") or child.Position
-                                    if (originalPos - hrp.Position).Magnitude <= pc.cashAuraRadius then
-                                        local cd = child:FindFirstChildOfClass("ClickDetector")
-                                        if cd then fireclickdetector(cd) end
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health < 100 then
+                        local food = char:FindFirstChild("[Taco]") or PC_Local.Backpack:FindFirstChild("[Taco]")
+                        if food then
+                            pc.autoEatBusy = true
+                            food.Parent = char
+                            food:Activate()
+                            task.wait(0.1)
+                            pc.autoEatBusy = false
+                        else
+                            local ignored = workspace:FindFirstChild("Ignored")
+                            local shop = ignored and ignored:FindFirstChild("Shop")
+                            if shop then
+                                for _, item in ipairs(shop:GetChildren()) do
+                                    if item.Name:find("%[Taco%]") and item:FindFirstChild("Head") then
+                                        pc.autoEatBusy = true
+                                        local hrp = char:FindFirstChild("HumanoidRootPart")
+                                        if hrp then
+                                            local savedPos = hrp.CFrame
+                                            hrp.CFrame = item.Head.CFrame
+                                            local cd = item:FindFirstChildOfClass("ClickDetector")
+                                            if cd then fireclickdetector(cd) end
+                                            PC_RunService:BindToRenderStep("Soda_RestoreEatPos", 199, function()
+                                                hrp.CFrame = savedPos
+                                                PC_RunService:UnbindFromRenderStep("Soda_RestoreEatPos")
+                                                pc.autoEatBusy = false
+                                            end)
+                                        end
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    elseif hum and hum.Health >= 100 then
+                        local heldFood = char:FindFirstChild("[Taco]")
+                        if heldFood then heldFood.Parent = PC_Local.Backpack end
+                    end
+                end)
+            end
+        end
+    })
+
+    -- 7. Chat Spy
+    pc_scroll:Toggle({
+        Name = "Chat Spy", Flag = "pc_chat_spy",
+        Callback = function(state)
+            if PC_TCS.ChatWindowConfiguration then
+                PC_TCS.ChatWindowConfiguration.Enabled = state
+            end
+        end
+    })
+
+    -- 8. Noclip
+    pc_scroll:Toggle({
+        Name = "Noclip", Flag = "pc_noclip",
+        Callback = function(state)
+            if pc.noclipConn then pc.noclipConn:Disconnect(); pc.noclipConn = nil end
+            if state then
+                pc.noclipConn = PC_RunService.Stepped:Connect(function()
+                    local char = PC_Local.Character
+                    if char then
+                        for _, p in ipairs(char:GetDescendants()) do
+                            if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end
+                        end
+                    end
+                end)
+            end
+        end
+    })
+
+    -- 9. No jump cooldown
+    pc_scroll:Toggle({
+        Name = "No jump cooldown", Flag = "pc_no_jump_cooldown",
+        Callback = function(state)
+            local function fixJump(char)
+                local hum = char:WaitForChild("Humanoid", 5)
+                if hum then hum.UseJumpPower = not state end
+            end
+            if PC_Local.Character then fixJump(PC_Local.Character) end
+            if pc.noJumpConn then pc.noJumpConn:Disconnect() end
+            pc.noJumpConn = PC_Local.CharacterAdded:Connect(fixJump)
+        end
+    })
+
+    -- 10. Trash Talk
+    pc_scroll:Toggle({
+        Name = "Trash Talk", Flag = "pc_trash_talk",
+        Callback = function(state) pc.chatSpamTrashTalk = state end
+    })
+
+    task.spawn(function()
+        while task.wait(0.1) do
+            if pc.chatSpamTrashTalk then
+                local now = tick()
+                if now - pc.chatSpamLastTime >= pc.chatSpamDelay then
+                    local msg = pc.trashTalkList[pc.chatSpamIndex]
+                    pc.chatSpamIndex = (pc.chatSpamIndex % #pc.trashTalkList) + 1
+                    pcall(function()
+                        if PC_TCS.ChatVersion == Enum.ChatVersion.TextChatService then
+                            local channel = PC_TCS.TextChannels:FindFirstChild("RBXGeneral") or PC_TCS.TextChannels:FindFirstChildOfClass("TextChannel")
+                            if channel then channel:SendAsync(msg) end
+                        else
+                            local chatEvents = PC_RS:FindFirstChild("DefaultChatSystemChatEvents")
+                            if chatEvents then chatEvents.SayMessageRequest:FireServer(msg, "All") end
+                        end
+                    end)
+                    pc.chatSpamLastTime = now
+                end
+            end
+        end
+    end)
+
+    -- 11. God Block
+    pc_scroll:Toggle({
+        Name = "God Block", Flag = "pc_god_block",
+        Callback = function(state)
+            pc.godBlockEnabled = state
+            if pc.godBlockConn then pc.godBlockConn:Disconnect(); pc.godBlockConn = nil end
+            if state then
+                pc.godBlockConn = PC_RunService.Stepped:Connect(function()
+                    if not pc.godBlockEnabled then return end
+                    local char = PC_Local.Character
+                    if char and char:FindFirstChild("BodyEffects") then
+                        local BE = char.BodyEffects
+                        local block = BE:FindFirstChild("Block")
+                        if block then block:Destroy() end
+                        local tool = char:FindFirstChildWhichIsA("Tool")
+                        if tool and tool:FindFirstChild("Ammo") then
+                            PC_RS.MainEvent:FireServer("Block", false)
+                            return
+                        end
+                        PC_RS.MainEvent:FireServer("Block", true)
+                        task.wait(0.2)
+                        PC_RS.MainEvent:FireServer("Block", false)
+                    end
+                end)
+            end
+        end
+    })
+
+    -- 12. Auto block
+    pc_scroll:Toggle({
+        Name = "Auto block", Flag = "pc_auto_block",
+        Callback = function(state)
+            if state then
+                PC_RunService:BindToRenderStep("Soda_AutoBlock", 0, function()
+                    local char = PC_Local.Character
+                    if not char then return end
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if not hrp then return end
+                    local wplayers = workspace:FindFirstChild("Players")
+                    if not wplayers then return end
+                    for _, other in ipairs(wplayers:GetChildren()) do
+                        if other:FindFirstChild("UpperTorso") and other:FindFirstChild("BodyEffects") then
+                            local dist = (other.UpperTorso.Position - hrp.Position).Magnitude
+                            if dist <= 15 then
+                                local tool = other:FindFirstChildWhichIsA("Tool")
+                                local attacking = other.BodyEffects:FindFirstChild("Attacking") and other.BodyEffects.Attacking.Value
+                                if attacking and tool and other.Name ~= PC_Local.Name then
+                                    local foodWeapons = {
+                                        "[Popcorn]","[HotDog]","[GrenadeLauncher]","[RPG]","[SMG]","[TacticalShotgun]",
+                                        "[AK47]","[AUG]","[Glock]","[Shotgun]","[Flamethrower]","[Silencer]","[AR]",
+                                        "[Revolver]","[SilencerAR]","[LMG]","[P90]","[DrumGun]","[Double-Barrel SG]",
+                                        "[Hamburger]","[Chicken]","[Pizza]","[Cranberry]","[Donut]","[Taco]",
+                                        "[Starblox Latte]","[BrownBag]","[Weights]","[HeavyWeights]"
+                                    }
+                                    if not table.find(foodWeapons, tool.Name) then
+                                        PC_RS.MainEvent:FireServer("Block", PC_Local.Name)
                                     end
                                 end
                             end
                         end
                     end
-                    task.wait(pc.cashAuraDelay)
-                end
-            end)
+                end)
+            else
+                PC_RunService:UnbindFromRenderStep("Soda_AutoBlock")
+            end
         end
-    end
-})
+    })
 
--- 14. Auto reload
-pc_scroll:Toggle({
-    Name = "Auto reload",
-    Flag = "pc_auto_reload",
-    Callback = function(state)
-        pc.autoReloadEnabled = state
-        if pc.autoReloadConn then pc.autoReloadConn:Disconnect(); pc.autoReloadConn = nil end
-        if state then
-            pc.autoReloadConn = PC_RunService.RenderStepped:Connect(function()
-                if not pc.autoReloadEnabled then
-                    if pc.autoReloadConn then pc.autoReloadConn:Disconnect(); pc.autoReloadConn = nil end
-                    return
-                end
-                local char = PC_Local.Character
-                if not char then return end
-                for _, tool in ipairs(char:GetChildren()) do
-                    if tool:IsA("Tool") and tool:FindFirstChild("Ammo") then
-                        if tool.Ammo.Value <= 1 then
-                            PC_RS.MainEvent:FireServer("Reload", tool)
-                            task.wait(3.7)
+    -- 13. Cash aura
+    pc_scroll:Toggle({
+        Name = "Cash aura", Flag = "pc_cash_aura",
+        Callback = function(state)
+            pc.cashAuraEnabled = state
+            if state then
+                task.spawn(function()
+                    while pc.cashAuraEnabled do
+                        local char = PC_Local.Character
+                        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                        if hrp then
+                            local ignored = workspace:FindFirstChild("Ignored")
+                            local drop = ignored and ignored:FindFirstChild("Drop")
+                            if drop then
+                                for _, child in ipairs(drop:GetChildren()) do
+                                    if child.Name == "MoneyDrop" then
+                                        local originalPos = child:GetAttribute("OriginalPos") or child.Position
+                                        if (originalPos - hrp.Position).Magnitude <= pc.cashAuraRadius then
+                                            local cd = child:FindFirstChildOfClass("ClickDetector")
+                                            if cd then fireclickdetector(cd) end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        task.wait(pc.cashAuraDelay)
+                    end
+                end)
+            end
+        end
+    })
+
+    -- 14. Auto reload
+    pc_scroll:Toggle({
+        Name = "Auto reload", Flag = "pc_auto_reload",
+        Callback = function(state)
+            pc.autoReloadEnabled = state
+            if pc.autoReloadConn then pc.autoReloadConn:Disconnect(); pc.autoReloadConn = nil end
+            if state then
+                pc.autoReloadConn = PC_RunService.RenderStepped:Connect(function()
+                    if not pc.autoReloadEnabled then
+                        if pc.autoReloadConn then pc.autoReloadConn:Disconnect(); pc.autoReloadConn = nil end
+                        return
+                    end
+                    local char = PC_Local.Character
+                    if not char then return end
+                    for _, tool in ipairs(char:GetChildren()) do
+                        if tool:IsA("Tool") and tool:FindFirstChild("Ammo") then
+                            if tool.Ammo.Value <= 1 then
+                                PC_RS.MainEvent:FireServer("Reload", tool)
+                                task.wait(3.7)
+                            end
                         end
                     end
-                end
-            end)
+                end)
+            end
         end
-    end
-})
+    })
+end
 
 --====================================================================
--- FLOATING TOGGLE BUTTON (Open/Close GUI)
+-- FLOATING TOGGLE BUTTON
 --====================================================================
 local toggle_gui = Instance.new("ScreenGui")
 toggle_gui.Name = "SodaToggleGui"
