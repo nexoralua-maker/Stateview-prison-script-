@@ -2271,6 +2271,7 @@ do
     local PC_Local      = PC_Players.LocalPlayer
     local PC_RS         = game:GetService("ReplicatedStorage")
     local PC_TCS        = game:GetService("TextChatService")
+    local SodaUIS       = game:GetService("UserInputService")
 
     local pc = {
         antiPepperConn=nil, antiStompConn=nil, wasKnocked=false,
@@ -2640,6 +2641,167 @@ do
         end
     })
 
+    ---------------------------------------------------------------
+    -- AUTO ARMOR  ([High-Medium Armor] - $2589)
+    ---------------------------------------------------------------
+    do
+        local AA = {
+            ShopItemName  = "[High-Medium Armor] - $2589",
+            Threshold     = 100,
+            CheckInterval = 0.1,
+            BuyCooldown   = 0.3,
+            MaxRetries    = 5,
+            PostBuyWait   = 0.5,
+            Enabled       = false,
+            Thread        = nil,
+            DummyPart     = nil,
+            IsBuying      = false,
+            c_enabled     = false,
+            c_pos         = nil,
+            c_oldPos      = nil,
+            c_target      = nil,
+            HeartbeatConn = nil,
+        }
+
+        local camera = workspace.CurrentCamera
+
+        local function getHRP()
+            local char = PC_Local.Character
+            return char and char:FindFirstChild("HumanoidRootPart")
+        end
+
+        local function getHumanoid()
+            local char = PC_Local.Character
+            return char and char:FindFirstChildOfClass("Humanoid")
+        end
+
+        local function findShopItem()
+            local ig   = workspace:FindFirstChild("Ignored")
+            local shop = ig and ig:FindFirstChild("Shop")
+            return shop and shop:FindFirstChild(AA.ShopItemName)
+        end
+
+        local function getArmorValue()
+            local char = PC_Local.Character
+            if not char then return nil end
+            local be = char:FindFirstChild("BodyEffects")
+            if not be then return nil end
+            local armor = be:FindFirstChild("Armor")
+            if not armor then return nil end
+            return tonumber(armor.Value) or 0
+        end
+
+        local function ensureDummyPart()
+            if AA.DummyPart and AA.DummyPart.Parent then return AA.DummyPart end
+            local existing = workspace:FindFirstChild("AutoArmor_Setback")
+            if existing then AA.DummyPart = existing; return AA.DummyPart end
+            local p = Instance.new("Part")
+            p.Name         = "AutoArmor_Setback"
+            p.Size         = Vector3.new(2, 2, 1)
+            p.Anchored     = true
+            p.CanCollide   = false
+            p.Transparency = 1
+            p.Parent       = workspace
+            AA.DummyPart   = p
+            return p
+        end
+
+        local function restoreCamera()
+            local hum = getHumanoid()
+            if hum then camera.CameraSubject = hum end
+        end
+
+        local function buyViaShopItem(item)
+            if AA.IsBuying then return false end
+            if not item or not item:FindFirstChild("Head") then return false end
+
+            AA.IsBuying  = true
+            AA.c_enabled = true
+            AA.c_pos     = item.Head.Position
+            AA.c_target  = item
+
+            ensureDummyPart()
+            camera.CameraSubject = AA.DummyPart
+            task.wait(0.15)
+
+            local cd = item:FindFirstChildOfClass("ClickDetector")
+            if cd then pcall(function() fireclickdetector(cd) end) end
+
+            task.wait(0.1)
+            AA.c_enabled = false
+            restoreCamera()
+            AA.IsBuying = false
+            return true
+        end
+
+        -- Heartbeat TP loop — moves HRP to shop for one frame, snaps back
+        AA.HeartbeatConn = PC_RunService.Heartbeat:Connect(function()
+            if not AA.c_enabled or not AA.c_pos or not AA.c_target then return end
+            local hrp = getHRP()
+            if not hrp then return end
+            AA.c_oldPos = hrp.CFrame
+            hrp.CFrame = CFrame.new(AA.c_pos)
+            if AA.DummyPart then AA.DummyPart.CFrame = AA.c_oldPos end
+            PC_RunService.RenderStepped:Wait()
+            hrp.CFrame = AA.c_oldPos
+        end)
+
+        local function armorLoop()
+            while AA.Enabled do
+                local armor = getArmorValue()
+                if armor and not AA.IsBuying and armor <= AA.Threshold then
+                    local shopItem = findShopItem()
+                    if shopItem then
+                        local startArmor = armor
+                        local succeeded  = false
+                        local attempts   = 0
+                        repeat
+                            attempts += 1
+                            buyViaShopItem(shopItem)
+                            local waitStart = tick()
+                            while tick() - waitStart < AA.BuyCooldown do
+                                local current = getArmorValue()
+                                if current and current > startArmor then
+                                    succeeded = true
+                                    break
+                                end
+                                task.wait(0.05)
+                            end
+                            if not succeeded and attempts < AA.MaxRetries then task.wait(0.05) end
+                        until succeeded or attempts >= AA.MaxRetries
+                        task.wait(AA.PostBuyWait)
+                    else
+                        task.wait(1)
+                    end
+                end
+                task.wait(AA.CheckInterval)
+            end
+        end
+
+        pc_scroll:Toggle({
+            Name = "Auto armor", Flag = "pc_auto_armor",
+            Callback = function(state)
+                AA.Enabled = state
+                if state then
+                    Soda:Notification("🛡 Auto Armor ON — threshold " .. AA.Threshold, 2)
+                    if not AA.Thread or coroutine.status(AA.Thread) == "dead" then
+                        AA.Thread = task.spawn(armorLoop)
+                    end
+                else
+                    Soda:Notification("⛔ Auto Armor OFF", 2)
+                    AA.c_enabled = false
+                    restoreCamera()
+                end
+            end
+        })
+
+        pc_scroll:Slider({
+            Name = "Armor Threshold", Flag = "pc_auto_armor_threshold",
+            Min = 0, Max = 150, Default = 100, Decimals = 0,
+            Callback = function(value) AA.Threshold = value end
+        })
+    end
+
     local CFrameSpeed = {Enabled = false, Speed = 20, _conn = nil}
     local move_section = tab_player:Section({Name = "Movement", Side = "Right", Size = "Fill"})
 
@@ -2674,6 +2836,328 @@ do
         Min = 1, Max = 500, Default = 20, Decimals = 1,
         Callback = function(value) CFrameSpeed.Speed = math.clamp(value, 1, 500) end
     })
+
+    --====================================================================
+    -- AUTO SKINNY  ([Lettuce] - $6)
+    --====================================================================
+    local SkinnyToggle
+    do
+        local S = {
+            ItemName     = "[Lettuce]",
+            ShopItemName = "[Lettuce] - $6",
+            SafeCF       = CFrame.new(-117, -57, 147),
+            LoopDelay    = 0.1,
+            BuyCooldown  = 0.25,
+            Running      = false,
+            Thread       = nil,
+        }
+
+        local function getHRP()
+            local c = PC_Local.Character
+            return c and c:FindFirstChild("HumanoidRootPart")
+        end
+
+        local function findShopItem()
+            local ig = workspace:FindFirstChild("Ignored")
+            local shop = ig and ig:FindFirstChild("Shop")
+            return shop and shop:FindFirstChild(S.ShopItemName)
+        end
+
+        local function buyItem()
+            local item = findShopItem()
+            if not item then Soda:Notification("⚠ Lettuce shop item not found!", 3); return false end
+            local hrp = getHRP(); if not hrp then return false end
+            local head = item:FindFirstChild("Head")
+            local cd   = item:FindFirstChild("ClickDetector")
+            if not (head and cd) then Soda:Notification("⚠ Shop item missing Head/CD", 3); return false end
+            local oldCF = hrp.CFrame
+            hrp.CFrame = head.CFrame * CFrame.new(0, 2, 3)
+            task.wait(S.BuyCooldown)
+            pcall(function() fireclickdetector(cd) end)
+            task.wait(S.BuyCooldown)
+            hrp.CFrame = oldCF
+            return true
+        end
+
+        local function equipItem()
+            local char = PC_Local.Character; if not char then return false end
+            local bp = PC_Local:FindFirstChild("Backpack"); if not bp then return false end
+            local tool = bp:FindFirstChild(S.ItemName); if not tool then return false end
+            tool.Parent = char
+            task.wait(0.1)
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                pcall(function() hum:EquipTool(tool) end)
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = S.SafeCF end
+            end
+            return true
+        end
+
+        local function activateItem()
+            local char = PC_Local.Character; if not char then return false end
+            local tool = char:FindFirstChild(S.ItemName); if not tool then return false end
+            pcall(function() tool:Activate() end)
+            return true
+        end
+
+        local function runLoop()
+            while S.Running do
+                local char = PC_Local.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    local inChar = char:FindFirstChild(S.ItemName)
+                    local bp     = PC_Local:FindFirstChild("Backpack")
+                    local inBag  = bp and bp:FindFirstChild(S.ItemName)
+                    if inChar then activateItem()
+                    elseif inBag then equipItem()
+                    else buyItem(); task.wait(0.2); equipItem() end
+                end
+                task.wait(S.LoopDelay)
+            end
+        end
+
+        SkinnyToggle = move_section:Toggle({
+            Name = "Auto Skinny", Flag = "movement_auto_skinny",
+            Callback = function(state)
+                S.Running = state
+                if state then
+                    Soda:Notification("✅ Auto Skinny Enabled", 2)
+                    if not S.Thread or coroutine.status(S.Thread) == "dead" then
+                        S.Thread = task.spawn(runLoop)
+                    end
+                else
+                    Soda:Notification("⛔ Auto Skinny Disabled", 2)
+                    pcall(function()
+                        local hrp = getHRP()
+                        if hrp then hrp.CFrame = S.SafeCF end
+                    end)
+                end
+            end
+        })
+
+        SodaUIS.InputBegan:Connect(function(input, gp)
+            if gp then return end
+            if input.KeyCode == Enum.KeyCode.RightControl and SkinnyToggle then
+                SkinnyToggle:Set(not SkinnyToggle.Toggled)
+            end
+        end)
+    end
+
+    --====================================================================
+    -- AUTO WEIGH  ([HeavyWeights] - $281)
+    --====================================================================
+    local WeighToggle
+    do
+        local W = {
+            ItemName     = "[HeavyWeights]",
+            ShopItemName = "[HeavyWeights] - $281",
+            SafeCF       = CFrame.new(-117, -57, 147),
+            LoopDelay    = 0.1,
+            BuyCooldown  = 0.25,
+            Running      = false,
+            Thread       = nil,
+        }
+
+        local function getHRP()
+            local c = PC_Local.Character
+            return c and c:FindFirstChild("HumanoidRootPart")
+        end
+
+        local function findShopItem()
+            local ig = workspace:FindFirstChild("Ignored")
+            local shop = ig and ig:FindFirstChild("Shop")
+            return shop and shop:FindFirstChild(W.ShopItemName)
+        end
+
+        local function buyItem()
+            local item = findShopItem()
+            if not item then Soda:Notification("⚠ HeavyWeights shop item not found!", 3); return false end
+            local hrp = getHRP(); if not hrp then return false end
+            local head = item:FindFirstChild("Head")
+            local cd   = item:FindFirstChild("ClickDetector")
+            if not (head and cd) then Soda:Notification("⚠ Shop item missing Head/CD", 3); return false end
+            local oldCF = hrp.CFrame
+            hrp.CFrame = head.CFrame * CFrame.new(0, 2, 3)
+            task.wait(W.BuyCooldown)
+            pcall(function() fireclickdetector(cd) end)
+            task.wait(W.BuyCooldown)
+            hrp.CFrame = oldCF
+            return true
+        end
+
+        local function equipItem()
+            local char = PC_Local.Character; if not char then return false end
+            local bp = PC_Local:FindFirstChild("Backpack"); if not bp then return false end
+            local tool = bp:FindFirstChild(W.ItemName); if not tool then return false end
+            tool.Parent = char
+            task.wait(0.1)
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                pcall(function() hum:EquipTool(tool) end)
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = W.SafeCF end
+            end
+            return true
+        end
+
+        local function activateItem()
+            local char = PC_Local.Character; if not char then return false end
+            local tool = char:FindFirstChild(W.ItemName); if not tool then return false end
+            pcall(function() tool:Activate() end)
+            return true
+        end
+
+        local function runLoop()
+            while W.Running do
+                local char = PC_Local.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    local inChar = char:FindFirstChild(W.ItemName)
+                    local bp     = PC_Local:FindFirstChild("Backpack")
+                    local inBag  = bp and bp:FindFirstChild(W.ItemName)
+                    if inChar then activateItem()
+                    elseif inBag then equipItem()
+                    else buyItem(); task.wait(0.2); equipItem() end
+                end
+                task.wait(W.LoopDelay)
+            end
+        end
+
+        WeighToggle = move_section:Toggle({
+            Name = "Auto Weigh", Flag = "movement_auto_weigh",
+            Callback = function(state)
+                W.Running = state
+                if state then
+                    Soda:Notification("✅ Auto Weigh Enabled", 2)
+                    if not W.Thread or coroutine.status(W.Thread) == "dead" then
+                        W.Thread = task.spawn(runLoop)
+                    end
+                else
+                    Soda:Notification("⛔ Auto Weigh Disabled", 2)
+                    pcall(function()
+                        local hrp = getHRP()
+                        if hrp then hrp.CFrame = W.SafeCF end
+                    end)
+                end
+            end
+        })
+
+        SodaUIS.InputBegan:Connect(function(input, gp)
+            if gp then return end
+            if input.KeyCode == Enum.KeyCode.RightShift and WeighToggle then
+                WeighToggle:Set(not WeighToggle.Toggled)
+            end
+        end)
+    end
+
+    --====================================================================
+    -- BOXING FARM  (Combat spam @ ring)
+    --====================================================================
+    local BoxingToggle
+    do
+        local B = {
+            ToolName  = "Combat",
+            BoxCFrame = CFrame.new(
+                -279.363251, 22.5704575, -1142.79883,
+                -0.629518926, -4.21714468E-08, -0.776985168,
+                -6.35824335E-08, 1, -2.76080292E-09,
+                 0.776985168, 4.76646278E-08, -0.629518926
+            ),
+            SafeCF    = CFrame.new(-117, -57, 147),
+            Noclip    = true,
+            Running   = false,
+            Thread    = nil,
+            NoclipConn= nil,
+            SavedCF   = nil,
+        }
+
+        local function startNoclip()
+            if B.NoclipConn then B.NoclipConn:Disconnect(); B.NoclipConn = nil end
+            B.NoclipConn = PC_RunService.Stepped:Connect(function()
+                if not B.Running or not B.Noclip then return end
+                local char = PC_Local.Character; if not char then return end
+                for _, p in ipairs(char:GetDescendants()) do
+                    if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end
+                end
+            end)
+        end
+
+        local function stopNoclip()
+            if B.NoclipConn then B.NoclipConn:Disconnect(); B.NoclipConn = nil end
+            local char = PC_Local.Character
+            if char then
+                for _, p in ipairs(char:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = true end
+                end
+            end
+        end
+
+        local function ensureCombatEquipped()
+            local char = PC_Local.Character; if not char then return nil end
+            local tool = char:FindFirstChild(B.ToolName)
+            if tool then return tool end
+            local bp = PC_Local:FindFirstChild("Backpack")
+            if bp then
+                local inBag = bp:FindFirstChild(B.ToolName)
+                if inBag then
+                    inBag.Parent = char
+                    task.wait(0.05)
+                    return char:FindFirstChild(B.ToolName)
+                end
+            end
+            return nil
+        end
+
+        local function runLoop()
+            while B.Running do
+                local char = PC_Local.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    char.HumanoidRootPart.CFrame = B.BoxCFrame
+                    local tool = ensureCombatEquipped()
+                    if tool then
+                        pcall(function()
+                            tool:Activate()
+                            task.wait()
+                            tool:Deactivate()
+                        end)
+                    end
+                end
+                task.wait()
+            end
+        end
+
+        BoxingToggle = move_section:Toggle({
+            Name = "Boxing Farm", Flag = "movement_boxing_farm",
+            Callback = function(state)
+                B.Running = state
+                if state then
+                    local hrp = PC_Local.Character and PC_Local.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then B.SavedCF = hrp.CFrame end
+                    if B.Noclip then startNoclip() end
+                    Soda:Notification("🥊 Boxing Farm Enabled", 2)
+                    if not B.Thread or coroutine.status(B.Thread) == "dead" then
+                        B.Thread = task.spawn(runLoop)
+                    end
+                else
+                    Soda:Notification("⛔ Boxing Farm Disabled", 2)
+                    if B.Noclip then stopNoclip() end
+                    if B.SavedCF then
+                        pcall(function()
+                            local hrp = PC_Local.Character and PC_Local.Character:FindFirstChild("HumanoidRootPart")
+                            if hrp then hrp.CFrame = B.SavedCF end
+                        end)
+                        B.SavedCF = nil
+                    end
+                end
+            end
+        })
+
+        SodaUIS.InputBegan:Connect(function(input, gp)
+            if gp then return end
+            if input.KeyCode == Enum.KeyCode.RightAlt and BoxingToggle then
+                BoxingToggle:Set(not BoxingToggle.Toggled)
+            end
+        end)
+    end
 end
 
 --====================================================================
