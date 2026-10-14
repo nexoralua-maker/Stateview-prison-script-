@@ -2,6 +2,7 @@
     Soda.Fun — UI Library & Client
     Original base by Linemaster — rebranded, restyled, refactored
     Font: Montserrat Bold | Accent: Red → Blue gradient
+    Touch + Mouse support
 ]]
 
 --====================================================================
@@ -73,7 +74,17 @@ do
     Library.Sections.__index = Library.Sections
     local LocalPlayer = game:GetService('Players').LocalPlayer
     local Mouse = LocalPlayer:GetMouse()
+    local UIS = game:GetService("UserInputService")
     local TweenService = game:GetService("TweenService")
+
+    local function isPressInput(input)
+        local t = input.UserInputType
+        return t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch
+    end
+    local function isMoveInput(input)
+        local t = input.UserInputType
+        return t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch
+    end
 
     do
         function Library:Connection(signal, Callback) return signal:Connect(Callback) end
@@ -84,12 +95,17 @@ do
             return string.format("%.14g", Library.UnNamedFlags)
         end
 
+        -- Base color is RED so it never appears white even if gradient fails
         function Library:ApplyTheme(instance, rotation)
             rotation = rotation or 0
-            instance.BackgroundColor3 = Color3.new(1,1,1)
+            instance.BackgroundColor3 = Library.AccentGradient[1]
             local g = Instance.new("UIGradient")
-            g.Color = ColorSequence.new(Library.AccentGradient[1], Library.AccentGradient[2])
+            g.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Library.AccentGradient[1]),
+                ColorSequenceKeypoint.new(1, Library.AccentGradient[2]),
+            })
             g.Rotation = rotation
+            g.Enabled = true
             g.Parent = instance
             table.insert(Library.ThemeObjects, g)
             return g
@@ -97,10 +113,14 @@ do
 
         function Library:ApplyTextTheme(instance, rotation)
             rotation = rotation or 0
-            instance.TextColor3 = Color3.new(1,1,1)
+            instance.TextColor3 = Library.AccentGradient[1]
             local g = Instance.new("UIGradient")
-            g.Color = ColorSequence.new(Library.AccentGradient[1], Library.AccentGradient[2])
+            g.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Library.AccentGradient[1]),
+                ColorSequenceKeypoint.new(1, Library.AccentGradient[2]),
+            })
             g.Rotation = rotation
+            g.Enabled = true
             g.Parent = instance
             table.insert(Library.ThemeObjects, g)
             return g
@@ -128,10 +148,18 @@ do
             Library.Accent = Library.AccentGradient[1]
             for _, item in next, Library.ThemeObjects do
                 if typeof(item) == "Instance" then
-                    if item:IsA("UIGradient") then item.Color = ColorSequence.new(Library.AccentGradient[1], Library.AccentGradient[2])
-                    elseif item:IsA("Frame") or item:IsA("TextButton") then item.BackgroundColor3 = Library.Accent
-                    elseif item:IsA("TextLabel") then item.TextColor3 = Library.Accent
-                    elseif item:IsA("ScrollingFrame") then item.ScrollBarImageColor3 = Library.Accent end
+                    if item:IsA("UIGradient") then
+                        item.Color = ColorSequence.new({
+                            ColorSequenceKeypoint.new(0, Library.AccentGradient[1]),
+                            ColorSequenceKeypoint.new(1, Library.AccentGradient[2]),
+                        })
+                    elseif item:IsA("Frame") or item:IsA("TextButton") then
+                        item.BackgroundColor3 = Library.Accent
+                    elseif item:IsA("TextLabel") then
+                        item.TextColor3 = Library.Accent
+                    elseif item:IsA("ScrollingFrame") then
+                        item.ScrollBarImageColor3 = Library.Accent
+                    end
                 end
             end
         end
@@ -282,16 +310,19 @@ do
 
             Window.Elements = {TabHolder = Tabs, Holder = Holder, FadeThing = FadeThing}
 
-            Library:Connection(TextButton.MouseButton1Down, function()
-                local Location = game:GetService("UserInputService"):GetMouseLocation()
-                Window.Dragging[1] = true
-                Window.Dragging[2] = UDim2.new(0, Location.X - Outline.AbsolutePosition.X, 0, Location.Y - Outline.AbsolutePosition.Y)
+            Library:Connection(TextButton.InputBegan, function(input)
+                if isPressInput(input) then
+                    local Location = UIS:GetMouseLocation()
+                    Window.Dragging[1] = true
+                    Window.Dragging[2] = UDim2.new(0, Location.X - Outline.AbsolutePosition.X, 0, Location.Y - Outline.AbsolutePosition.Y)
+                end
             end)
-            Library:Connection(game:GetService("UserInputService").InputEnded, function(Input)
-                if Input.UserInputType == Enum.UserInputType.MouseButton1 then Window.Dragging[1] = false end
+            Library:Connection(UIS.InputEnded, function(Input)
+                if isPressInput(Input) then Window.Dragging[1] = false end
             end)
-            Library:Connection(game:GetService("UserInputService").InputChanged, function()
-                local Location = game:GetService("UserInputService"):GetMouseLocation()
+            Library:Connection(UIS.InputChanged, function(Input)
+                if not isMoveInput(Input) then return end
+                local Location = UIS:GetMouseLocation()
                 if Window.Dragging[1] then
                     TweenService:Create(Outline, TweenInfo.new(0.1, Enum.EasingStyle.Quad), {
                         Position = UDim2.new(0, Location.X - Window.Dragging[2].X.Offset + (Outline.Size.X.Offset * Outline.AnchorPoint.X), 0, Location.Y - Window.Dragging[2].Y.Offset + (Outline.Size.Y.Offset * Outline.AnchorPoint.Y))
@@ -303,7 +334,7 @@ do
                 for _, Page in pairs(Window.Pages) do Page:Turn(Page.Open) end
             end
 
-            Library:Connection(game:GetService("UserInputService").InputBegan, function(Inp)
+            Library:Connection(UIS.InputBegan, function(Inp)
                 if Inp.KeyCode == Library.UIKey then Library:SetOpen(not Library.Open) end
             end)
 
@@ -527,7 +558,7 @@ do
             return Toggle
         end
 
-        -- Slider (with fix: uses GetMouseLocation)
+        -- Slider (with touch support)
         function Sections:Slider(Properties)
             if not Properties then Properties = {} end
             local Slider = {
@@ -585,19 +616,21 @@ do
                 SliderValue.Text = TextValue:gsub("%[value%]", string.format("%.14g", value))
                 Library.Flags[Slider.Flag] = value; Slider.Callback(value)
             end
-            -- Fixed: use mouse location instead of input.Position
             local function Slide()
-                local mousePos = game:GetService("UserInputService"):GetMouseLocation()
+                local mousePos = UIS:GetMouseLocation()
                 local sizeX = (mousePos.X - NewSlider.AbsolutePosition.X) / NewSlider.AbsoluteSize.X
                 Set(((Slider.Max - Slider.Min) * sizeX) + Slider.Min)
             end
 
-            Library:Connection(NewSlider.InputBegan, function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then Sliding = true; Slide() end end)
-            Library:Connection(NewSlider.InputEnded, function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then Sliding = false end end)
-            Library:Connection(Fill.InputBegan, function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then Sliding = true; Slide() end end)
-            Library:Connection(Fill.InputEnded, function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then Sliding = false end end)
-            Library:Connection(game:GetService("UserInputService").InputChanged, function(input)
-                if input.UserInputType == Enum.UserInputType.MouseMovement and Sliding then Slide() end
+            Library:Connection(NewSlider.InputBegan, function(input) if isPressInput(input) then Sliding = true; Slide() end end)
+            Library:Connection(NewSlider.InputEnded, function(input) if isPressInput(input) then Sliding = false end end)
+            Library:Connection(Fill.InputBegan, function(input) if isPressInput(input) then Sliding = true; Slide() end end)
+            Library:Connection(Fill.InputEnded, function(input) if isPressInput(input) then Sliding = false end end)
+            Library:Connection(UIS.InputChanged, function(input)
+                if isMoveInput(input) and Sliding then Slide() end
+            end)
+            Library:Connection(UIS.InputEnded, function(input)
+                if isPressInput(input) then Sliding = false end
             end)
 
             function Slider:Set(Value) Set(Value) end
@@ -740,8 +773,8 @@ do
                 end
             end)
 
-            Library:Connection(game:GetService("UserInputService").InputBegan, function(Input)
-                if ToggleContent.Visible and Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            Library:Connection(UIS.InputBegan, function(Input)
+                if ToggleContent.Visible and isPressInput(Input) then
                     if not Library:IsMouseOverFrame(ToggleContent) and not Library:IsMouseOverFrame(ToggleFrame) and not Library.OptionListOpen then
                         Toggled = false; Library.DropdownOpen = false
                         TweenService:Create(Icon, TweenInfo.new(0.25), {ImageColor3 = Color3.fromRGB(120, 120, 120)}):Play()
@@ -868,181 +901,6 @@ do
 
             if Dropdown.Max then Flags[Dropdown.Flag] = set else Flags[Dropdown.Flag] = Dropdown end
             Dropdown:Set(Dropdown.State); return Dropdown
-        end
-
-        -- Colorpicker (custom, default red)
-        function Sections:Colorpicker(Properties)
-            Properties = Properties or {}
-            local Colorpicker = {
-                Window = self.Window, Page = self.Page, Section = self,
-                Name = Properties.Name or "Colorpicker",
-                State = Properties.Default or Properties.default or Properties.state or Properties.State or Color3.fromRGB(255, 0, 0),
-                Callback = Properties.Callback or Properties.callback or function() end,
-                Flag = Properties.Flag or Properties.flag or Library.NextFlag(),
-            }
-
-            local NewColor = Instance.new("TextButton")
-            NewColor.Size = UDim2.new(1, 0, 0, 20)
-            NewColor.BackgroundTransparency = 1
-            NewColor.Text = ""
-            NewColor.AutoButtonColor = false
-            NewColor.ZIndex = 54
-            NewColor.LayoutOrder = Properties.LayoutOrder or 0
-            NewColor.Parent = Colorpicker.Section.Elements.SectionContent
-
-            local ToggleTitle = Instance.new("TextLabel")
-            ToggleTitle.FontFace = Library.FontFace
-            ToggleTitle.Text = Colorpicker.Name
-            ToggleTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
-            ToggleTitle.TextSize = 12
-            ToggleTitle.TextXAlignment = Enum.TextXAlignment.Left
-            ToggleTitle.BackgroundTransparency = 1
-            ToggleTitle.Size = UDim2.new(1, -30, 1, 0)
-            ToggleTitle.Parent = NewColor
-
-            local Swatch = Instance.new("Frame")
-            Swatch.Size = UDim2.new(0, 18, 0, 18)
-            Swatch.Position = UDim2.new(1, -20, 0.5, -9)
-            Swatch.BackgroundColor3 = Colorpicker.State
-            Swatch.BorderSizePixel = 0
-            Swatch.ZIndex = 55
-            Swatch.Parent = NewColor
-            local SwatchCorner = Instance.new("UICorner", Swatch); SwatchCorner.CornerRadius = UDim.new(0, 3)
-            local SwatchStroke = Instance.new("UIStroke", Swatch); SwatchStroke.Color = Color3.fromRGB(60, 60, 60)
-
-            local Popup = Instance.new("Frame")
-            Popup.Size = UDim2.new(0, 180, 0, 180)
-            Popup.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-            Popup.BorderSizePixel = 0
-            Popup.Visible = false
-            Popup.ZIndex = 200
-            Popup.Parent = Library.ScreenGUI
-            local PopupCorner = Instance.new("UICorner", Popup); PopupCorner.CornerRadius = UDim.new(0, 6)
-            local PopupStroke = Instance.new("UIStroke", Popup); PopupStroke.Color = Color3.fromRGB(50, 50, 50)
-
-            local H, S, V = Colorpicker.State:ToHSV()
-
-            local Palette = Instance.new("Frame")
-            Palette.Size = UDim2.new(1, -20, 0, 140)
-            Palette.Position = UDim2.new(0, 10, 0, 10)
-            Palette.BackgroundColor3 = Color3.fromHSV(H, 1, 1)
-            Palette.BorderSizePixel = 0
-            Palette.ZIndex = 55
-            Palette.Parent = Popup
-            local PaletteCorner = Instance.new("UICorner", Palette); PaletteCorner.CornerRadius = UDim.new(0, 4)
-
-            local WhiteOverlay = Instance.new("Frame")
-            WhiteOverlay.Size = UDim2.new(1, 0, 1, 0)
-            WhiteOverlay.BackgroundColor3 = Color3.new(1, 1, 1)
-            WhiteOverlay.BorderSizePixel = 0
-            WhiteOverlay.ZIndex = 56
-            WhiteOverlay.Parent = Palette
-            local WhiteGrad = Instance.new("UIGradient", WhiteOverlay)
-            WhiteGrad.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)})
-            local WhiteCorner = Instance.new("UICorner", WhiteOverlay); WhiteCorner.CornerRadius = UDim.new(0, 4)
-
-            local BlackOverlay = Instance.new("Frame")
-            BlackOverlay.Size = UDim2.new(1, 0, 1, 0)
-            BlackOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
-            BlackOverlay.BorderSizePixel = 0
-            BlackOverlay.ZIndex = 57
-            BlackOverlay.Parent = Palette
-            local BlackGrad = Instance.new("UIGradient", BlackOverlay)
-            BlackGrad.Rotation = 90
-            BlackGrad.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0)})
-            local BlackCorner = Instance.new("UICorner", BlackOverlay); BlackCorner.CornerRadius = UDim.new(0, 4)
-
-            local HueSlider = Instance.new("Frame")
-            HueSlider.Size = UDim2.new(1, -20, 0, 12)
-            HueSlider.Position = UDim2.new(0, 10, 0, 158)
-            HueSlider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-            HueSlider.BorderSizePixel = 0
-            HueSlider.ZIndex = 55
-            HueSlider.Parent = Popup
-            local HueGradient = Instance.new("UIGradient", HueSlider)
-            HueGradient.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)),
-                ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)),
-                ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)),
-                ColorSequenceKeypoint.new(0.50, Color3.fromRGB(0, 255, 255)),
-                ColorSequenceKeypoint.new(0.67, Color3.fromRGB(0, 0, 255)),
-                ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255, 0, 255)),
-                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 0)),
-            })
-            local HueCorner = Instance.new("UICorner", HueSlider); HueCorner.CornerRadius = UDim.new(1, 0)
-
-            local slidingPalette = false
-            local slidingHue = false
-            local hsv = Colorpicker.State
-
-            local function updateColor()
-                hsv = Color3.fromHSV(H, S, V)
-                Swatch.BackgroundColor3 = hsv
-                Library.Flags[Colorpicker.Flag] = hsv
-                Colorpicker.Callback(hsv)
-            end
-
-            local function updateFromPalette()
-                local mouse = game:GetService("UserInputService"):GetMouseLocation()
-                local relX = math.clamp((mouse.X - Palette.AbsolutePosition.X) / Palette.AbsoluteSize.X, 0, 1)
-                local relY = math.clamp((mouse.Y - Palette.AbsolutePosition.Y) / Palette.AbsoluteSize.Y, 0, 1)
-                S = relX; V = 1 - relY; updateColor()
-            end
-
-            local function updateFromHue()
-                local mouse = game:GetService("UserInputService"):GetMouseLocation()
-                local relX = math.clamp((mouse.X - HueSlider.AbsolutePosition.X) / HueSlider.AbsoluteSize.X, 0, 1)
-                H = relX
-                Palette.BackgroundColor3 = Color3.fromHSV(H, 1, 1)
-                updateColor()
-            end
-
-            Palette.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then slidingPalette = true; updateFromPalette() end
-            end)
-            Palette.InputEnded:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then slidingPalette = false end
-            end)
-            HueSlider.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then slidingHue = true; updateFromHue() end
-            end)
-            HueSlider.InputEnded:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then slidingHue = false end
-            end)
-
-            Library:Connection(game:GetService("UserInputService").InputChanged, function(input)
-                if input.UserInputType == Enum.UserInputType.MouseMovement then
-                    if slidingPalette then updateFromPalette() end
-                    if slidingHue then updateFromHue() end
-                end
-            end)
-
-            NewColor.MouseButton1Click:Connect(function()
-                Popup.Visible = not Popup.Visible
-                if Popup.Visible then
-                    local pos = NewColor.AbsolutePosition
-                    Popup.Position = UDim2.new(0, pos.X + 20, 0, pos.Y + 25)
-                end
-            end)
-
-            Library:Connection(game:GetService("UserInputService").InputBegan, function(input)
-                if Popup.Visible and input.UserInputType == Enum.UserInputType.MouseButton1 then
-                    if not Library:IsMouseOverFrame(Popup) and not Library:IsMouseOverFrame(NewColor) then
-                        Popup.Visible = false
-                    end
-                end
-            end)
-
-            function Colorpicker:Set(color)
-                if typeof(color) == "Color3" then
-                    H, S, V = color:ToHSV()
-                    Palette.BackgroundColor3 = Color3.fromHSV(H, 1, 1)
-                    updateColor()
-                end
-            end
-
-            Library.Flags[Colorpicker.Flag] = Colorpicker.State
-            return Colorpicker
         end
 
         -- Watermark
@@ -1605,7 +1463,6 @@ do
     local target_left  = tab_target:Section({Name = "Target",  Side = "Left",  Size = "Fill"})
     local target_right = tab_target:Section({Name = "Preview", Side = "Right", Size = "Fill"})
 
-    -- RIGHT preview
     local previewFrame = Instance.new("Frame")
     previewFrame.Size = UDim2.new(1, 0, 0, 340)
     previewFrame.BackgroundTransparency = 1
@@ -1668,7 +1525,6 @@ do
     local headshotUser = addTargetRow(previewFrame, "Username",     "@---", 228, 3)
     local headshotId   = addTargetRow(previewFrame, "User ID",      "---",  266, 4)
 
-    -- Status row FIRST
     local statusRow = Instance.new("Frame")
     statusRow.Size = UDim2.new(1, 0, 0, 24)
     statusRow.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
@@ -1685,7 +1541,6 @@ do
     statusLabel.TextSize = 12; statusLabel.TextXAlignment = Enum.TextXAlignment.Left
     statusLabel.Parent = statusRow
 
-    -- Textbox
     target_left:Textbox({
         Name = "Player",
         Flag = "target_player_input",
@@ -1899,7 +1754,7 @@ do
 end
 
 --====================================================================
--- RAGE TAB — Ragebot + Hitbox
+-- RAGE TAB — Ragebot + Hitbox + Godmode
 --====================================================================
 do
     local R_Players = game:GetService("Players")
@@ -1907,7 +1762,6 @@ do
     local R_Local   = R_Players.LocalPlayer
     local R_MainEvent = R_RS:WaitForChild("MainEvent")
 
-    -- KillAura class
     local KillAura = {}
     KillAura.__index = KillAura
 
@@ -2019,7 +1873,6 @@ do
         self._thread = nil
     end
 
-    -- UI
     local ragebot_section = tab_rage:Section({Name = "Ragebot", Side = "Left", Size = "Fill"})
 
     local aura = KillAura.new({
@@ -2060,13 +1913,13 @@ do
     })
 
     ---------------------------------------------------------------
-    -- HITBOX EXPANDER
+    -- HITBOX EXPANDER (Grey, no colorpicker)
     ---------------------------------------------------------------
     local Hitbox = {
         Enabled      = false,
         Size         = 20,
         Transparency = 0.3,
-        Color        = Color3.fromRGB(255, 0, 0),  -- Red
+        Color        = Color3.fromRGB(163, 162, 165),  -- Grey
         _conn        = nil,
     }
 
@@ -2137,15 +1990,6 @@ do
         end
     })
 
-    ragebot_section:Colorpicker({
-        Name = "Hitbox Color", Flag = "ragebot_hitbox_color",
-        Default = Color3.fromRGB(255, 0, 0),  -- Red
-        Callback = function(color)
-            Hitbox.Color = color
-            if Hitbox.Enabled then hbExpandAll() end
-        end
-    })
-
     ragebot_section:Slider({
         Name = "Hitbox Size", Flag = "ragebot_hitbox_size",
         Min = 1, Max = 50, Default = 20, Decimals = 1,
@@ -2161,6 +2005,274 @@ do
         Callback = function(value)
             Hitbox.Transparency = value
             if Hitbox.Enabled then hbExpandAll() end
+        end
+    })
+
+    ---------------------------------------------------------------
+    -- GODMODE
+    ---------------------------------------------------------------
+    local God = { enabled = false, respawnConn = nil, running = false }
+    local GodWorkspace = game:GetService("Workspace")
+    local GodVIM       = game:GetService("VirtualInputManager")
+
+    local function godRun()
+        if not God.enabled or God.running then return end
+        God.running = true
+
+        task.spawn(function()
+            local function safeWait(sec)
+                local t = 0
+                while t < sec do
+                    if not God.enabled then return false end
+                    task.wait(0.05)
+                    t = t + 0.05
+                end
+                return true
+            end
+
+            local LocalPlayer = R_Local
+            local HRP = (LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()):WaitForChild("HumanoidRootPart", 5)
+            if not HRP then God.running = false; return end
+
+            local VehicleSpawner = GodWorkspace:FindFirstChild("VehicleSpawner")
+            local myVehicle
+
+            if VehicleSpawner then
+                local sign = VehicleSpawner:FindFirstChild("Sign", true)
+                local signPart = sign and sign:FindFirstChild("Part", true)
+                if signPart then
+                    HRP.CFrame = signPart.CFrame + Vector3.new(0, 3, 0)
+                end
+                if not safeWait(0.2) then God.running = false; return end
+
+                local prompt = signPart and signPart:FindFirstChild("ProximityPrompt")
+                if prompt then
+                    pcall(function() fireproximityprompt(prompt) end)
+                end
+                if not safeWait(0.4) then God.running = false; return end
+            end
+
+            local Vehicles = GodWorkspace:FindFirstChild("Vehicles")
+            if Vehicles then
+                local timestamp = tick()
+                while tick() - timestamp < 3 do
+                    if not God.enabled then God.running = false; return end
+                    for _, v in ipairs(Vehicles:GetChildren()) do
+                        if v.Name == LocalPlayer.Name
+                           or v:GetAttribute("VehicleOwner") == true
+                           or v:GetAttribute("Owner") == LocalPlayer.Name then
+                            myVehicle = v
+                            break
+                        end
+                    end
+                    if myVehicle then break end
+                    task.wait(0.05)
+                end
+
+                if not myVehicle and God.enabled then
+                    local closest = math.huge
+                    for _, v in ipairs(Vehicles:GetChildren()) do
+                        local Ride = v:FindFirstChild("Ride")
+                        if Ride and Ride:IsA("ProximityPrompt") then
+                            local pos = v:IsA("Model") and v:GetPivot().Position
+                                or (v:IsA("BasePart") and v.Position)
+                            if pos then
+                                local dist = (pos - HRP.Position).Magnitude
+                                if dist < closest then
+                                    closest = dist
+                                    myVehicle = v
+                                end
+                            end
+                        end
+                    end
+                end
+
+                if myVehicle and God.enabled then
+                    local Ride = myVehicle:FindFirstChild("Ride")
+                    if Ride and Ride:IsA("ProximityPrompt") then
+                        if myVehicle:IsA("BasePart") then
+                            HRP.CFrame = myVehicle.CFrame + Vector3.new(0, 2, 0)
+                        elseif myVehicle:IsA("Model") then
+                            local primary = myVehicle.PrimaryPart or myVehicle:FindFirstChildWhichIsA("BasePart")
+                            if primary then HRP.CFrame = primary.CFrame + Vector3.new(0, 2, 0) end
+                        end
+                        if not safeWait(0.15) then God.running = false; return end
+                        pcall(function() fireproximityprompt(Ride) end)
+                    end
+                end
+            end
+            if not safeWait(0.2) then God.running = false; return end
+
+            if myVehicle and God.enabled then
+                task.spawn(function()
+                    for _ = 1, 10 do
+                        if myVehicle and myVehicle.Parent and God.enabled then
+                            if myVehicle:IsA("Model") then
+                                local primary = myVehicle.PrimaryPart or myVehicle:FindFirstChildWhichIsA("BasePart")
+                                if primary then
+                                    myVehicle:PivotTo(myVehicle:GetPivot() + primary.CFrame.LookVector * 1.5)
+                                end
+                            elseif myVehicle:IsA("BasePart") then
+                                myVehicle.CFrame = myVehicle.CFrame + myVehicle.CFrame.LookVector * 1.5
+                            end
+                        end
+                        task.wait(0.05)
+                    end
+                end)
+            end
+            if not safeWait(0.5) then God.running = false; return end
+            if not God.enabled then God.running = false; return end
+
+            local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            local Humanoid = char:WaitForChild("Humanoid", 5)
+            HRP = char:WaitForChild("HumanoidRootPart", 5)
+            if not Humanoid or not HRP then God.running = false; return end
+
+            local seatTarget, fallbackTarget
+            if Humanoid.SeatPart then
+                local SeatPart = Humanoid.SeatPart
+                seatTarget = GodWorkspace ~= SeatPart.Parent and SeatPart.Parent or SeatPart
+            else
+                seatTarget = myVehicle
+            end
+            fallbackTarget = seatTarget
+
+            local safeCF = CFrame.new(Vector3.new(-432.14392089844, 38.964965820312, -284.10165405273))
+
+            local ladder = {
+                Vector3.new(100000, 100000, 100000),
+                Vector3.new(200000, 200000, 200000),
+                Vector3.new(1500000, 1500000, 1500000),
+                Vector3.new(4000000, 4000000, 4000000),
+                Vector3.new(6500000, 6500000, 6500000),
+                Vector3.new(9000000, 9000000, 9000000),
+                Vector3.new(5000000, 5000000, 5000000),
+                Vector3.new(18000000, 18000000, 18000000),
+            }
+
+            local function moveTo(cf)
+                local target
+                if Humanoid and Humanoid.SeatPart then
+                    local SeatPart = Humanoid.SeatPart
+                    target = GodWorkspace ~= SeatPart.Parent and SeatPart.Parent or SeatPart
+                else
+                    target = myVehicle
+                end
+                target = target or fallbackTarget
+
+                if target and target:IsA("Model") then target:PivotTo(cf); return end
+                if target and target:IsA("BasePart") then target.CFrame = cf; return end
+                if HRP then HRP.CFrame = cf end
+            end
+
+            local lastPos = HRP.Position
+            for _, waypoint in ipairs(ladder) do
+                if not God.enabled then God.running = false; return end
+                for i = 1, 25 do
+                    local a = i / 25
+                    moveTo(CFrame.new(lastPos:Lerp(waypoint, a)))
+                    task.wait(0.005)
+                end
+                lastPos = waypoint
+            end
+
+            if God.enabled then
+                local voidPos = Vector3.new(18812581888888, 1e29, 998235235621111)
+                for i = 1, 15 do
+                    local a = (i / 15) ^ 2
+                    moveTo(CFrame.new(lastPos:Lerp(voidPos, a)))
+                    task.wait(0.03)
+                end
+
+                Humanoid.Jump = true
+                pcall(function()
+                    GodVIM:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                    task.wait(0.05)
+                    GodVIM:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                end)
+                task.wait(0.1)
+
+                moveTo(CFrame.new(voidPos))
+                task.wait(5)
+
+                if not God.enabled then God.running = false; return end
+
+                local newChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                HRP = newChar:WaitForChild("HumanoidRootPart", 5)
+                local Humanoid2 = newChar:FindFirstChildOfClass("Humanoid")
+                if not HRP then God.running = false; return end
+
+                local returnTarget
+                if Humanoid2 and Humanoid2.SeatPart then
+                    local SeatPart = Humanoid2.SeatPart
+                    returnTarget = GodWorkspace ~= SeatPart.Parent and SeatPart.Parent or SeatPart
+                else
+                    returnTarget = myVehicle
+                end
+                returnTarget = returnTarget or fallbackTarget
+
+                HRP.Anchored = true
+                HRP.AssemblyLinearVelocity = Vector3.zero
+                HRP.AssemblyAngularVelocity = Vector3.zero
+                HRP.CFrame = safeCF
+
+                if returnTarget then
+                    if returnTarget:IsA("Model") then
+                        for _, d in ipairs(returnTarget:GetDescendants()) do
+                            if d:IsA("BasePart") then
+                                d.Anchored = true
+                                d.AssemblyLinearVelocity = Vector3.zero
+                                d.AssemblyAngularVelocity = Vector3.zero
+                            end
+                        end
+                        returnTarget:PivotTo(safeCF)
+                    elseif returnTarget:IsA("BasePart") then
+                        returnTarget.Anchored = true
+                        returnTarget.AssemblyLinearVelocity = Vector3.zero
+                        returnTarget.AssemblyAngularVelocity = Vector3.zero
+                        returnTarget.CFrame = safeCF
+                    end
+                end
+
+                task.wait(0.15)
+                HRP.Anchored = false
+
+                if returnTarget then
+                    if returnTarget:IsA("Model") then
+                        for _, d in ipairs(returnTarget:GetDescendants()) do
+                            if d:IsA("BasePart") then d.Anchored = false end
+                        end
+                    elseif returnTarget:IsA("BasePart") then
+                        returnTarget.Anchored = false
+                    end
+                end
+            end
+
+            God.running = false
+        end)
+    end
+
+    ragebot_section:Toggle({
+        Name = "Godmode",
+        Flag = "ragebot_godmode",
+        LayoutOrder = 200,
+        Callback = function(state)
+            God.enabled = state
+            if state then
+                if God.respawnConn then God.respawnConn:Disconnect() end
+                God.respawnConn = R_Local.CharacterAdded:Connect(function()
+                    if God.enabled then
+                        task.wait(1.5)
+                        godRun()
+                    end
+                end)
+                godRun()
+                Soda:Notification("Godmode ON", 2)
+            else
+                if God.respawnConn then God.respawnConn:Disconnect(); God.respawnConn = nil end
+                God.running = false
+                Soda:Notification("Godmode OFF", 2)
+            end
         end
     })
 end
@@ -2423,7 +2535,7 @@ do
         end
     end)
 
-    pc_scroll:Toggle({
+      pc_scroll:Toggle({
         Name = "God Block", Flag = "pc_god_block",
         Callback = function(state)
             pc.godBlockEnabled = state
