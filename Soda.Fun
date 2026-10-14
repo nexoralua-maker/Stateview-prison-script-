@@ -1,6 +1,6 @@
 --[[
     Soda.Fun — UI Library & Client
-    Original base by Linemaster — rebranded, restyled, and refactored
+    Original base by Linemaster — rebranded, restyled, refactored
     Font: Montserrat Bold | Accent: Red → Blue gradient
 ]]
 
@@ -442,7 +442,6 @@ do
         function Sections:Nest(Properties)
             if not Properties then Properties = {} end
             local Section = {Name = Properties.Name or "Section", RealSection = self, Size = Properties.size or Properties.Size or 200, Elements = {}, Content = {}}
-
             local ScrollHolder = Instance.new("Frame", Section.RealSection.Elements.SectionContent)
             local NewScroll = Instance.new('ScrollingFrame', ScrollHolder)
             local ScrollContent = Instance.new('Frame', NewScroll)
@@ -474,11 +473,10 @@ do
                 Window = self.Window, Page = self.Page, Section = self,
                 Name = Properties.Name or "Toggle",
                 State = (Properties.state or Properties.State or Properties.def or Properties.Def or Properties.default or Properties.Default or false),
-                Callback = (Properties.callback or Properties.Callback or Properties.callBack or Properties.CallBack or function() end),
-                Flag = (Properties.flag or Properties.Flag or Properties.pointer or Properties.Pointer or Library.NextFlag()),
+                Callback = (Properties.callback or Properties.Callback or function() end),
+                Flag = (Properties.flag or Properties.Flag or Library.NextFlag()),
                 Toggled = false,
             }
-
             local NewToggle = Instance.new('TextButton', Toggle.Section.Elements.SectionContent)
             NewToggle.LayoutOrder = Properties.LayoutOrder or 0
             local ToggleTitle = Instance.new('TextLabel', NewToggle)
@@ -529,7 +527,7 @@ do
             return Toggle
         end
 
-        -- Slider
+        -- Slider (with fix: uses GetMouseLocation)
         function Sections:Slider(Properties)
             if not Properties then Properties = {} end
             local Slider = {
@@ -540,8 +538,8 @@ do
                 Max = (Properties.max or Properties.Max or Properties.maximum or Properties.Maximum or 100),
                 Sub = (Properties.suffix or Properties.Suffix or Properties.ending or Properties.Ending or Properties.prefix or Properties.Prefix or Properties.measurement or Properties.Measurement or ""),
                 Decimals = (Properties.decimals or Properties.Decimals or 1),
-                Callback = (Properties.callback or Properties.Callback or Properties.callBack or Properties.CallBack or function() end),
-                Flag = (Properties.flag or Properties.Flag or Properties.pointer or Properties.Pointer or Library.NextFlag()),
+                Callback = (Properties.callback or Properties.Callback or function() end),
+                Flag = (Properties.flag or Properties.Flag or Library.NextFlag()),
             }
             local TextValue = ("[value]" .. Slider.Sub)
 
@@ -587,17 +585,19 @@ do
                 SliderValue.Text = TextValue:gsub("%[value%]", string.format("%.14g", value))
                 Library.Flags[Slider.Flag] = value; Slider.Callback(value)
             end
-            local function Slide(input)
-                local sizeX = (input.Position.X - NewSlider.AbsolutePosition.X) / NewSlider.AbsoluteSize.X
+            -- Fixed: use mouse location instead of input.Position
+            local function Slide()
+                local mousePos = game:GetService("UserInputService"):GetMouseLocation()
+                local sizeX = (mousePos.X - NewSlider.AbsolutePosition.X) / NewSlider.AbsoluteSize.X
                 Set(((Slider.Max - Slider.Min) * sizeX) + Slider.Min)
             end
 
-            Library:Connection(NewSlider.InputBegan, function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then Sliding = true; Slide(input) end end)
+            Library:Connection(NewSlider.InputBegan, function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then Sliding = true; Slide() end end)
             Library:Connection(NewSlider.InputEnded, function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then Sliding = false end end)
-            Library:Connection(Fill.InputBegan, function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then Sliding = true; Slide(input) end end)
+            Library:Connection(Fill.InputBegan, function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then Sliding = true; Slide() end end)
             Library:Connection(Fill.InputEnded, function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then Sliding = false end end)
             Library:Connection(game:GetService("UserInputService").InputChanged, function(input)
-                if input.UserInputType == Enum.UserInputType.MouseMovement and Sliding then Slide(input) end
+                if input.UserInputType == Enum.UserInputType.MouseMovement and Sliding then Slide() end
             end)
 
             function Slider:Set(Value) Set(Value) end
@@ -613,7 +613,7 @@ do
                 Placeholder = (Properties.placeholder or Properties.Placeholder or Properties.holder or "Enter your text here"),
                 State = (Properties.state or Properties.State or Properties.def or Properties.Def or Properties.default or Properties.Default or ""),
                 Callback = (Properties.callback or Properties.Callback or function() end),
-                Flag = (Properties.flag or Properties.Flag or Properties.pointer or Properties.Pointer or Library.NextFlag()),
+                Flag = (Properties.flag or Properties.Flag or Library.NextFlag()),
             }
             local NewBox = Instance.new("Frame")
             NewBox.BackgroundTransparency = 1; NewBox.Size = UDim2.new(1, 0, 0, 24); NewBox.ZIndex = 54
@@ -676,7 +676,7 @@ do
             end)
         end
 
-        -- List
+        -- List (dropdown)
         function Sections:List(Properties)
             Properties = Properties or {}
             local Dropdown = {
@@ -686,7 +686,7 @@ do
                 Max = (Properties.Max or Properties.max),
                 State = (Properties.state or Properties.State or Properties.def or Properties.Def or Properties.default or Properties.Default),
                 Callback = (Properties.callback or Properties.Callback or function() end),
-                Flag = (Properties.flag or Properties.Flag or Properties.pointer or Properties.Pointer or Library.NextFlag()),
+                Flag = (Properties.flag or Properties.Flag or Library.NextFlag()),
                 OptionInsts = {},
             }
             local NewDropdown = Instance.new('Frame', Dropdown.Section.Elements.SectionContent)
@@ -870,6 +870,181 @@ do
             Dropdown:Set(Dropdown.State); return Dropdown
         end
 
+        -- Colorpicker (custom, default red)
+        function Sections:Colorpicker(Properties)
+            Properties = Properties or {}
+            local Colorpicker = {
+                Window = self.Window, Page = self.Page, Section = self,
+                Name = Properties.Name or "Colorpicker",
+                State = Properties.Default or Properties.default or Properties.state or Properties.State or Color3.fromRGB(255, 0, 0),
+                Callback = Properties.Callback or Properties.callback or function() end,
+                Flag = Properties.Flag or Properties.flag or Library.NextFlag(),
+            }
+
+            local NewColor = Instance.new("TextButton")
+            NewColor.Size = UDim2.new(1, 0, 0, 20)
+            NewColor.BackgroundTransparency = 1
+            NewColor.Text = ""
+            NewColor.AutoButtonColor = false
+            NewColor.ZIndex = 54
+            NewColor.LayoutOrder = Properties.LayoutOrder or 0
+            NewColor.Parent = Colorpicker.Section.Elements.SectionContent
+
+            local ToggleTitle = Instance.new("TextLabel")
+            ToggleTitle.FontFace = Library.FontFace
+            ToggleTitle.Text = Colorpicker.Name
+            ToggleTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
+            ToggleTitle.TextSize = 12
+            ToggleTitle.TextXAlignment = Enum.TextXAlignment.Left
+            ToggleTitle.BackgroundTransparency = 1
+            ToggleTitle.Size = UDim2.new(1, -30, 1, 0)
+            ToggleTitle.Parent = NewColor
+
+            local Swatch = Instance.new("Frame")
+            Swatch.Size = UDim2.new(0, 18, 0, 18)
+            Swatch.Position = UDim2.new(1, -20, 0.5, -9)
+            Swatch.BackgroundColor3 = Colorpicker.State
+            Swatch.BorderSizePixel = 0
+            Swatch.ZIndex = 55
+            Swatch.Parent = NewColor
+            local SwatchCorner = Instance.new("UICorner", Swatch); SwatchCorner.CornerRadius = UDim.new(0, 3)
+            local SwatchStroke = Instance.new("UIStroke", Swatch); SwatchStroke.Color = Color3.fromRGB(60, 60, 60)
+
+            local Popup = Instance.new("Frame")
+            Popup.Size = UDim2.new(0, 180, 0, 180)
+            Popup.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+            Popup.BorderSizePixel = 0
+            Popup.Visible = false
+            Popup.ZIndex = 200
+            Popup.Parent = Library.ScreenGUI
+            local PopupCorner = Instance.new("UICorner", Popup); PopupCorner.CornerRadius = UDim.new(0, 6)
+            local PopupStroke = Instance.new("UIStroke", Popup); PopupStroke.Color = Color3.fromRGB(50, 50, 50)
+
+            local H, S, V = Colorpicker.State:ToHSV()
+
+            local Palette = Instance.new("Frame")
+            Palette.Size = UDim2.new(1, -20, 0, 140)
+            Palette.Position = UDim2.new(0, 10, 0, 10)
+            Palette.BackgroundColor3 = Color3.fromHSV(H, 1, 1)
+            Palette.BorderSizePixel = 0
+            Palette.ZIndex = 55
+            Palette.Parent = Popup
+            local PaletteCorner = Instance.new("UICorner", Palette); PaletteCorner.CornerRadius = UDim.new(0, 4)
+
+            local WhiteOverlay = Instance.new("Frame")
+            WhiteOverlay.Size = UDim2.new(1, 0, 1, 0)
+            WhiteOverlay.BackgroundColor3 = Color3.new(1, 1, 1)
+            WhiteOverlay.BorderSizePixel = 0
+            WhiteOverlay.ZIndex = 56
+            WhiteOverlay.Parent = Palette
+            local WhiteGrad = Instance.new("UIGradient", WhiteOverlay)
+            WhiteGrad.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)})
+            local WhiteCorner = Instance.new("UICorner", WhiteOverlay); WhiteCorner.CornerRadius = UDim.new(0, 4)
+
+            local BlackOverlay = Instance.new("Frame")
+            BlackOverlay.Size = UDim2.new(1, 0, 1, 0)
+            BlackOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+            BlackOverlay.BorderSizePixel = 0
+            BlackOverlay.ZIndex = 57
+            BlackOverlay.Parent = Palette
+            local BlackGrad = Instance.new("UIGradient", BlackOverlay)
+            BlackGrad.Rotation = 90
+            BlackGrad.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0)})
+            local BlackCorner = Instance.new("UICorner", BlackOverlay); BlackCorner.CornerRadius = UDim.new(0, 4)
+
+            local HueSlider = Instance.new("Frame")
+            HueSlider.Size = UDim2.new(1, -20, 0, 12)
+            HueSlider.Position = UDim2.new(0, 10, 0, 158)
+            HueSlider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            HueSlider.BorderSizePixel = 0
+            HueSlider.ZIndex = 55
+            HueSlider.Parent = Popup
+            local HueGradient = Instance.new("UIGradient", HueSlider)
+            HueGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)),
+                ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)),
+                ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)),
+                ColorSequenceKeypoint.new(0.50, Color3.fromRGB(0, 255, 255)),
+                ColorSequenceKeypoint.new(0.67, Color3.fromRGB(0, 0, 255)),
+                ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255, 0, 255)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 0)),
+            })
+            local HueCorner = Instance.new("UICorner", HueSlider); HueCorner.CornerRadius = UDim.new(1, 0)
+
+            local slidingPalette = false
+            local slidingHue = false
+            local hsv = Colorpicker.State
+
+            local function updateColor()
+                hsv = Color3.fromHSV(H, S, V)
+                Swatch.BackgroundColor3 = hsv
+                Library.Flags[Colorpicker.Flag] = hsv
+                Colorpicker.Callback(hsv)
+            end
+
+            local function updateFromPalette()
+                local mouse = game:GetService("UserInputService"):GetMouseLocation()
+                local relX = math.clamp((mouse.X - Palette.AbsolutePosition.X) / Palette.AbsoluteSize.X, 0, 1)
+                local relY = math.clamp((mouse.Y - Palette.AbsolutePosition.Y) / Palette.AbsoluteSize.Y, 0, 1)
+                S = relX; V = 1 - relY; updateColor()
+            end
+
+            local function updateFromHue()
+                local mouse = game:GetService("UserInputService"):GetMouseLocation()
+                local relX = math.clamp((mouse.X - HueSlider.AbsolutePosition.X) / HueSlider.AbsoluteSize.X, 0, 1)
+                H = relX
+                Palette.BackgroundColor3 = Color3.fromHSV(H, 1, 1)
+                updateColor()
+            end
+
+            Palette.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then slidingPalette = true; updateFromPalette() end
+            end)
+            Palette.InputEnded:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then slidingPalette = false end
+            end)
+            HueSlider.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then slidingHue = true; updateFromHue() end
+            end)
+            HueSlider.InputEnded:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then slidingHue = false end
+            end)
+
+            Library:Connection(game:GetService("UserInputService").InputChanged, function(input)
+                if input.UserInputType == Enum.UserInputType.MouseMovement then
+                    if slidingPalette then updateFromPalette() end
+                    if slidingHue then updateFromHue() end
+                end
+            end)
+
+            NewColor.MouseButton1Click:Connect(function()
+                Popup.Visible = not Popup.Visible
+                if Popup.Visible then
+                    local pos = NewColor.AbsolutePosition
+                    Popup.Position = UDim2.new(0, pos.X + 20, 0, pos.Y + 25)
+                end
+            end)
+
+            Library:Connection(game:GetService("UserInputService").InputBegan, function(input)
+                if Popup.Visible and input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    if not Library:IsMouseOverFrame(Popup) and not Library:IsMouseOverFrame(NewColor) then
+                        Popup.Visible = false
+                    end
+                end
+            end)
+
+            function Colorpicker:Set(color)
+                if typeof(color) == "Color3" then
+                    H, S, V = color:ToHSV()
+                    Palette.BackgroundColor3 = Color3.fromHSV(H, 1, 1)
+                    updateColor()
+                end
+            end
+
+            Library.Flags[Colorpicker.Flag] = Colorpicker.State
+            return Colorpicker
+        end
+
         -- Watermark
         function Library:Watermark(Properties)
             local Watermark = {Name = (Properties.Name or Properties.name or "v1.0"); AnimateText = nil;}
@@ -1015,7 +1190,6 @@ do
     headshot.Parent = avatarFrame
 
     local headshotCorner = Instance.new("UICorner", headshot); headshotCorner.CornerRadius = UDim.new(0, 10)
-
     local headshotStroke = Instance.new("UIStroke", headshot)
     headshotStroke.Thickness = 2; headshotStroke.Color = Color3.new(1, 1, 1)
     local strokeGradient = Instance.new("UIGradient", headshotStroke)
@@ -1065,26 +1239,13 @@ do
     local LocalPlayer = Players.LocalPlayer
 
     local kill = {
-        enabled         = false,
-        mode            = "Auto Flame Kill",
-        conn            = nil,
-        flameBuying     = false,
-        originalCFrame  = nil,
-        spawnPos        = nil,
-        lastReload      = 0,
-        reloadCooldown  = 0.5,
-        lastGunNotif    = 0,
-        selectedMelee   = "Combat",
-        flameOffset     = Vector3.new(-2, 8, 2),
-        autoAmmo        = true,
-        bringEnabled    = false,
-        bringConn       = nil,
-        bringStartPos   = nil,
-        lastGrabAttempt = 0,
-        _bringToggle    = nil,
-        autoBagEnabled  = false,
-        autoBagConn     = nil,
-        bagAlertCd      = 0,
+        enabled = false, mode = "Auto Flame Kill", conn = nil,
+        flameBuying = false, originalCFrame = nil, spawnPos = nil,
+        lastReload = 0, reloadCooldown = 0.5, lastGunNotif = 0,
+        selectedMelee = "Combat", flameOffset = Vector3.new(-2, 8, 2), autoAmmo = true,
+        bringEnabled = false, bringConn = nil, bringStartPos = nil, lastGrabAttempt = 0,
+        _bringToggle = nil,
+        autoBagEnabled = false, autoBagConn = nil, bagAlertCd = 0,
     }
 
     do
@@ -1137,7 +1298,6 @@ do
                     local flameShop = shop and shop:FindFirstChild("[Flamethrower] - $10130")
                     local ammoShop = shop and shop:FindFirstChild("140 [Flamethrower Ammo] - $1126")
                     local oldCF = hrp.CFrame
-
                     if noFlame and flameShop then
                         hrp.CFrame = flameShop:GetPivot() + Vector3.new(0, 3, 0)
                         task.wait(0.3)
@@ -1341,8 +1501,7 @@ do
         if isDead then clearPhysics(hrp); return end
         if ff then
             clearPhysics(hrp); if kill.bringStartPos then hrp.CFrame = kill.bringStartPos end
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            return
+            hrp.AssemblyLinearVelocity = Vector3.zero; return
         end
         if not isKO then
             if kill.mode == "Auto Flame Kill" then flameKillTick() else meleeKillTick() end
@@ -1353,7 +1512,6 @@ do
         pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", torso) end)
         hrp.AssemblyLinearVelocity = Vector3.zero; hrp.AssemblyAngularVelocity = Vector3.zero
         hrp.CFrame = CFrame.new(torso.Position + Vector3.new(0, 2, 0))
-
         if backpack then
             local tool = char:FindFirstChildOfClass("Tool")
             if tool then tool.Parent = backpack end
@@ -1444,15 +1602,10 @@ do
         end
     end
 
-    ---------------------------------------------------------------
-    -- Sections
-    ---------------------------------------------------------------
     local target_left  = tab_target:Section({Name = "Target",  Side = "Left",  Size = "Fill"})
     local target_right = tab_target:Section({Name = "Preview", Side = "Right", Size = "Fill"})
 
-    ---------------------------------------------------------------
-    -- RIGHT: Preview
-    ---------------------------------------------------------------
+    -- RIGHT preview
     local previewFrame = Instance.new("Frame")
     previewFrame.Size = UDim2.new(1, 0, 0, 340)
     previewFrame.BackgroundTransparency = 1
@@ -1515,9 +1668,7 @@ do
     local headshotUser = addTargetRow(previewFrame, "Username",     "@---", 228, 3)
     local headshotId   = addTargetRow(previewFrame, "User ID",      "---",  266, 4)
 
-    ---------------------------------------------------------------
-    -- LEFT: Status row FIRST (so textbox callback can reference it)
-    ---------------------------------------------------------------
+    -- Status row FIRST
     local statusRow = Instance.new("Frame")
     statusRow.Size = UDim2.new(1, 0, 0, 24)
     statusRow.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
@@ -1534,9 +1685,7 @@ do
     statusLabel.TextSize = 12; statusLabel.TextXAlignment = Enum.TextXAlignment.Left
     statusLabel.Parent = statusRow
 
-    ---------------------------------------------------------------
-    -- LEFT: Textbox (now statusLabel exists)
-    ---------------------------------------------------------------
+    -- Textbox
     target_left:Textbox({
         Name = "Player",
         Flag = "target_player_input",
@@ -1565,9 +1714,6 @@ do
         end
     })
 
-    ---------------------------------------------------------------
-    -- LEFT: Teleport
-    ---------------------------------------------------------------
     target_left:Button({
         Name = "Teleport", LayoutOrder = 10,
         Callback = function()
@@ -1584,9 +1730,6 @@ do
         end
     })
 
-    ---------------------------------------------------------------
-    -- LEFT: Spectate
-    ---------------------------------------------------------------
     local spectateConn = nil
     local spectateActive = false
     target_left:Toggle({
@@ -1614,9 +1757,6 @@ do
         end
     })
 
-    ---------------------------------------------------------------
-    -- LEFT: Fling
-    ---------------------------------------------------------------
     local flingEnabled = false
     local flingConn = nil
     local originalCFrameFling = nil
@@ -1665,11 +1805,8 @@ do
         Callback = function(state) setFling(state) end
     })
 
-    ---------------------------------------------------------------
-    -- LEFT: Auto Flame Kill
-    ---------------------------------------------------------------
     target_left:Toggle({
-        Name = "Auto Flame Kill", Flag = "target_auto_flame_kill", LayoutOrder = 100,
+        Name = "Auto kill", Flag = "target_auto_flame_kill", LayoutOrder = 100,
         Callback = function(state)
             kill.enabled = state
             if state then startKill(); killNotify("Auto Kill ON — " .. kill.mode)
@@ -1677,9 +1814,6 @@ do
         end
     })
 
-    ---------------------------------------------------------------
-    -- LEFT: Kill Mode
-    ---------------------------------------------------------------
     target_left:List({
         Name = "Kill Mode", Flag = "target_kill_mode", LayoutOrder = 101,
         Options = {"Auto Flame Kill", "Melee Auto Kill"},
@@ -1690,9 +1824,6 @@ do
         end
     })
 
-    ---------------------------------------------------------------
-    -- LEFT: Bring
-    ---------------------------------------------------------------
     local bringToggle = target_left:Toggle({
         Name = "Bring", Flag = "target_bring", LayoutOrder = 102,
         Callback = function(state)
@@ -1721,9 +1852,6 @@ do
     })
     kill._bringToggle = bringToggle
 
-    ---------------------------------------------------------------
-    -- LEFT: Auto Bag
-    ---------------------------------------------------------------
     target_left:Toggle({
         Name = "Auto Bag", Flag = "target_auto_bag", LayoutOrder = 103,
         Callback = function(state)
@@ -1747,9 +1875,6 @@ do
         end
     })
 
-    ---------------------------------------------------------------
-    -- Auto-clear on leave
-    ---------------------------------------------------------------
     Players.PlayerRemoving:Connect(function(plr)
         local found = findPlayerByQuery(flags["target_player_input"] or "")
         if found == plr then
@@ -1774,7 +1899,274 @@ do
 end
 
 --====================================================================
--- PLAYER TAB — Character (left) + Movement (right)
+-- RAGE TAB — Ragebot + Hitbox
+--====================================================================
+do
+    local R_Players = game:GetService("Players")
+    local R_RS      = game:GetService("ReplicatedStorage")
+    local R_Local   = R_Players.LocalPlayer
+    local R_MainEvent = R_RS:WaitForChild("MainEvent")
+
+    -- KillAura class
+    local KillAura = {}
+    KillAura.__index = KillAura
+
+    local DEFAULT_CONFIG = {
+        Range = 250, MaxShootDistance = 250,
+        ShotsPerBurst = 5, BurstDelay = 0.02, Cooldown = 0.1,
+        TargetMode = "Nearest", Ignore = {},
+    }
+
+    function KillAura.new(config)
+        local self = setmetatable({}, KillAura)
+        self.Config  = table.clone(DEFAULT_CONFIG)
+        self.Running = false
+        self._thread = nil
+        if config then
+            for k, v in pairs(config) do self.Config[k] = v end
+        end
+        return self
+    end
+
+    function KillAura:GetMyRoot()
+        local char = R_Local.Character
+        if not char then return nil end
+        return char:FindFirstChild("HumanoidRootPart")
+    end
+
+    function KillAura:IsValidTarget(player, range)
+        if player == R_Local then return false end
+        if self.Config.Ignore[player] then return false end
+        local character = player.Character
+        if not character then return false end
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if not humanoid or humanoid.Health <= 0 then return false end
+        local root = character:FindFirstChild("HumanoidRootPart")
+        local head = character:FindFirstChild("Head")
+        if not (root and head) then return false end
+        if character:FindFirstChildOfClass("ForceField") then return false end
+        local myRoot = self:GetMyRoot()
+        if not myRoot then return false end
+        local distance = (myRoot.Position - root.Position).Magnitude
+        if distance > range then return false end
+        return true, {
+            player = player, character = character, humanoid = humanoid,
+            root = root, head = head, distance = distance,
+        }
+    end
+
+    function KillAura:GetTargets()
+        local targets = {}
+        for _, player in ipairs(R_Players:GetPlayers()) do
+            local ok, data = self:IsValidTarget(player, self.Config.Range)
+            if ok then table.insert(targets, data) end
+        end
+        return targets
+    end
+
+    function KillAura:GetBestTarget(targets)
+        if #targets == 0 then return nil end
+        local mode = self.Config.TargetMode
+        table.sort(targets, function(a, b)
+            if mode == "LowestHealth" then return a.humanoid.Health < b.humanoid.Health
+            elseif mode == "Farthest" then return a.distance > b.distance end
+            return a.distance < b.distance
+        end)
+        return targets[1]
+    end
+
+    function KillAura:Shoot(target, tool)
+        local myRoot = self:GetMyRoot()
+        local handle = tool and tool:FindFirstChild("Handle")
+        if not (myRoot and handle and target.head) then return end
+        local distance = (myRoot.Position - target.head.Position).Magnitude
+        if distance > self.Config.MaxShootDistance then return end
+        for _ = 1, self.Config.ShotsPerBurst do
+            if not self.Running then break end
+            local humanoid = target.character and target.character:FindFirstChildOfClass("Humanoid")
+            local head = target.character and target.character:FindFirstChild("Head")
+            if not (humanoid and humanoid.Health > 0 and head) then break end
+            pcall(function()
+                R_MainEvent:FireServer("ShootGun", handle, myRoot.Position, head.Position, head, Vector3.new(0, 0, -1))
+            end)
+            task.wait(self.Config.BurstDelay)
+        end
+    end
+
+    function KillAura:Tick()
+        local character = R_Local.Character
+        if not character then return end
+        local tool = character:FindFirstChildOfClass("Tool")
+        if not tool then return end
+        local target = self:GetBestTarget(self:GetTargets())
+        if not target then return end
+        self:Shoot(target, tool)
+    end
+
+    function KillAura:Start()
+        if self.Running then return end
+        self.Running = true
+        self._thread = task.spawn(function()
+            while self.Running do
+                pcall(function() self:Tick() end)
+                task.wait(self.Config.Cooldown)
+            end
+        end)
+    end
+
+    function KillAura:Stop()
+        self.Running = false
+        self._thread = nil
+    end
+
+    -- UI
+    local ragebot_section = tab_rage:Section({Name = "Ragebot", Side = "Left", Size = "Fill"})
+
+    local aura = KillAura.new({
+        Range = 250, MaxShootDistance = 250, ShotsPerBurst = 5, TargetMode = "Nearest",
+    })
+
+    ragebot_section:Toggle({
+        Name = "Enabled", Flag = "ragebot_enabled",
+        Callback = function(state)
+            if state then aura:Start(); Soda:Notification("Ragebot ON — " .. aura.Config.TargetMode, 2)
+            else aura:Stop(); Soda:Notification("Ragebot OFF", 2) end
+        end
+    })
+
+    ragebot_section:List({
+        Name = "Target Mode", Flag = "ragebot_target_mode",
+        Options = {"Nearest", "Farthest", "LowestHealth"},
+        Default = "Nearest",
+        Callback = function(value)
+            aura.Config.TargetMode = value
+            if aura.Running then Soda:Notification("Target mode: " .. value, 2) end
+        end
+    })
+
+    ragebot_section:Slider({
+        Name = "Range", Flag = "ragebot_range",
+        Min = 10, Max = 1000, Default = 250, Decimals = 0,
+        Callback = function(value)
+            aura.Config.Range = value
+            aura.Config.MaxShootDistance = value
+        end
+    })
+
+    ragebot_section:Slider({
+        Name = "Shots Per Burst", Flag = "ragebot_shots",
+        Min = 1, Max = 20, Default = 5, Decimals = 0,
+        Callback = function(value) aura.Config.ShotsPerBurst = value end
+    })
+
+    ---------------------------------------------------------------
+    -- HITBOX EXPANDER
+    ---------------------------------------------------------------
+    local Hitbox = {
+        Enabled      = false,
+        Size         = 20,
+        Transparency = 0.3,
+        Color        = Color3.fromRGB(255, 0, 0),  -- Red
+        _conn        = nil,
+    }
+
+    local function hbApply(character)
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.Size = Vector3.new(Hitbox.Size, Hitbox.Size, Hitbox.Size)
+            hrp.Transparency = Hitbox.Transparency
+            hrp.Material = Enum.Material.Neon
+            hrp.Color = Hitbox.Color
+            hrp.CanCollide = false
+        end
+    end
+
+    local function hbReset(character)
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.Size = Vector3.new(2, 2, 1)
+            hrp.Transparency = 1
+            hrp.Material = Enum.Material.Plastic
+            hrp.Color = Color3.fromRGB(163, 162, 165)
+            hrp.CanCollide = true
+        end
+    end
+
+    local function hbExpandAll()
+        for _, p in ipairs(R_Players:GetPlayers()) do
+            if p ~= R_Local and p.Character then hbApply(p.Character) end
+        end
+    end
+
+    local function hbRestoreAll()
+        for _, p in ipairs(R_Players:GetPlayers()) do
+            if p ~= R_Local and p.Character then hbReset(p.Character) end
+        end
+    end
+
+    local function hbBind(player)
+        if player == R_Local then return end
+        if player.Character and Hitbox.Enabled then hbApply(player.Character) end
+        player.CharacterAdded:Connect(function(char)
+            task.wait(0.3)
+            if Hitbox.Enabled then hbApply(char) end
+        end)
+    end
+
+    for _, p in ipairs(R_Players:GetPlayers()) do hbBind(p) end
+    R_Players.PlayerAdded:Connect(hbBind)
+
+    ragebot_section:Toggle({
+        Name = "Hitbox Expander", Flag = "ragebot_hitbox_enabled",
+        Callback = function(state)
+            Hitbox.Enabled = state
+            if state then
+                if Hitbox._conn then task.cancel(Hitbox._conn) end
+                Hitbox._conn = task.spawn(function()
+                    while Hitbox.Enabled do
+                        hbExpandAll()
+                        task.wait(0.1)
+                    end
+                end)
+                Soda:Notification("Hitbox Expander ON", 2)
+            else
+                if Hitbox._conn then task.cancel(Hitbox._conn); Hitbox._conn = nil end
+                hbRestoreAll()
+                Soda:Notification("Hitbox Expander OFF", 2)
+            end
+        end
+    })
+
+    ragebot_section:Colorpicker({
+        Name = "Hitbox Color", Flag = "ragebot_hitbox_color",
+        Default = Color3.fromRGB(255, 0, 0),  -- Red
+        Callback = function(color)
+            Hitbox.Color = color
+            if Hitbox.Enabled then hbExpandAll() end
+        end
+    })
+
+    ragebot_section:Slider({
+        Name = "Hitbox Size", Flag = "ragebot_hitbox_size",
+        Min = 1, Max = 50, Default = 20, Decimals = 1,
+        Callback = function(value)
+            Hitbox.Size = value
+            if Hitbox.Enabled then hbExpandAll() end
+        end
+    })
+
+    ragebot_section:Slider({
+        Name = "Hitbox Transparency", Flag = "ragebot_hitbox_transparency",
+        Min = 0, Max = 1, Default = 0.3, Decimals = 0.01,
+        Callback = function(value)
+            Hitbox.Transparency = value
+            if Hitbox.Enabled then hbExpandAll() end
+        end
+    })
+end
+
+--====================================================================
+-- PLAYER TAB — Character + Movement
 --====================================================================
 do
     local PC_Players    = game:GetService("Players")
@@ -1802,9 +2194,6 @@ do
 
     PC_Local.CharacterAdded:Connect(function() pc.wasKnocked = false end)
 
-    ---------------------------------------------------------------
-    -- LEFT: Player Character
-    ---------------------------------------------------------------
     local player_char_section = tab_player:Section({Name = "Player Character", Side = "Left", Size = "Fill"})
     local pc_scroll = player_char_section:Nest({Size = "Fill"})
 
@@ -2158,7 +2547,6 @@ do
     -- RIGHT: Movement
     ---------------------------------------------------------------
     local CFrameSpeed = {Enabled = false, Speed = 20, _conn = nil}
-
     local move_section = tab_player:Section({Name = "Movement", Side = "Right", Size = "Fill"})
 
     local function cfsStart()
