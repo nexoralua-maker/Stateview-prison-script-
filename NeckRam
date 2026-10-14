@@ -5,6 +5,7 @@
 
     Removed: Whirlwind Kick, Make Player Stand, C Moon
     Added:   Goku (Kamehameha) — connected to Effects toggle
+    Fixed:   Toggle buttons now light up properly
 --]]
 
 -- ============================================================
@@ -320,7 +321,6 @@ function Modules.playKamehameha(character, duration)
     local rightHand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
     if not rightHand then return end
 
-    -- Play animation at 0.5 speed
     local anim = Instance.new("Animation")
     anim.AnimationId = "rbxassetid://73436636651186"
     local track = animator:LoadAnimation(anim)
@@ -328,7 +328,6 @@ function Modules.playKamehameha(character, duration)
 
     local created = {}
 
-    -- Charge ball
     local charge = Instance.new("Part")
     charge.Name = "KameCharge"
     charge.Shape = Enum.PartType.Ball
@@ -368,7 +367,6 @@ function Modules.playKamehameha(character, duration)
 
     table.insert(created, charge)
 
-    -- Beam attachments
     local handAttach = Instance.new("Attachment")
     handAttach.Name = "KameHandAttach"
     handAttach.Parent = rightHand
@@ -396,7 +394,6 @@ function Modules.playKamehameha(character, duration)
 
     table.insert(created, endPart)
 
-    -- Core beam
     local coreBeam = Instance.new("Beam")
     coreBeam.Attachment0 = handAttach
     coreBeam.Attachment1 = endAttach
@@ -408,7 +405,6 @@ function Modules.playKamehameha(character, duration)
     coreBeam.FaceCamera = true
     coreBeam.Parent = endPart
 
-    -- Glow beam
     local glowBeam = Instance.new("Beam")
     glowBeam.Attachment0 = handAttach
     glowBeam.Attachment1 = endAttach
@@ -420,7 +416,6 @@ function Modules.playKamehameha(character, duration)
     glowBeam.FaceCamera = true
     glowBeam.Parent = endPart
 
-    -- Aura
     local aura = Instance.new("ParticleEmitter")
     aura.Texture = "rbxassetid://243660364"
     aura.Color = ColorSequence.new(Color3.fromRGB(0, 170, 255))
@@ -434,7 +429,6 @@ function Modules.playKamehameha(character, duration)
     aura.Parent = root
     table.insert(created, aura)
 
-    -- Sound
     local sound = Instance.new("Sound")
     sound.SoundId = "rbxassetid://131961136"
     sound.Volume = 2
@@ -442,7 +436,6 @@ function Modules.playKamehameha(character, duration)
     sound:Play()
     table.insert(created, sound)
 
-    -- Cleanup
     task.delay(duration, function()
         track:Stop()
         for _, obj in ipairs(created) do
@@ -1069,7 +1062,6 @@ Tools["Goku"] = function()
     if Settings.Grab.Effects then
         Modules.playKamehameha(Services.LocalPlayer.Character, 3)
     else
-        -- Still play the animation silently so the tool feels right
         local anim = Modules.CreateAnimation("73436636651186")
         local humanoid = Services.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
         local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
@@ -1133,7 +1125,7 @@ local function StopGrabBinding()
 end
 
 -- ============================================================
--- GUI
+-- GUI (FIXED TOGGLE LOGIC)
 -- ============================================================
 local function MakeDraggable(frame, dragArea)
     dragArea = dragArea or frame
@@ -1244,8 +1236,11 @@ local function BuildGui()
         scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
     end)
 
-    -- Toggle factory
-    local function MakeToggle(name, getState, setState)
+    -- =========================================
+    -- NEW TOGGLE: takes name + onChanged callback
+    -- returns a refresh() function so external code can re-paint the dot
+    -- =========================================
+    local function MakeToggle(name, onChanged)
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(1, -6, 0, 36)
         btn.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
@@ -1277,48 +1272,56 @@ local function BuildGui()
         Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
         local function refresh()
-            local on = getState()
+            local on = Settings.Grab[name] == true
             dot.BackgroundColor3 = on and Color3.fromRGB(81, 194, 58) or Color3.fromRGB(0, 0, 0)
         end
         refresh()
 
         btn.MouseButton1Click:Connect(function()
-            local new = not getState()
-            setState(new)
-            refresh()
+            local new = not (Settings.Grab[name] == true)
+            Settings.Grab[name] = new
+            refresh() -- paint first, THEN fire callback
+            if onChanged then
+                local ok, err = pcall(onChanged, new)
+                if not ok then warn("[Grab] " .. name .. " callback error: " .. tostring(err)) end
+            end
         end)
+
         btn.MouseEnter:Connect(function()
             Services.TweenService:Create(btn, TweenInfo.new(.2), { BackgroundColor3 = Color3.fromRGB(30, 30, 30) }):Play()
         end)
         btn.MouseLeave:Connect(function()
             Services.TweenService:Create(btn, TweenInfo.new(.2), { BackgroundColor3 = Color3.fromRGB(22, 22, 22) }):Play()
         end)
+
+        return refresh
     end
 
-    -- Base toggles
-    MakeToggle("Grab", function() return Settings.Grab.Grab end, function(v)
-        Settings.Grab.Grab = v
+    -- === Base toggles (persistent) ===
+    MakeToggle("Grab", function(v)
         if v then
             StartGrabBinding()
         else
             StopGrabBinding()
         end
     end)
-    MakeToggle("Effects", function() return Settings.Grab.Effects end, function(v)
-        Settings.Grab.Effects = v
+
+    MakeToggle("Effects", function(v)
+        -- nothing extra needed, Settings.Grab.Effects is already set
     end)
 
-    -- Tool toggles
+    -- === Tool toggles (one-shot with visible green flash) ===
+    local refreshMap = {}
     for name, fn in pairs(Tools) do
-        MakeToggle(name, function()
-            return Settings.Grab[name] == true
-        end, function(v)
-            Settings.Grab[name] = v
+        refreshMap[name] = MakeToggle(name, function(v)
             if v then
                 task.spawn(function()
                     local ok, err = pcall(fn)
                     if not ok then warn("[Grab] " .. name .. " error: " .. tostring(err)) end
+                    -- Minimum 0.4s so user sees the toggle flash green
+                    task.wait(0.4)
                     Settings.Grab[name] = false
+                    if refreshMap[name] then refreshMap[name]() end
                 end)
             end
         end)
@@ -1372,3 +1375,4 @@ BuildGui()
 print("[Grab Hub] Loaded.")
 print("[Grab Hub] Tools: Time Stop, Hado 90, Made In Heaven, Chezburger, Orbit, Get Over Here, Punch Back, Domain Expansion, Portal, Goku")
 print("[Grab Hub] Goku respects the Effects toggle.")
+print("[Grab Hub] Toggle buttons fixed — every toggle lights up green when clicked.")
