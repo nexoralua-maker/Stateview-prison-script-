@@ -2,8 +2,10 @@
 --// LEGION GRABS GUI — Full Rewrite
 --// - Tool-based grabs (toggle in GUI -> equip from backpack -> click)
 --// - Core "Grab Function Tool" that actually grips the victim
---// - Goku tool with Kamehameha sequence + HellKill finisher
---// - Effects toggle lives at TOP of the tool list (like legion.txt)
+--// - Goku tool: FwdPos 3 → 3354696735 → FwdPos 15 → 110517638794017
+--//             → 73436636651186 @ 0.5 speed + Kamehameha visuals
+--//             → HellKill (voids 5 body parts + releases grab)
+--// - Effects toggle sits at TOP of list and gates EVERY visual
 --// - M.Chat uses TextChatService (with legacy fallback)
 --// - Respawn-safe (grab rehooks, tools recreated)
 --//==========================================================
@@ -313,7 +315,11 @@ function M.ImpactFrame()
 end
 
 --==========================================================
--- GOKU HELPERS  (visuals gated by Settings.Grab.Effects)
+-- GOKU HELPERS
+--  - playKamehamehaVisuals = EXACT same visuals as the user's
+--    LocalScript (charge ball, light, particles, beams, aura,
+--    sound, 3-second cleanup).  Gated by Settings.Grab.Effects.
+--  - HellKill = voids 5 body parts + releases grab.
 --==========================================================
 local function playKamehamehaVisuals(character, duration)
     duration = duration or 3
@@ -491,7 +497,7 @@ T["Time Stop"] = function()
             M.StopAnim(LP.Character,"10714177846"); M.StopAudio(); task.wait(.3)
             M.Play("6964764259"); M.Chat("When Time is Stopped, There is Only Dio!")
             local cc = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
-            if Settings.Grab.Effects and cc then                       -- ← Effects gate
+            if Settings.Grab.Effects and cc then
                 TweenSvc:Create(cc, TweenInfo.new(1), {Contrast=-1.8}):Play()
             end
             task.wait(4)
@@ -526,7 +532,7 @@ T["Time Stop"] = function()
             task.wait(1)
             if g then M.Remove(g, "all") end
             M.Play("429400881")
-            if Settings.Grab.Effects and cc then                       -- ← Effects gate
+            if Settings.Grab.Effects and cc then
                 TweenSvc:Create(cc, TweenInfo.new(1), {Contrast=0}):Play()
             end
             task.wait(.3)
@@ -547,7 +553,7 @@ T["Hado 90"] = function()
             M.Play("4743237673"); task.wait(2.5)
             M.Play("18641380807"); M.Chat("Hado 90")
             local part
-            if Settings.Grab.Effects then                               -- ← Effects gate
+            if Settings.Grab.Effects then
                 part = Instance.new("Part")
                 part.Anchored = true; part.CanCollide = false
                 part.Color = Color3.fromRGB(17,17,17); part.Material = Enum.Material.Neon
@@ -592,7 +598,7 @@ T["Made In Heaven"] = function()
                 end
             end)
             M.AnimPlay(LP.Character, 11394033602)
-            if Settings.Grab.Effects then                               -- ← Effects gate
+            if Settings.Grab.Effects then
                 TweenSvc:Create(WS.CurrentCamera, TweenInfo.new(1), {FieldOfView=120}):Play()
                 TweenSvc:Create(Lighting, TweenInfo.new(1), {FogEnd=20}):Play()
                 TweenSvc:Create(Lighting, TweenInfo.new(1), {FogColor=Color3.fromRGB(255,255,255)}):Play()
@@ -732,7 +738,7 @@ T["Domain Expansion"] = function()
             M.Play("7817367014"); M.Chat("Malevolent Shrine.")
             task.wait(5); M.Play("7817336081"); task.wait(2.8)
             loaded:Play(); loaded.Looped = false; task.wait(2.5)
-            if Settings.Grab.Effects then                               -- ← Effects gate
+            if Settings.Grab.Effects then
                 TweenSvc:Create(Lighting, TweenInfo.new(1), {FogColor=Color3.fromRGB(0,0,0)}):Play()
                 TweenSvc:Create(Lighting, TweenInfo.new(1), {FogEnd=50}):Play()
             end
@@ -798,7 +804,7 @@ T["Portal"] = function()
             WS.CurrentCamera.CameraSubject = clone.Humanoid
             M.AnimPlay(clone, 10714360343); task.wait(2)
             M.StopAnim(clone, 10714360343)
-            if Settings.Grab.Effects then                               -- ← Effects gate
+            if Settings.Grab.Effects then
                 loadAsset(false, clone.HumanoidRootPart.CFrame + Vector3.new(0,20,0))
             end
             M.AnimPlay(clone, 4940561610)
@@ -822,40 +828,80 @@ T["Portal"] = function()
     end
 end
 
+--==========================================================
+-- GOKU  — full sequence
+--   1) target → FwdPos 3      ; play 3354696735
+--   2) target → FwdPos 15
+--   3) play 110517638794017   ; wait for it to end
+--   4) play 73436636651186 @ 0.5 speed + Kamehameha visuals
+--   5) HellKill(g)  → void 5 body parts + release grab
+--==========================================================
 T["Goku"] = function()
     if Settings.Grab["Goku"] then
         M.CreateTool("Goku", function()
             if not Settings.Grab.GrabbedCharacter then return end
             Settings.Grab.Grab = false
-            M.StopAnim(LP.Character, "3135389157")
-            M.StopAnim(LP.Character, "11075367458")
 
             local g = Settings.Grab.GrabbedCharacter
 
-            -- STEP 1: send target to FwdPos 3 + play charge animation
+            M.StopAnim(LP.Character, "3135389157")
+            M.StopAnim(LP.Character, "11075367458")
+
+            ----------------------------------------------------------
+            -- STEP 1 — target to FwdPos 3, then play 3354696735
+            ----------------------------------------------------------
             if g and g.UpperTorso:FindFirstChild("BodyPosition") then
                 M.TweenPos(g.UpperTorso.BodyPosition, .5, M.FwdPos(3))
             end
-            M.AnimPlay(LP.Character, 3354696735)
+
+            local chargeAnim = Instance.new("Animation")
+            chargeAnim.AnimationId = "rbxassetid://3354696735"
+            local chargeTrack = LP.Character.Humanoid:LoadAnimation(chargeAnim)
+            chargeTrack.Priority = Enum.AnimationPriority.Action4
+            chargeTrack:Play()
+
             task.wait(1)
 
-            -- STEP 2: while it plays, send target to FwdPos 15
+            ----------------------------------------------------------
+            -- STEP 2 — while 3354696735 plays, target to FwdPos 15
+            ----------------------------------------------------------
             if g and g.UpperTorso:FindFirstChild("BodyPosition") then
                 M.TweenPos(g.UpperTorso.BodyPosition, 1, M.FwdPos(15))
             end
+
             task.wait(1)
 
-            -- STEP 3: play the beam animation
-            M.AnimPlay(LP.Character, 110517638794017)
+            ----------------------------------------------------------
+            -- STEP 3 — play 110517638794017, wait until it finishes
+            ----------------------------------------------------------
+            local beamAnim = Instance.new("Animation")
+            beamAnim.AnimationId = "rbxassetid://110517638794017"
+            local beamTrack = LP.Character.Humanoid:LoadAnimation(beamAnim)
+            beamTrack.Priority = Enum.AnimationPriority.Action4
+            beamTrack:Play()
 
-            -- STEP 4: visual effects (GATED by Effects toggle)
-            if Settings.Grab.Effects then                               -- ← Effects gate
+            beamTrack.Stopped:Wait()
+
+            ----------------------------------------------------------
+            -- STEP 4 — when 110517638794017 done:
+            --          play 73436636651186 @ speed 0.5
+            --          + Kamehameha visuals (GATED by Effects toggle)
+            ----------------------------------------------------------
+            local kameAnim = Instance.new("Animation")
+            kameAnim.AnimationId = "rbxassetid://73436636651186"
+            local kameTrack = LP.Character.Humanoid:LoadAnimation(kameAnim)
+            kameTrack.Priority = Enum.AnimationPriority.Action4
+            kameTrack:Play(0.1, 1, 0.5)   -- speed 0.5, matches LocalScript
+
+            if Settings.Grab.Effects then
                 playKamehamehaVisuals(LP.Character, 3)
             end
 
             task.wait(3)
 
-            -- STEP 5: after the beam animation finishes -> HellKill target
+            ----------------------------------------------------------
+            -- STEP 5 — HellKill the target
+            ----------------------------------------------------------
             HellKill(g)
 
             Settings.Grab.Grab = true
@@ -960,7 +1006,7 @@ iDesc.TextColor3 = Color3.fromRGB(150,150,150); iDesc.TextSize = 11
 iDesc.Font = Enum.Font.Gotham; iDesc.TextXAlignment = Enum.TextXAlignment.Left
 iDesc.TextYAlignment = Enum.TextYAlignment.Top; iDesc.TextWrapped = true
 
--- Core toggles
+-- Core toggle
 local grabBtn = Instance.new("TextButton", info)
 grabBtn.Size = UDim2.new(1, -40, 0, 40); grabBtn.Position = UDim2.new(0, 20, 1, -60)
 grabBtn.BackgroundColor3 = Color3.fromRGB(28,28,28); grabBtn.BorderSizePixel = 0
