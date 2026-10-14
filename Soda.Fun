@@ -29,7 +29,8 @@ do
     end
 
     Library = {
-        Name = "Soda.Fun"; Open = true;
+        Name = "Soda.Fun";
+        Open = true;
         Accent = Color3.fromRGB(255, 20, 80);
         AccentGradient = {Color3.fromRGB(255, 20, 80), Color3.fromRGB(60, 120, 255)};
         FontFace = FONT_FACE;
@@ -77,6 +78,7 @@ do
     local UIS = game:GetService("UserInputService")
     local TweenService = game:GetService("TweenService")
 
+    -- Input helpers (mouse + touch)
     local function isPressInput(input)
         local t = input.UserInputType
         return t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch
@@ -95,35 +97,29 @@ do
             return string.format("%.14g", Library.UnNamedFlags)
         end
 
-        -- Base color is RED so it never appears white even if gradient fails
+        -- Same color scheme as reference (red → blue gradient, red base)
         function Library:ApplyTheme(instance, rotation)
             rotation = rotation or 0
             instance.BackgroundColor3 = Library.AccentGradient[1]
-            local g = Instance.new("UIGradient")
-            g.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Library.AccentGradient[1]),
-                ColorSequenceKeypoint.new(1, Library.AccentGradient[2]),
-            })
-            g.Rotation = rotation
-            g.Enabled = true
-            g.Parent = instance
-            table.insert(Library.ThemeObjects, g)
-            return g
+            local gradient = Instance.new("UIGradient")
+            gradient.Color = ColorSequence.new(Library.AccentGradient[1], Library.AccentGradient[2])
+            gradient.Rotation = rotation
+            gradient.Enabled = true
+            gradient.Parent = instance
+            table.insert(Library.ThemeObjects, gradient)
+            return gradient
         end
 
         function Library:ApplyTextTheme(instance, rotation)
             rotation = rotation or 0
             instance.TextColor3 = Library.AccentGradient[1]
-            local g = Instance.new("UIGradient")
-            g.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Library.AccentGradient[1]),
-                ColorSequenceKeypoint.new(1, Library.AccentGradient[2]),
-            })
-            g.Rotation = rotation
-            g.Enabled = true
-            g.Parent = instance
-            table.insert(Library.ThemeObjects, g)
-            return g
+            local gradient = Instance.new("UIGradient")
+            gradient.Color = ColorSequence.new(Library.AccentGradient[1], Library.AccentGradient[2])
+            gradient.Rotation = rotation
+            gradient.Enabled = true
+            gradient.Parent = instance
+            table.insert(Library.ThemeObjects, gradient)
+            return gradient
         end
 
         function Library:SetOpen(bool)
@@ -149,10 +145,7 @@ do
             for _, item in next, Library.ThemeObjects do
                 if typeof(item) == "Instance" then
                     if item:IsA("UIGradient") then
-                        item.Color = ColorSequence.new({
-                            ColorSequenceKeypoint.new(0, Library.AccentGradient[1]),
-                            ColorSequenceKeypoint.new(1, Library.AccentGradient[2]),
-                        })
+                        item.Color = ColorSequence.new(Library.AccentGradient[1], Library.AccentGradient[2])
                     elseif item:IsA("Frame") or item:IsA("TextButton") then
                         item.BackgroundColor3 = Library.Accent
                     elseif item:IsA("TextLabel") then
@@ -1912,14 +1905,14 @@ do
         Callback = function(value) aura.Config.ShotsPerBurst = value end
     })
 
-    ---------------------------------------------------------------
-    -- HITBOX EXPANDER (Grey, no colorpicker)
+     ---------------------------------------------------------------
+    -- HITBOX EXPANDER (Grey)
     ---------------------------------------------------------------
     local Hitbox = {
         Enabled      = false,
         Size         = 20,
         Transparency = 0.3,
-        Color        = Color3.fromRGB(163, 162, 165),  -- Grey
+        Color        = Color3.fromRGB(163, 162, 165),
         _conn        = nil,
     }
 
@@ -2044,11 +2037,8 @@ do
                     HRP.CFrame = signPart.CFrame + Vector3.new(0, 3, 0)
                 end
                 if not safeWait(0.2) then God.running = false; return end
-
                 local prompt = signPart and signPart:FindFirstChild("ProximityPrompt")
-                if prompt then
-                    pcall(function() fireproximityprompt(prompt) end)
-                end
+                if prompt then pcall(function() fireproximityprompt(prompt) end) end
                 if not safeWait(0.4) then God.running = false; return end
             end
 
@@ -2109,9 +2099,7 @@ do
                         if myVehicle and myVehicle.Parent and God.enabled then
                             if myVehicle:IsA("Model") then
                                 local primary = myVehicle.PrimaryPart or myVehicle:FindFirstChildWhichIsA("BasePart")
-                                if primary then
-                                    myVehicle:PivotTo(myVehicle:GetPivot() + primary.CFrame.LookVector * 1.5)
-                                end
+                                if primary then myVehicle:PivotTo(myVehicle:GetPivot() + primary.CFrame.LookVector * 1.5) end
                             elseif myVehicle:IsA("BasePart") then
                                 myVehicle.CFrame = myVehicle.CFrame + myVehicle.CFrame.LookVector * 1.5
                             end
@@ -2159,7 +2147,6 @@ do
                     target = myVehicle
                 end
                 target = target or fallbackTarget
-
                 if target and target:IsA("Model") then target:PivotTo(cf); return end
                 if target and target:IsA("BasePart") then target.CFrame = cf; return end
                 if HRP then HRP.CFrame = cf end
@@ -2253,9 +2240,7 @@ do
     end
 
     ragebot_section:Toggle({
-        Name = "Godmode",
-        Flag = "ragebot_godmode",
-        LayoutOrder = 200,
+        Name = "Godmode", Flag = "ragebot_godmode", LayoutOrder = 200,
         Callback = function(state)
             God.enabled = state
             if state then
@@ -2535,7 +2520,7 @@ do
         end
     end)
 
-      pc_scroll:Toggle({
+    pc_scroll:Toggle({
         Name = "God Block", Flag = "pc_god_block",
         Callback = function(state)
             pc.godBlockEnabled = state
@@ -2655,9 +2640,6 @@ do
         end
     })
 
-    ---------------------------------------------------------------
-    -- RIGHT: Movement
-    ---------------------------------------------------------------
     local CFrameSpeed = {Enabled = false, Speed = 20, _conn = nil}
     local move_section = tab_player:Section({Name = "Movement", Side = "Right", Size = "Fill"})
 
