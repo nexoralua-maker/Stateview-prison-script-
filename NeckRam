@@ -1,6 +1,6 @@
 --// LEGION GRABS - STANDALONE DRAGGABLE GUI
---// Includes: Grab, Effects, Time Stop, Hado 90, Made In Heaven, Chezburger,
---//           Orbit, Get Over Here, Punch Back, Domain Expansion, Portal, Goku
+--// Tools: Grab, Effects, Time Stop, Hado 90, Made In Heaven, Chezburger,
+--//        Orbit, Get Over Here, Punch Back, Domain Expansion, Portal, Goku
 
 local Services = {
 	Players = game:GetService("Players"),
@@ -577,6 +577,33 @@ local Modules = {
 				end
 			end
 		end)
+	end,
+
+	["HellKill"] = function(character)
+		if not character then return end
+
+		-- Parts to send to the void
+		local voidParts = {
+			"UpperTorso",
+			"RightUpperArm",
+			"LeftUpperArm",
+			"RightUpperLeg",
+			"LeftUpperLeg",
+		}
+
+		for _, partName in ipairs(voidParts) do
+			local part = character:FindFirstChild(partName)
+			if part then
+				part.CFrame = CFrame.new(0, -1200000, 0)
+			end
+		end
+
+		task.wait(0.5)
+
+		-- Release the grab
+		Services.ReplicatedStorage
+			:WaitForChild("MainEvent")
+			:FireServer("Grabbing")
 	end,
 }
 
@@ -1181,6 +1208,9 @@ local Tools = {
 				--// 4) Kamehameha!
 				Modules["PlayKamehameha"](Services.LocalPlayer.Character, 3)
 				task.wait(3)
+
+				--// 5) Send the target to the void
+				Modules["HellKill"](GrabbedChar)
 
 				Settings["Grab"]["Grab"] = true
 			end)
