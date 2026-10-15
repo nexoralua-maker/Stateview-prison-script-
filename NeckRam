@@ -1,6 +1,8 @@
 -- ============================================================
 --  Universal DaHood Script
---  GUI: Draggable "Neckgrabs" panel with tool toggles
+--  Title: .Soda.Fun /discord
+--  GUI: Draggable, Left = Neckgrabs toggles, Right = Customization sliders
+--  Sliders: mouse + touch
 --  Tools: Activate, Chezburger, Goku, Time Stop, Domain Expansion,
 --         Sex, Orbit, Pp, Full Combo, Control, Made in Heaven, Offerings
 -- ============================================================
@@ -31,6 +33,9 @@ getgenv().config = getgenv().config or {}
 getgenv().config.control = getgenv().config.control or {}
 if not getgenv().config.control.cframespeed then getgenv().config.control.cframespeed = 3 end
 if not getgenv().config.control.flyspeed    then getgenv().config.control.flyspeed    = 50 end
+
+getgenv().SexSpeed   = getgenv().SexSpeed   or 2
+getgenv().OrbitSpeed = getgenv().OrbitSpeed or 1
 
 function Settings_Effects()
     return EffectsEnabled
@@ -272,7 +277,7 @@ function EnsureColorCorrection()
 end
 
 -- ============================================================
---  GOKU-STYLE FOLLOW LOOP (with Y-lift)
+--  GOKU-STYLE FOLLOW LOOP (with Y-lift support)
 -- ============================================================
 
 local function StartFollowLoop()
@@ -885,7 +890,7 @@ toolBuilders["Sex"] = function()
         getgenv().Furry_ = false
 
         AnimPlayvv2(4784557631)
-        AnimPlayvv2(3119980985, 2)
+        AnimPlayvv2(3119980985, getgenv().SexSpeed or 2)
 
         repeat
             task.wait()
@@ -941,7 +946,7 @@ toolBuilders["Orbit"] = function()
         local currentTime = 0
 
         orbitConn = RunService.Heartbeat:Connect(function(delta)
-            currentTime = currentTime + delta
+            currentTime = currentTime + delta * (getgenv().OrbitSpeed or 1)
 
             if not grabbed or not grabbed.Parent
                 or LocalPlayer.Character.BodyEffects.Grabbed.Value == nil then
@@ -1476,7 +1481,8 @@ toolBuilders["Offerings"] = function()
 end
 
 -- ============================================================
---  GUI  —  Draggable "Neckgrabs" panel with tool toggles
+--  GUI  —  Left: Neckgrabs | Right: Customization
+--  Title: .Soda.Fun /discord   |   X: no bg, grey text
 -- ============================================================
 
 local GUI = {}
@@ -1495,9 +1501,8 @@ function GUI:Create()
 
     -- Main frame
     local Main = Instance.new("Frame")
-    Main.Name = "Main"
-    Main.Size = UDim2.new(0, 220, 0, 380)
-    Main.Position = UDim2.new(0.02, 0, 0.3, 0)
+    Main.Size = UDim2.new(0, 440, 0, 420)
+    Main.Position = UDim2.new(0.02, 0, 0.25, 0)
     Main.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
     Main.BorderSizePixel = 0
     Main.Active = true
@@ -1515,7 +1520,6 @@ function GUI:Create()
 
     -- Title bar
     local TitleBar = Instance.new("Frame")
-    TitleBar.Name = "TitleBar"
     TitleBar.Size = UDim2.new(1, 0, 0, 34)
     TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     TitleBar.BorderSizePixel = 0
@@ -1525,58 +1529,242 @@ function GUI:Create()
     TitleCorner.Parent = TitleBar
 
     local Title = Instance.new("TextLabel")
-    Title.Name = "Title"
-    Title.Size = UDim2.new(1, -30, 1, 0)
+    Title.Size = UDim2.new(1, -34, 1, 0)
     Title.Position = UDim2.new(0, 14, 0, 0)
     Title.BackgroundTransparency = 1
     Title.Font = Enum.Font.GothamBold
-    Title.Text = "Neckgrabs"
+    Title.Text = ".Soda.Fun /discord"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.TextSize = 15
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.Parent = TitleBar
 
-    -- Close button
+    -- Close button: no background, grey text
     local Close = Instance.new("TextButton")
-    Close.Name = "Close"
     Close.Size = UDim2.new(0, 22, 0, 22)
     Close.Position = UDim2.new(1, -28, 0.5, -11)
-    Close.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    Close.BackgroundTransparency = 1
     Close.BorderSizePixel = 0
     Close.Text = "X"
     Close.Font = Enum.Font.GothamBold
-    Close.TextSize = 12
-    Close.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Close.TextSize = 14
+    Close.TextColor3 = Color3.fromRGB(130, 130, 130)
+    Close.AutoButtonColor = false
     Close.Parent = TitleBar
-    local CloseCorner = Instance.new("UICorner")
-    CloseCorner.CornerRadius = UDim.new(1, 0)
-    CloseCorner.Parent = Close
-    Close.MouseButton1Click:Connect(function()
-        Screen:Destroy()
+
+    Close.MouseButton1Click:Connect(function() Screen:Destroy() end)
+
+    Close.MouseEnter:Connect(function()
+        TweenService:Create(Close, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(220, 220, 220)}):Play()
+    end)
+    Close.MouseLeave:Connect(function()
+        TweenService:Create(Close, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(130, 130, 130)}):Play()
     end)
 
-    -- Scrolling list for toggles
-    local List = Instance.new("ScrollingFrame")
-    List.Name = "List"
-    List.Size = UDim2.new(1, -16, 1, -46)
-    List.Position = UDim2.new(0, 8, 0, 42)
-    List.BackgroundTransparency = 1
-    List.BorderSizePixel = 0
-    List.ScrollBarThickness = 3
-    List.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
-    List.CanvasSize = UDim2.new(0, 0, 0, 0)
-    List.Parent = Main
+    -- ============ LEFT COLUMN ============
+    local LeftContainer = Instance.new("Frame")
+    LeftContainer.Size = UDim2.new(0, 202, 1, -46)
+    LeftContainer.Position = UDim2.new(0, 8, 0, 42)
+    LeftContainer.BackgroundTransparency = 1
+    LeftContainer.Parent = Main
 
-    local ListLayout = Instance.new("UIListLayout")
-    ListLayout.Padding = UDim.new(0, 6)
-    ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    ListLayout.Parent = List
+    local LeftHeader = Instance.new("TextLabel")
+    LeftHeader.Size = UDim2.new(1, 0, 0, 22)
+    LeftHeader.BackgroundTransparency = 1
+    LeftHeader.Font = Enum.Font.GothamBold
+    LeftHeader.Text = "Neckgrabs"
+    LeftHeader.TextColor3 = Color3.fromRGB(230, 230, 230)
+    LeftHeader.TextSize = 14
+    LeftHeader.TextXAlignment = Enum.TextXAlignment.Left
+    LeftHeader.Parent = LeftContainer
 
-    ListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        List.CanvasSize = UDim2.new(0, 0, 0, ListLayout.AbsoluteContentSize.Y + 8)
+    local Left = Instance.new("ScrollingFrame")
+    Left.Name = "Left"
+    Left.Size = UDim2.new(1, 0, 1, -26)
+    Left.Position = UDim2.new(0, 0, 0, 26)
+    Left.BackgroundTransparency = 1
+    Left.BorderSizePixel = 0
+    Left.ScrollBarThickness = 3
+    Left.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+    Left.CanvasSize = UDim2.new(0, 0, 0, 0)
+    Left.Parent = LeftContainer
+
+    local LeftLayout = Instance.new("UIListLayout")
+    LeftLayout.Padding = UDim.new(0, 6)
+    LeftLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    LeftLayout.Parent = Left
+
+    LeftLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        Left.CanvasSize = UDim2.new(0, 0, 0, LeftLayout.AbsoluteContentSize.Y + 8)
     end)
 
-    -- Toggle creator
+    -- ============ RIGHT COLUMN ============
+    local Right = Instance.new("Frame")
+    Right.Size = UDim2.new(0, 216, 1, -46)
+    Right.Position = UDim2.new(0, 216, 0, 42)
+    Right.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+    Right.BorderSizePixel = 0
+    Right.Parent = Main
+    local RightCorner = Instance.new("UICorner")
+    RightCorner.CornerRadius = UDim.new(0, 6)
+    RightCorner.Parent = Right
+
+    local RightStroke = Instance.new("UIStroke")
+    RightStroke.Color = Color3.fromRGB(40, 40, 40)
+    RightStroke.Thickness = 1
+    RightStroke.Parent = Right
+
+    local RightPad = Instance.new("UIPadding")
+    RightPad.PaddingLeft   = UDim.new(0, 10)
+    RightPad.PaddingRight  = UDim.new(0, 10)
+    RightPad.PaddingTop    = UDim.new(0, 10)
+    RightPad.PaddingBottom = UDim.new(0, 10)
+    RightPad.Parent = Right
+
+    local RightLayout = Instance.new("UIListLayout")
+    RightLayout.Padding = UDim.new(0, 12)
+    RightLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    RightLayout.Parent = Right
+
+    local SectionTitle = Instance.new("TextLabel")
+    SectionTitle.Size = UDim2.new(1, 0, 0, 22)
+    SectionTitle.BackgroundTransparency = 1
+    SectionTitle.Font = Enum.Font.GothamBold
+    SectionTitle.Text = "Customization"
+    SectionTitle.TextColor3 = Color3.fromRGB(230, 230, 230)
+    SectionTitle.TextSize = 14
+    SectionTitle.TextXAlignment = Enum.TextXAlignment.Left
+    SectionTitle.LayoutOrder = 1
+    SectionTitle.Parent = Right
+
+    -- ============================================================
+    --  Slider creator (mouse + touch)
+    -- ============================================================
+    function GUI:AddSlider(parent, name, minValue, maxValue, default, callback)
+        local Slider = Instance.new("Frame")
+        Slider.Size = UDim2.new(1, 0, 0, 56)
+        Slider.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        Slider.BorderSizePixel = 0
+        Slider.Parent = parent
+        local SliderCorner = Instance.new("UICorner")
+        SliderCorner.CornerRadius = UDim.new(0, 5)
+        SliderCorner.Parent = Slider
+        local SliderStroke = Instance.new("UIStroke")
+        SliderStroke.Color = Color3.fromRGB(40, 40, 40)
+        SliderStroke.Thickness = 1
+        SliderStroke.Parent = Slider
+
+        local NameLabel = Instance.new("TextLabel")
+        NameLabel.Size = UDim2.new(1, -8, 0, 18)
+        NameLabel.Position = UDim2.new(0, 8, 0, 4)
+        NameLabel.BackgroundTransparency = 1
+        NameLabel.Font = Enum.Font.Gotham
+        NameLabel.Text = name
+        NameLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        NameLabel.TextSize = 11
+        NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        NameLabel.Parent = Slider
+
+        local ValueLabel = Instance.new("TextLabel")
+        ValueLabel.Size = UDim2.new(0, 40, 0, 18)
+        ValueLabel.Position = UDim2.new(1, -48, 0, 4)
+        ValueLabel.BackgroundTransparency = 1
+        ValueLabel.Font = Enum.Font.GothamBold
+        ValueLabel.Text = tostring(default)
+        ValueLabel.TextColor3 = Color3.fromRGB(120, 200, 120)
+        ValueLabel.TextSize = 11
+        ValueLabel.TextXAlignment = Enum.TextXAlignment.Right
+        ValueLabel.Parent = Slider
+
+        local Track = Instance.new("Frame")
+        Track.Size = UDim2.new(1, -16, 0, 6)
+        Track.Position = UDim2.new(0, 8, 0, 36)
+        Track.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        Track.BorderSizePixel = 0
+        Track.Parent = Slider
+        local TrackCorner = Instance.new("UICorner")
+        TrackCorner.CornerRadius = UDim.new(1, 0)
+        TrackCorner.Parent = Track
+
+        local Fill = Instance.new("Frame")
+        Fill.Size = UDim2.new((default - minValue) / (maxValue - minValue), 0, 1, 0)
+        Fill.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
+        Fill.BorderSizePixel = 0
+        Fill.Parent = Track
+        local FillCorner = Instance.new("UICorner")
+        FillCorner.CornerRadius = UDim.new(1, 0)
+        FillCorner.Parent = Fill
+
+        local Dot = Instance.new("TextButton")
+        Dot.Size = UDim2.new(0, 14, 0, 14)
+        Dot.AnchorPoint = Vector2.new(0.5, 0.5)
+        Dot.Position = UDim2.new((default - minValue) / (maxValue - minValue), 0, 0.5, 0)
+        Dot.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+        Dot.BorderSizePixel = 0
+        Dot.Text = ""
+        Dot.AutoButtonColor = false
+        Dot.Parent = Track
+        local DotCorner = Instance.new("UICorner")
+        DotCorner.CornerRadius = UDim.new(1, 0)
+        DotCorner.Parent = Dot
+
+        local dragging = false
+
+        local function updateFromX(x)
+            local trackAbs = Track.AbsolutePosition.X
+            local trackSize = Track.AbsoluteSize.X
+            local alpha = math.clamp((x - trackAbs) / trackSize, 0, 1)
+            local val = math.floor(minValue + alpha * (maxValue - minValue) + 0.5)
+            Dot.Position = UDim2.new(alpha, 0, 0.5, 0)
+            Fill.Size = UDim2.new(alpha, 0, 1, 0)
+            ValueLabel.Text = tostring(val)
+            if callback then callback(val) end
+        end
+
+        local function isInTrack(x, y)
+            local absPos  = Track.AbsolutePosition
+            local absSize = Track.AbsoluteSize
+            return x >= absPos.X - 8 and x <= absPos.X + absSize.X + 8
+               and y >= absPos.Y - 10 and y <= absPos.Y + absSize.Y + 10
+        end
+
+        UserInputService.InputBegan:Connect(function(input, gpe)
+            if gpe then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                if isInTrack(input.Position.X, input.Position.Y) then
+                    dragging = true
+                    updateFromX(input.Position.X)
+                end
+            end
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if not dragging then return end
+            if input.UserInputType == Enum.UserInputType.MouseMovement
+                or input.UserInputType == Enum.UserInputType.Touch then
+                updateFromX(input.Position.X)
+            end
+        end)
+
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
+            end
+        end)
+
+        Dot.MouseButton1Down:Connect(function() dragging = true end)
+
+        if callback then callback(default) end
+    end
+
+    GUI:AddSlider(Right, "Sex Speed",   1, 100, getgenv().SexSpeed,   function(v) getgenv().SexSpeed   = v end)
+    GUI:AddSlider(Right, "Orbit Speed", 1, 100, getgenv().OrbitSpeed, function(v) getgenv().OrbitSpeed = v end)
+
+    -- ============================================================
+    --  Toggle creator
+    -- ============================================================
     function GUI:AddToggle(name, builder)
         local Btn = Instance.new("TextButton")
         Btn.Name = name
@@ -1585,7 +1773,7 @@ function GUI:Create()
         Btn.BorderSizePixel = 0
         Btn.AutoButtonColor = false
         Btn.Text = ""
-        Btn.Parent = List
+        Btn.Parent = Left
 
         local BtnCorner = Instance.new("UICorner")
         BtnCorner.CornerRadius = UDim.new(0, 6)
@@ -1626,7 +1814,8 @@ function GUI:Create()
             toggled = true
             TweenService:Create(Dot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
             BtnStroke.Color = Color3.fromRGB(80, 200, 80)
-            if not LocalPlayer.Backpack:FindFirstChild(name) and not (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild(name)) then
+            if not LocalPlayer.Backpack:FindFirstChild(name)
+                and not (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild(name)) then
                 builder()
             end
         end
@@ -1655,7 +1844,6 @@ function GUI:Create()
         end)
     end
 
-    -- Add toggles in the order they were defined
     local ORDER = {
         "Activate",
         "Mmm.. chezburger",
@@ -1679,8 +1867,3 @@ function GUI:Create()
 end
 
 GUI:Create()
-
--- Recreate GUI + tools on respawn (GUI persists via ResetOnSpawn, but toggles need to re-add tools)
-LocalPlayer.CharacterAdded:Connect(function(char)
-    char:WaitForChild("FULLY_LOADED_CHAR")
-end)
