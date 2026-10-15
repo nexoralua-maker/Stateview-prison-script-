@@ -1,8 +1,8 @@
 -- ============================================================
 --  Universal DaHood Script
+--  GUI: Draggable "Neckgrabs" panel with tool toggles
 --  Tools: Activate, Chezburger, Goku, Time Stop, Domain Expansion,
 --         Sex, Orbit, Pp, Full Combo, Control, Made in Heaven, Offerings
---  Chat: auto-detects TextChatService / legacy
 -- ============================================================
 
 local Players           = game:GetService("Players")
@@ -12,6 +12,8 @@ local RunService        = game:GetService("RunService")
 local TweenService      = game:GetService("TweenService")
 local Lighting          = game:GetService("Lighting")
 local TextChatService   = game:GetService("TextChatService")
+local UserInputService  = game:GetService("UserInputService")
+local CoreGui           = game:GetService("CoreGui")
 local LocalPlayer       = Players.LocalPlayer
 local LP                = LocalPlayer
 
@@ -46,9 +48,7 @@ end
 
 function AnimPlayvv2(id, speed, timePos, weight)
     for _, v in pairs(LocalPlayer.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
-        if v.Animation.AnimationId:match("rbxassetid://" .. id) then
-            v:Stop()
-        end
+        if v.Animation.AnimationId:match("rbxassetid://" .. id) then v:Stop() end
     end
     local Animation = Instance.new("Animation", workspace)
     Animation.AnimationId = "rbxassetid://" .. id
@@ -61,9 +61,7 @@ end
 
 function PlayTrack(id, speed, weight)
     for _, v in pairs(LocalPlayer.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
-        if v.Animation.AnimationId:match("rbxassetid://" .. id) then
-            v:Stop()
-        end
+        if v.Animation.AnimationId:match("rbxassetid://" .. id) then v:Stop() end
     end
     local Animation = Instance.new("Animation", workspace)
     Animation.AnimationId = "rbxassetid://" .. id
@@ -274,7 +272,7 @@ function EnsureColorCorrection()
 end
 
 -- ============================================================
---  GOKU-STYLE FOLLOW LOOP (with optional Y-lift)
+--  GOKU-STYLE FOLLOW LOOP (with Y-lift)
 -- ============================================================
 
 local function StartFollowLoop()
@@ -559,7 +557,6 @@ RunService.RenderStepped:Connect(function(dt)
     if _G.FlyClone == true and u20 and u20:FindFirstChild("Humanoid") and u20:FindFirstChild("HumanoidRootPart") then
         local MoveDirection = u20.Humanoid.MoveDirection
         local HumanoidRootPart = u20.HumanoidRootPart
-        local UserInputService = game:GetService("UserInputService")
         local flyspeed = getgenv().config.control.flyspeed
         local v165 = flyspeed * 6
         local v166 = flyspeed * 2
@@ -587,10 +584,12 @@ local function ControlAlign222(p46, p47, p48)
 end
 
 -- ============================================================
---  TOOL: ACTIVATE
+--  TOOL BUILDERS
 -- ============================================================
 
-function CreateActivateTool()
+local toolBuilders = {}
+
+toolBuilders["Activate"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Activate") then
         LocalPlayer.Backpack:FindFirstChild("Activate"):Destroy()
     end
@@ -607,11 +606,7 @@ function CreateActivateTool()
     return Tool
 end
 
--- ============================================================
---  TOOL: CHEZBURGER
--- ============================================================
-
-function CreateChezburgerTool()
+toolBuilders["Mmm.. chezburger"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Mmm.. chezburger") then
         LocalPlayer.Backpack:FindFirstChild("Mmm.. chezburger"):Destroy()
     end
@@ -644,11 +639,7 @@ function CreateChezburgerTool()
     return Tool
 end
 
--- ============================================================
---  TOOL: GOKU
--- ============================================================
-
-function CreateGokuTool()
+toolBuilders["Goku"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Goku") then
         LocalPlayer.Backpack:FindFirstChild("Goku"):Destroy()
     end
@@ -684,11 +675,7 @@ function CreateGokuTool()
     return Tool
 end
 
--- ============================================================
---  TOOL: TIME STOP
--- ============================================================
-
-function CreateTimeStopTool()
+toolBuilders["Time Stop"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Time Stop") then
         LocalPlayer.Backpack:FindFirstChild("Time Stop"):Destroy()
     end
@@ -800,11 +787,7 @@ function CreateTimeStopTool()
     return Tool
 end
 
--- ============================================================
---  TOOL: DOMAIN EXPANSION
--- ============================================================
-
-function CreateDomainExpansionTool()
+toolBuilders["Domain Expansion"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Domain Expansion") then
         LocalPlayer.Backpack:FindFirstChild("Domain Expansion"):Destroy()
     end
@@ -883,11 +866,7 @@ function CreateDomainExpansionTool()
     return Tool
 end
 
--- ============================================================
---  TOOL: SEX
--- ============================================================
-
-function CreateSexTool()
+toolBuilders["Sex"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Sex") then
         LocalPlayer.Backpack:FindFirstChild("Sex"):Destroy()
     end
@@ -934,11 +913,7 @@ function CreateSexTool()
     return Tool
 end
 
--- ============================================================
---  TOOL: ORBIT
--- ============================================================
-
-function CreateOrbitTool()
+toolBuilders["Orbit"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Orbit") then
         LocalPlayer.Backpack:FindFirstChild("Orbit"):Destroy()
     end
@@ -1040,11 +1015,7 @@ function CreateOrbitTool()
     return Tool
 end
 
--- ============================================================
---  TOOL: PP
--- ============================================================
-
-function CreatePpTool()
+toolBuilders["Pp"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Pp") then
         LocalPlayer.Backpack:FindFirstChild("Pp"):Destroy()
     end
@@ -1128,11 +1099,7 @@ function CreatePpTool()
     return Tool
 end
 
--- ============================================================
---  TOOL: FULL COMBO
--- ============================================================
-
-function CreateFullComboTool()
+toolBuilders["Full Combo"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Full Combo") then
         LocalPlayer.Backpack:FindFirstChild("Full Combo"):Destroy()
     end
@@ -1273,11 +1240,7 @@ function CreateFullComboTool()
     return Tool
 end
 
--- ============================================================
---  TOOL: CONTROL
--- ============================================================
-
-function CreateControlTool()
+toolBuilders["Control"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Control") then
         LocalPlayer.Backpack:FindFirstChild("Control"):Destroy()
     end
@@ -1351,11 +1314,7 @@ function CreateControlTool()
     return Tool22
 end
 
--- ============================================================
---  TOOL: MADE IN HEAVEN  (with lift)
--- ============================================================
-
-function CreateMadeInHeavenTool()
+toolBuilders["Made in Heaven"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Made in Heaven") then
         LocalPlayer.Backpack:FindFirstChild("Made in Heaven"):Destroy()
     end
@@ -1429,11 +1388,7 @@ function CreateMadeInHeavenTool()
     return Tool
 end
 
--- ============================================================
---  TOOL: OFFERINGS  (legs first, then arms, 1s apart)
--- ============================================================
-
-function CreateOfferingsTool()
+toolBuilders["Offerings"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Offerings") then
         LocalPlayer.Backpack:FindFirstChild("Offerings"):Destroy()
     end
@@ -1479,42 +1434,30 @@ function CreateOfferingsTool()
         task.wait(1.7)
 
         if victim and victim.Parent then
-            -- 1) Rip LEFT leg
-            local leftLeg = victim:FindFirstChild("LeftUpperLeg")
-            if leftLeg then
-                leftLeg.Position = Vector3.new(0, -999, 0)
-                task.wait(0.07)
-                leftLeg.Velocity = Character.HumanoidRootPart.CFrame.RightVector * -400 + Vector3.new(0, 170, 0)
-            end
-            task.wait(1)
-
-            -- 2) Rip RIGHT leg
-            local rightLeg = victim:FindFirstChild("RightUpperLeg")
-            if rightLeg then
-                rightLeg.Position = Vector3.new(0, -999, 0)
-                task.wait(0.07)
-                rightLeg.Velocity = Character.HumanoidRootPart.CFrame.RightVector * 400 + Vector3.new(0, 170, 0)
-            end
-            task.wait(1)
-
-            -- 3) Rip LEFT arm
-            local leftArm = victim:FindFirstChild("LeftUpperArm")
+            local leftArm = victim:FindFirstChild("LeftUpperArm") or victim:FindFirstChild("Left Arm")
             if leftArm then
                 leftArm.Position = Vector3.new(0, -999, 0)
                 task.wait(0.07)
                 leftArm.Velocity = Character.HumanoidRootPart.CFrame.RightVector * -400 + Vector3.new(0, 170, 0)
             end
-            task.wait(1)
 
-            -- 4) Rip RIGHT arm
-            local rightArm = victim:FindFirstChild("RightUpperArm")
+            local rightArm = victim:FindFirstChild("RightUpperArm") or victim:FindFirstChild("Right Arm")
             if rightArm then
                 rightArm.Position = Vector3.new(0, -999, 0)
                 task.wait(0.07)
                 rightArm.Velocity = Character.HumanoidRootPart.CFrame.RightVector * 400 + Vector3.new(0, 170, 0)
             end
 
-            -- Kill
+            if victim:FindFirstChild("LowerTorso") then
+                victim.LowerTorso.Position = Vector3.new(0, -999, 0)
+            end
+
+            task.wait(0.15)
+            local upperTorso = victim:FindFirstChild("UpperTorso")
+            if upperTorso then
+                upperTorso.Velocity = Character.HumanoidRootPart.CFrame.LookVector * -180 + Vector3.new(0, 220, 0)
+            end
+
             if victim:FindFirstChildOfClass("Humanoid") then
                 victim:FindFirstChildOfClass("Humanoid").Health = 0
             end
@@ -1533,27 +1476,211 @@ function CreateOfferingsTool()
 end
 
 -- ============================================================
---  INIT
+--  GUI  —  Draggable "Neckgrabs" panel with tool toggles
 -- ============================================================
 
-local function buildAll()
-    CreateActivateTool()
-    CreateChezburgerTool()
-    CreateGokuTool()
-    CreateTimeStopTool()
-    CreateDomainExpansionTool()
-    CreateSexTool()
-    CreateOrbitTool()
-    CreatePpTool()
-    CreateFullComboTool()
-    CreateControlTool()
-    CreateMadeInHeavenTool()
-    CreateOfferingsTool()
+local GUI = {}
+
+function GUI:Create()
+    if GUI.Screen then GUI.Screen:Destroy() end
+
+    local Screen = Instance.new("ScreenGui")
+    Screen.Name = "NeckgrabsUI"
+    Screen.ResetOnSpawn = false
+    Screen.IgnoreGuiInset = true
+    Screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    pcall(function() Screen.Parent = CoreGui end)
+    if not Screen.Parent then Screen.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+    GUI.Screen = Screen
+
+    -- Main frame
+    local Main = Instance.new("Frame")
+    Main.Name = "Main"
+    Main.Size = UDim2.new(0, 220, 0, 380)
+    Main.Position = UDim2.new(0.02, 0, 0.3, 0)
+    Main.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+    Main.BorderSizePixel = 0
+    Main.Active = true
+    Main.Draggable = true
+    Main.Parent = Screen
+
+    local MainCorner = Instance.new("UICorner")
+    MainCorner.CornerRadius = UDim.new(0, 8)
+    MainCorner.Parent = Main
+
+    local MainStroke = Instance.new("UIStroke")
+    MainStroke.Color = Color3.fromRGB(40, 40, 40)
+    MainStroke.Thickness = 1.2
+    MainStroke.Parent = Main
+
+    -- Title bar
+    local TitleBar = Instance.new("Frame")
+    TitleBar.Name = "TitleBar"
+    TitleBar.Size = UDim2.new(1, 0, 0, 34)
+    TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    TitleBar.BorderSizePixel = 0
+    TitleBar.Parent = Main
+    local TitleCorner = Instance.new("UICorner")
+    TitleCorner.CornerRadius = UDim.new(0, 8)
+    TitleCorner.Parent = TitleBar
+
+    local Title = Instance.new("TextLabel")
+    Title.Name = "Title"
+    Title.Size = UDim2.new(1, -30, 1, 0)
+    Title.Position = UDim2.new(0, 14, 0, 0)
+    Title.BackgroundTransparency = 1
+    Title.Font = Enum.Font.GothamBold
+    Title.Text = "Neckgrabs"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.TextSize = 15
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = TitleBar
+
+    -- Close button
+    local Close = Instance.new("TextButton")
+    Close.Name = "Close"
+    Close.Size = UDim2.new(0, 22, 0, 22)
+    Close.Position = UDim2.new(1, -28, 0.5, -11)
+    Close.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    Close.BorderSizePixel = 0
+    Close.Text = "X"
+    Close.Font = Enum.Font.GothamBold
+    Close.TextSize = 12
+    Close.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Close.Parent = TitleBar
+    local CloseCorner = Instance.new("UICorner")
+    CloseCorner.CornerRadius = UDim.new(1, 0)
+    CloseCorner.Parent = Close
+    Close.MouseButton1Click:Connect(function()
+        Screen:Destroy()
+    end)
+
+    -- Scrolling list for toggles
+    local List = Instance.new("ScrollingFrame")
+    List.Name = "List"
+    List.Size = UDim2.new(1, -16, 1, -46)
+    List.Position = UDim2.new(0, 8, 0, 42)
+    List.BackgroundTransparency = 1
+    List.BorderSizePixel = 0
+    List.ScrollBarThickness = 3
+    List.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+    List.CanvasSize = UDim2.new(0, 0, 0, 0)
+    List.Parent = Main
+
+    local ListLayout = Instance.new("UIListLayout")
+    ListLayout.Padding = UDim.new(0, 6)
+    ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    ListLayout.Parent = List
+
+    ListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        List.CanvasSize = UDim2.new(0, 0, 0, ListLayout.AbsoluteContentSize.Y + 8)
+    end)
+
+    -- Toggle creator
+    function GUI:AddToggle(name, builder)
+        local Btn = Instance.new("TextButton")
+        Btn.Name = name
+        Btn.Size = UDim2.new(1, 0, 0, 34)
+        Btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        Btn.BorderSizePixel = 0
+        Btn.AutoButtonColor = false
+        Btn.Text = ""
+        Btn.Parent = List
+
+        local BtnCorner = Instance.new("UICorner")
+        BtnCorner.CornerRadius = UDim.new(0, 6)
+        BtnCorner.Parent = Btn
+
+        local BtnStroke = Instance.new("UIStroke")
+        BtnStroke.Color = Color3.fromRGB(40, 40, 40)
+        BtnStroke.Thickness = 1
+        BtnStroke.Parent = Btn
+
+        local Label = Instance.new("TextLabel")
+        Label.Size = UDim2.new(1, -50, 1, 0)
+        Label.Position = UDim2.new(0, 12, 0, 0)
+        Label.BackgroundTransparency = 1
+        Label.Font = Enum.Font.Gotham
+        Label.Text = name
+        Label.TextColor3 = Color3.fromRGB(200, 200, 200)
+        Label.TextSize = 13
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.Parent = Btn
+
+        local Dot = Instance.new("TextButton")
+        Dot.Size = UDim2.new(0, 14, 0, 14)
+        Dot.Position = UDim2.new(1, -26, 0.5, -7)
+        Dot.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        Dot.BorderSizePixel = 0
+        Dot.Text = ""
+        Dot.AutoButtonColor = false
+        Dot.Parent = Btn
+
+        local DotCorner = Instance.new("UICorner")
+        DotCorner.CornerRadius = UDim.new(1, 0)
+        DotCorner.Parent = Dot
+
+        local toggled = false
+
+        local function on()
+            toggled = true
+            TweenService:Create(Dot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
+            BtnStroke.Color = Color3.fromRGB(80, 200, 80)
+            if not LocalPlayer.Backpack:FindFirstChild(name) and not (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild(name)) then
+                builder()
+            end
+        end
+
+        local function off()
+            toggled = false
+            TweenService:Create(Dot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+            BtnStroke.Color = Color3.fromRGB(40, 40, 40)
+            if LocalPlayer.Backpack:FindFirstChild(name) then
+                LocalPlayer.Backpack:FindFirstChild(name):Destroy()
+            end
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild(name) then
+                LocalPlayer.Character:FindFirstChild(name):Destroy()
+            end
+        end
+
+        Btn.MouseButton1Click:Connect(function()
+            if toggled then off() else on() end
+        end)
+
+        Btn.MouseEnter:Connect(function()
+            TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
+        end)
+        Btn.MouseLeave:Connect(function()
+            TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(25, 25, 25)}):Play()
+        end)
+    end
+
+    -- Add toggles in the order they were defined
+    local ORDER = {
+        "Activate",
+        "Mmm.. chezburger",
+        "Goku",
+        "Time Stop",
+        "Domain Expansion",
+        "Sex",
+        "Orbit",
+        "Pp",
+        "Full Combo",
+        "Control",
+        "Made in Heaven",
+        "Offerings",
+    }
+
+    for _, toolName in ipairs(ORDER) do
+        if toolBuilders[toolName] then
+            GUI:AddToggle(toolName, toolBuilders[toolName])
+        end
+    end
 end
 
-buildAll()
+GUI:Create()
 
+-- Recreate GUI + tools on respawn (GUI persists via ResetOnSpawn, but toggles need to re-add tools)
 LocalPlayer.CharacterAdded:Connect(function(char)
     char:WaitForChild("FULLY_LOADED_CHAR")
-    buildAll()
 end)
