@@ -1,6 +1,7 @@
 -- ============================================================
 --  Universal DaHood Script
---  Tools: Activate, Chezburger, Goku, Time Stop, Domain Expansion, Sex, Full Kick
+--  Tools: Activate, Chezburger, Goku, Time Stop, Domain Expansion,
+--         Sex, Orbit, Pp, Full Combo, Control, Made in Heaven, Offerings
 --  Chat: auto-detects TextChatService / legacy
 -- ============================================================
 
@@ -18,8 +19,16 @@ local LP                = LocalPlayer
 local GrabbedValue     = nil
 local RopeConstraint   = nil
 local u19              = false
+local u20              = nil
+local t4               = {}
+local stopAlign        = false
 local timeStopActive   = false
 local EffectsEnabled   = true
+
+getgenv().config = getgenv().config or {}
+getgenv().config.control = getgenv().config.control or {}
+if not getgenv().config.control.cframespeed then getgenv().config.control.cframespeed = 3 end
+if not getgenv().config.control.flyspeed    then getgenv().config.control.flyspeed    = 50 end
 
 function Settings_Effects()
     return EffectsEnabled
@@ -265,23 +274,24 @@ function EnsureColorCorrection()
 end
 
 -- ============================================================
---  GOKU-STYLE FOLLOW LOOP
+--  GOKU-STYLE FOLLOW LOOP (with optional Y-lift)
 -- ============================================================
 
 local function StartFollowLoop()
-    local state = { activeLoop = nil, targetForward = nil }
+    local state = { activeLoop = nil, targetForward = nil, targetLift = 0 }
 
     function state:start()
         if self.activeLoop then self.activeLoop:Disconnect() end
         self.activeLoop = RunService.Heartbeat:Connect(function()
             if not self.targetForward then return end
             Align(8000, 800, "UpperTorso", "HumanoidRootPart",
-                CFrame.new(0, 0, self.targetForward),
+                CFrame.new(0, self.targetLift, self.targetForward),
                 CFrame.Angles(0, math.pi, 0))
         end)
     end
 
     function state:setTarget(z) self.targetForward = z end
+    function state:setLift(y) self.targetLift = y or 0 end
 
     function state:stop()
         if self.activeLoop then self.activeLoop:Disconnect(); self.activeLoop = nil end
@@ -291,7 +301,7 @@ local function StartFollowLoop()
 end
 
 -- ============================================================
---  FINISHERS
+--  FINISHER
 -- ============================================================
 
 local function HellKill(character)
@@ -308,22 +318,272 @@ local function HellKill(character)
     ReplicatedStorage:WaitForChild("MainEvent"):FireServer("Grabbing")
 end
 
--- Rips ONLY the arms and legs of the victim (Head, Torso, HRP stay)
-local function RipAllLimbs(character)
-    if not character then return end
-    for _, name in ipairs({
-        -- Arms
-        "LeftUpperArm", "LeftLowerArm", "LeftHand",
-        "RightUpperArm", "RightLowerArm", "RightHand",
-        -- Legs
-        "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
-        "RightUpperLeg", "RightLowerLeg", "RightFoot"
-    }) do
-        local part = character:FindFirstChild(name)
-        if part then part.CFrame = CFrame.new(0, -1200000, 0) end
+-- ============================================================
+--  CONTROL HELPERS
+-- ============================================================
+
+local t5 = {2788309317, 2788309982, 2788311138, 2788308661}
+
+local function u23(p1, p2, p3)
+    p1.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+    p1.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+    p1.Velocity = Vector3.new(0, 0, 0)
+    p1.CFrame = p2.CFrame * (p3 or CFrame.new())
+    p1.CanCollide = false
+    p2.CanCollide = false
+end
+
+local function u25(p4, p5)
+    if type(p4) == "table" and p5 then
+        p4[#p4 + 1] = p5
     end
-    task.wait(0.3)
-    ReplicatedStorage:WaitForChild("MainEvent"):FireServer("Grabbing")
+end
+
+local function u26(p6, p7)
+    if not RunService[p6] then return end
+    local connection = nil
+    connection = RunService[p6]:Connect(function()
+        local ok, result = pcall(p7)
+        if not ok then
+            connection:Disconnect()
+            warn(result)
+        end
+    end)
+    return connection
+end
+
+local function CloneStopanim(p21, p22)
+    for _, v in pairs(u20.Humanoid:GetPlayingAnimationTracks()) do
+        if v.Animation.AnimationId:match("rbxassetid://" .. p21) then
+            if not tonumber(p22) then v:Stop() else v:Stop(p22) end
+        end
+    end
+end
+
+local function u29(p23)
+    for _, v in pairs(LocalPlayer.Character.Humanoid:GetPlayingAnimationTracks()) do
+        if v.Animation.AnimationId:match("rbxassetid://" .. p23) then
+            v:Stop()
+            if not u20:FindFirstChild(p23) then
+                local Animation = Instance.new("Animation", u20)
+                Animation.AnimationId = "rbxassetid://" .. p23
+                Animation.Name = "_____GYAT"
+                local playing = u20.Humanoid:LoadAnimation(Animation)
+                playing:Play()
+            end
+        end
+    end
+    if u20.Humanoid.MoveDirection.magnitude > 0 then
+        CloneStopanim(p23)
+        for _, child in pairs(u20:GetChildren()) do
+            if child.Name == "_____GYAT" then child:Destroy() end
+        end
+    end
+end
+
+local function u30(p24, p25)
+    for _, v in pairs(u20.Humanoid:GetPlayingAnimationTracks()) do
+        if v.Animation.AnimationId:match("rbxassetid://" .. p24) then
+            v:Stop()
+            return
+        end
+    end
+    local Animation = Instance.new("Animation", workspace)
+    Animation.AnimationId = "rbxassetid://" .. p24
+    local playing = u20.Humanoid:LoadAnimation(Animation)
+    playing:Play()
+    if not tonumber(p25) then playing:AdjustSpeed(1) else playing:AdjustSpeed(p25) end
+    Animation:Destroy()
+end
+
+local function u31(p26, p27)
+    for _, v in pairs(u20.Humanoid:GetPlayingAnimationTracks()) do
+        if v.Animation.AnimationId:match("rbxassetid://" .. p26) then
+            v:Stop()
+        end
+    end
+    local Animation = Instance.new("Animation", workspace)
+    Animation.AnimationId = "rbxassetid://" .. p26
+    local playing = u20.Humanoid:LoadAnimation(Animation)
+    playing:Play()
+    if not tonumber(p27) then playing:AdjustSpeed(1) else playing:AdjustSpeed(p27) end
+    Animation:Destroy()
+end
+
+local function u32(p28)
+    p28.Archivable = true
+    local clone = p28:Clone()
+    clone.HumanoidRootPart.Anchored = false
+    clone.Humanoid.MaxHealth = 9000000000
+    clone.Humanoid.Health = 9000000000
+    clone.RagdollConstraints:Destroy()
+    clone.BodyEffects:Destroy()
+    clone:WaitForChild("GRABBING_CONSTRAINT"):Destroy()
+
+    for _, descendant in pairs(clone:GetDescendants()) do
+        if descendant:IsA("BasePart") and descendant.Name ~= "Head" and descendant.Name ~= "HumanoidRootPart" and descendant.Name ~= "UpperTorso" and descendant.Name ~= "LowerTorso" and descendant.Name ~= "LeftUpperArm" and descendant.Name ~= "RightUpperArm" and descendant.Name ~= "LeftLowerArm" and descendant.Name ~= "RightLowerArm" and descendant.Name ~= "LeftHand" and descendant.Name ~= "RightHand" and descendant.Name ~= "LeftUpperLeg" and descendant.Name ~= "RightUpperLeg" and descendant.Name ~= "LeftLowerLeg" and descendant.Name ~= "RightLowerLeg" and descendant.Name ~= "LeftFoot" and descendant.Name ~= "RightFoot" then
+            descendant.Massless = false
+            descendant:Destroy()
+        end
+        if descendant:IsA("BasePart") or descendant:IsA("MeshPart") or descendant:IsA("Part") then
+            descendant.CustomPhysicalProperties = PhysicalProperties.new(100, 2, 0.5, 100, 1)
+            descendant.Transparency = 1
+            descendant.CanCollide = false
+            if descendant:FindFirstChildWhichIsA("BodyGyro") and descendant:FindFirstChildWhichIsA("BodyPosition") then
+                descendant:Destroy()
+            end
+        end
+        if descendant:IsA("Decal") then descendant.Transparency = 1 end
+        if descendant:IsA("ForceField") then descendant:Destroy() end
+        if descendant:IsA("Motor6D") then descendant:Destroy() end
+    end
+
+    clone.HumanoidRootPart.Transparency = 1
+    clone.Parent = LocalPlayer.Character
+    clone.Humanoid:ChangeState("GettingUp")
+    clone.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame
+    p28.Archivable = false
+    p28.LeftHand:FindFirstChildOfClass("Motor6D").Enabled = false
+    p28.RightHand:FindFirstChildOfClass("Motor6D").Enabled = false
+    p28.LeftFoot:FindFirstChildOfClass("Motor6D").Enabled = false
+    p28.RightFoot:FindFirstChildOfClass("Motor6D").Enabled = false
+    return clone
+end
+
+local function u33()
+    local u146 = nil
+
+    u25(t4, LocalPlayer:GetMouse().KeyDown:Connect(function(p31)
+        if p31 == "v" then
+            u30(7024352298)
+            repeat wait() until LocalPlayer.Character:WaitForChild("Humanoid").MoveDirection.magnitude > 0
+            CloneStopanim(7024352298)
+        elseif p31 == "q" then
+            u30(10370362157, 1.1)
+            repeat wait() until LocalPlayer.Character:WaitForChild("Humanoid").MoveDirection.magnitude > 0
+            CloneStopanim(10370362157)
+        elseif p31 == "t" then
+            u30(10714068222)
+            repeat wait() until LocalPlayer.Character:WaitForChild("Humanoid").MoveDirection.magnitude > 0
+            CloneStopanim(10714068222)
+        elseif p31 == "y" then
+            u30(507770818)
+            repeat wait() until LocalPlayer.Character:WaitForChild("Humanoid").MoveDirection.magnitude > 0
+            CloneStopanim(507770818)
+        elseif p31 == "u" then
+            u30(10714340543, 1.3)
+            repeat wait() until LocalPlayer.Character:WaitForChild("Humanoid").MoveDirection.magnitude > 0
+            CloneStopanim(10714340543)
+        elseif p31 == "j" then
+            u30(14548619594)
+            repeat wait() until LocalPlayer.Character:WaitForChild("Humanoid").MoveDirection.magnitude > 0
+            CloneStopanim(14548619594)
+        elseif p31 == "e" then
+            u30(2816431506, 1.5)
+        elseif p31 == "r" then
+            u30(11444443576, 1.1)
+            repeat wait() until LocalPlayer.Character:WaitForChild("Humanoid").MoveDirection.magnitude > 0
+            CloneStopanim(11444443576)
+        elseif p31 == "b" then
+            u30(10214314957)
+            repeat wait() until LocalPlayer.Character:WaitForChild("Humanoid").MoveDirection.magnitude > 0
+            CloneStopanim(10214314957)
+        elseif p31 == "2" then
+            u31(3152394906)
+        elseif p31 == "f" then
+            u31(2788354405)
+        elseif p31 == "0" then
+            u20.Humanoid.WalkSpeed = 24
+        elseif p31 == "c" then
+            _G.FlyClone = not _G.FlyClone
+        elseif p31 == "x" then
+            u146 = not u146
+            if u146 == true then
+                u30(3189777795)
+                repeat
+                    task.wait()
+                    u20.HumanoidRootPart.CFrame = u20.HumanoidRootPart.CFrame + u20.Humanoid.MoveDirection * getgenv().config.control.cframespeed
+                until u146 == false
+            end
+        end
+    end))
+
+    task.spawn(function()
+        while true do
+            task.wait(0.2)
+            if LocalPlayer and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("BodyEffects") then
+                local Grabbed = LocalPlayer.Character.BodyEffects:FindFirstChild("Grabbed")
+                if Grabbed and Grabbed.Value == nil then
+                    _G.FlyClone = false
+                end
+            end
+        end
+    end)
+
+    u25(t4, LocalPlayer:GetMouse().KeyUp:Connect(function(p32)
+        if p32 == "0" then
+            u20.Humanoid.WalkSpeed = 16
+        elseif p32 == "f" then
+            CloneStopanim(2788354405)
+        elseif p32 == "2" then
+            CloneStopanim(3152394906)
+        end
+    end))
+
+    if LocalPlayer.Backpack:FindFirstChild("Combat") then
+        u25(t4, LocalPlayer.Backpack.Combat.Activated:Connect(function(_)
+            u31(t5[math.random(1, #t5)], 1.3)
+        end))
+    end
+
+    repeat task.wait() until LocalPlayer.Character.BodyEffects.Grabbed.Value == nil or u19 == true
+
+    LocalPlayer.Character.HumanoidRootPart.CFrame = u20.HumanoidRootPart.CFrame
+    ZeroVelocity___(LocalPlayer.Character.HumanoidRootPart)
+    workspace.CurrentCamera.CameraSubject = LocalPlayer.Character
+    u20:Destroy()
+
+    for _, descendant in pairs(GrabbedValue:GetDescendants()) do
+        if descendant:IsA("BodyPosition") then descendant:Destroy() end
+    end
+    for _, v in pairs(t4) do v:Disconnect() end
+
+    GrabbedValue.LeftHand:FindFirstChildOfClass("Motor6D").Enabled = true
+    GrabbedValue.RightHand:FindFirstChildOfClass("Motor6D").Enabled = true
+    GrabbedValue.LeftFoot:FindFirstChildOfClass("Motor6D").Enabled = true
+    GrabbedValue.RightFoot:FindFirstChildOfClass("Motor6D").Enabled = true
+end
+
+_G.FlyCloneSpeed = getgenv().config.control.flyspeed
+RunService.RenderStepped:Connect(function(dt)
+    if _G.FlyClone == true and u20 and u20:FindFirstChild("Humanoid") and u20:FindFirstChild("HumanoidRootPart") then
+        local MoveDirection = u20.Humanoid.MoveDirection
+        local HumanoidRootPart = u20.HumanoidRootPart
+        local UserInputService = game:GetService("UserInputService")
+        local flyspeed = getgenv().config.control.flyspeed
+        local v165 = flyspeed * 6
+        local v166 = flyspeed * 2
+        local zero = Vector3.zero
+        if not UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                zero = Vector3.new(0, -1, 0)
+            end
+        else
+            zero = Vector3.new(0, 1, 0)
+        end
+        HumanoidRootPart.CFrame = HumanoidRootPart.CFrame + MoveDirection * dt * v165 + zero * dt * v166
+        HumanoidRootPart.Velocity = Vector3.new(HumanoidRootPart.Velocity.X, 0, HumanoidRootPart.Velocity.Z)
+        return
+    end
+end)
+
+local function ControlAlign222(p46, p47, p48)
+    p46.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+    p46.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+    p46.Velocity = Vector3.new(0, 0, 0)
+    p46.CFrame = p47.CFrame * (p48 or CFrame.new())
+    p46.CanCollide = false
+    p47.CanCollide = false
 end
 
 -- ============================================================
@@ -675,97 +935,598 @@ function CreateSexTool()
 end
 
 -- ============================================================
---  TOOL: FULL KICK  (follow during animation)
+--  TOOL: ORBIT
 -- ============================================================
 
-function CreateFullKickTool()
-    if LocalPlayer.Backpack:FindFirstChild("Full Kick") then
-        LocalPlayer.Backpack:FindFirstChild("Full Kick"):Destroy()
+function CreateOrbitTool()
+    if LocalPlayer.Backpack:FindFirstChild("Orbit") then
+        LocalPlayer.Backpack:FindFirstChild("Orbit"):Destroy()
     end
     task.wait(0.1)
 
     local Tool = Instance.new("Tool")
     Tool.RequiresHandle = false
-    Tool.Name = "Full Kick"
+    Tool.Name = "Orbit"
     Tool.Parent = LocalPlayer.Backpack
 
-    local follow = StartFollowLoop()
+    local orbitConn = nil
 
     Tool.Activated:Connect(function()
         local grabbed = LocalPlayer.Character.BodyEffects.Grabbed.Value
         if not grabbed then return end
 
-        local success, err = pcall(function()
-            timeStopActive = true
-            task.wait(0.1)
+        if orbitConn then orbitConn:Disconnect(); orbitConn = nil end
 
-            AnimStopv2(3135389157)
-            AnimStopv2(11075367458)
+        timeStopActive = true
+        task.wait(0.1)
 
-            -- STEP 1 — forward position → 3
-            follow:start()
-            follow:setTarget(-3)
-            task.wait(0.4)
+        AnimStopv2(3135389157)
+        AnimStopv2(11075367458)
 
-            -- STEP 2 — play 3354696735
-            local kickTrack1 = PlayTrack(3354696735)
+        local currentTime = 0
 
-            -- STEP 3 — while playing, forward position → 20
-            task.wait(0.3)
-            follow:setTarget(-20)
-            task.wait(0.6)
+        orbitConn = RunService.Heartbeat:Connect(function(delta)
+            currentTime = currentTime + delta
 
-            if kickTrack1.IsPlaying then kickTrack1.Stopped:Wait() end
+            if not grabbed or not grabbed.Parent
+                or LocalPlayer.Character.BodyEffects.Grabbed.Value == nil then
+                if orbitConn then orbitConn:Disconnect(); orbitConn = nil end
+                timeStopActive = false
+                return
+            end
 
-            -- STEP 4 — TP my character in front of victim
-            follow:stop()
-            task.wait(0.05)
+            if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                return
+            end
 
-            local victimPlayer = Players:FindFirstChild(tostring(grabbed))
-            local victimChar = victimPlayer and victimPlayer.Character
-            if not victimChar or not victimChar:FindFirstChild("HumanoidRootPart") then return end
+            local myRoot = LocalPlayer.Character.HumanoidRootPart
 
-            local victimRoot = victimChar.HumanoidRootPart
-            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.lookAt(
-                victimRoot.Position + victimRoot.CFrame.LookVector * 3,
-                victimRoot.Position
-            )
+            local function p(name) return grabbed:FindFirstChild(name) end
 
-            -- STEP 5 — restart follow so victim sticks during kick
-            follow:start()
-            follow:setTarget(-3)
+            local UpperTorso     = p("UpperTorso")
+            local LowerTorso     = p("LowerTorso")
+            local LeftUpperArm   = p("LeftUpperArm")
+            local RightUpperArm  = p("RightUpperArm")
+            local LeftUpperLeg   = p("LeftUpperLeg")
+            local RightUpperLeg  = p("RightUpperLeg")
+            local LeftLowerLeg   = p("LeftLowerLeg")
+            local RightLowerLeg  = p("RightLowerLeg")
+            local LeftLowerArm   = p("LeftLowerArm")
+            local RightLowerArm  = p("RightLowerArm")
 
-            -- STEP 6 — play 2788290270
-            local kickTrack2 = PlayTrack(2788290270)
-
-            -- STEP 7 — after 2s freeze 1s, then unfreeze
-            task.wait(2)
-            kickTrack2:AdjustSpeed(0)
-            task.wait(1)
-            kickTrack2:AdjustSpeed(1)
-
-            -- STEP 8 — stop follow before launch
-            follow:stop()
-            task.wait(0.05)
-
-            -- STEP 9 — launch victim 10 studs away
-            local myPos     = LocalPlayer.Character.HumanoidRootPart.Position
-            local victimPos = victimRoot.Position
-            local pushDir   = (victimPos - myPos).Unit
-            victimRoot.CFrame = CFrame.new(victimPos + pushDir * 10)
-
-            -- STEP 10 — rip arms + legs only
-            RipAllLimbs(grabbed)
-
-            follow:stop()
-            timeStopActive = false
+            if UpperTorso then
+                UpperTorso.CFrame = CFrame.Angles(math.pi * 0.1, 1.5 * math.pi * currentTime, 0)
+                    * CFrame.new(1, 2, 5) + myRoot.Position
+            end
+            if LowerTorso then
+                LowerTorso.CFrame = CFrame.Angles(math.pi * -0.1, 1.5 * math.pi * -currentTime, 0)
+                    * CFrame.new(1, 2, 5) + myRoot.Position
+            end
+            if LeftUpperArm then
+                LeftUpperArm.CFrame = CFrame.Angles(math.pi * 0.25, 3 * math.pi * currentTime, 0)
+                    * CFrame.new(1, 2, 5) + myRoot.Position
+            end
+            if RightUpperArm then
+                RightUpperArm.CFrame = CFrame.Angles(math.pi * -0.25, 3 * math.pi * -currentTime, 0)
+                    * CFrame.new(1, 2, 5) + myRoot.Position
+            end
+            if LeftUpperLeg then
+                LeftUpperLeg.CFrame = CFrame.Angles(math.pi * 0.3, 2.5 * math.pi * currentTime, 0)
+                    * CFrame.new(1, 2, 5) + myRoot.Position
+            end
+            if RightUpperLeg then
+                RightUpperLeg.CFrame = CFrame.Angles(math.pi * -0.3, 2.5 * math.pi * -currentTime, 0)
+                    * CFrame.new(1, 0, 5) + myRoot.Position
+            end
+            if LeftLowerLeg then
+                LeftLowerLeg.CFrame = CFrame.Angles(math.pi * 0.7, 2 * math.pi * currentTime, 0)
+                    * CFrame.new(1, 2, 7) + myRoot.Position
+            end
+            if RightLowerLeg then
+                RightLowerLeg.CFrame = CFrame.Angles(math.pi * 0.8, 2 * math.pi * -currentTime, 0)
+                    * CFrame.new(1, 2, 7) + myRoot.Position
+            end
+            if LeftLowerArm then
+                LeftLowerArm.CFrame = CFrame.Angles(math.pi * 0.9, 2 * math.pi * currentTime, 0)
+                    * CFrame.new(1, 2, 7) + myRoot.Position
+            end
+            if RightLowerArm then
+                RightLowerArm.CFrame = CFrame.Angles(math.pi * 1, 2 * math.pi * -currentTime, 0)
+                    * CFrame.new(1, 2, 7) + myRoot.Position
+            end
         end)
+    end)
 
-        if not success then
-            follow:stop()
-            timeStopActive = false
-            print("A error occured when trying to use Full Kick: " .. tostring(err))
+    return Tool
+end
+
+-- ============================================================
+--  TOOL: PP
+-- ============================================================
+
+function CreatePpTool()
+    if LocalPlayer.Backpack:FindFirstChild("Pp") then
+        LocalPlayer.Backpack:FindFirstChild("Pp"):Destroy()
+    end
+    task.wait(0.1)
+
+    local Tool = Instance.new("Tool")
+    Tool.RequiresHandle = false
+    Tool.Name = "Pp"
+    Tool.Parent = LocalPlayer.Backpack
+
+    local ppConn = nil
+
+    Tool.Activated:Connect(function()
+        local victim = LocalPlayer.Character.BodyEffects.Grabbed.Value
+        if not victim then return end
+        if ppConn then ppConn:Disconnect(); ppConn = nil end
+
+        if not victim or not victim:FindFirstChild("LowerTorso") then return end
+
+        timeStopActive = true
+        task.wait(0.1)
+
+        AnimStopv2(3135389157)
+        AnimStopv2(11075367458)
+
+        PlaySound("9114230800")
+
+        ppConn = RunService.Heartbeat:Connect(function(dt)
+            local Character = LocalPlayer.Character
+
+            if not (Character and Character.BodyEffects
+                and Character.BodyEffects.Grabbed
+                and Character.BodyEffects.Grabbed.Value) then
+                if ppConn then ppConn:Disconnect(); ppConn = nil end
+                timeStopActive = false
+                return
+            end
+            if not (victim and victim.Parent and Character.HumanoidRootPart) then
+                if ppConn then ppConn:Disconnect(); ppConn = nil end
+                timeStopActive = false
+                return
+            end
+
+            local root = Character.HumanoidRootPart
+            local basePos = root.Position + root.CFrame.LookVector * 4 + Vector3.new(0, 0.5, 0)
+
+            local slashStack = {
+                victim.LowerTorso,
+                victim.UpperTorso,
+                victim.LeftUpperLeg, victim.RightUpperLeg,
+                victim.LeftLowerLeg, victim.RightLowerLeg,
+                victim.LeftFoot,     victim.RightFoot,
+                victim.LeftUpperArm, victim.RightUpperArm,
+                victim.LeftLowerArm, victim.RightLowerArm,
+                victim.LeftHand,     victim.RightHand,
+                victim.Head
+            }
+
+            local step  = 0
+            local slant = 1.5
+
+            for i, part in ipairs(slashStack) do
+                if part and part.Parent then
+                    local height        = (i - 1) * step
+                    local forwardOffset = (i - 1) * slant
+
+                    local pos = basePos
+                        + Vector3.new(0, height, 0)
+                        + root.CFrame.LookVector * forwardOffset
+
+                    part.CFrame = CFrame.new(pos) * CFrame.Angles(math.rad(15), 0, 0)
+
+                    part.AssemblyLinearVelocity  = Vector3.zero
+                    part.AssemblyAngularVelocity = Vector3.zero
+                    part.CanCollide = false
+                end
+            end
+        end)
+    end)
+
+    return Tool
+end
+
+-- ============================================================
+--  TOOL: FULL COMBO
+-- ============================================================
+
+function CreateFullComboTool()
+    if LocalPlayer.Backpack:FindFirstChild("Full Combo") then
+        LocalPlayer.Backpack:FindFirstChild("Full Combo"):Destroy()
+    end
+    task.wait(0.1)
+
+    local Tool = Instance.new("Tool")
+    Tool.RequiresHandle = false
+    Tool.Name = "Full Combo"
+    Tool.Parent = LocalPlayer.Backpack
+
+    local follow = StartFollowLoop()
+
+    Tool.Activated:Connect(function()
+        local victim = LocalPlayer.Character.BodyEffects.Grabbed.Value
+        if not victim or not victim:FindFirstChild("UpperTorso") then return end
+
+        local victimTorso = victim.UpperTorso
+        local Character   = LocalPlayer.Character
+        local humanoid    = Character:FindFirstChildOfClass("Humanoid")
+        if not humanoid then return end
+
+        timeStopActive = true
+
+        AnimStopv2(3135389157)
+        AnimStopv2(11075367458)
+
+        local root = Character.HumanoidRootPart
+
+        follow:start()
+        follow:setTarget(-3)
+        task.wait(0.4)
+
+        local p1 = PlayTrack(3354696735)
+        PlaySound("1060741618")
+
+        task.wait(0.3)
+        follow:setTarget(-20)
+        task.wait(0.4)
+
+        if p1.IsPlaying then p1.Stopped:Wait() end
+
+        follow:stop()
+        task.wait(0.05)
+
+        root.CFrame = victimTorso.CFrame * CFrame.new(0, 0, 4)
+        task.wait(0.1)
+
+        follow:start()
+        follow:setTarget(-3)
+        task.wait(0.1)
+
+        Chat("Diee...")
+        task.wait(0.9)
+        Chat("Pathetic Loser..")
+
+        local a1 = PlayTrack(2788838708)
+        PlaySound("8187671085")
+        a1.Stopped:Wait()
+
+        local freeze = PlayTrack(2788290270)
+
+        task.wait(0.3)
+        follow:setTarget(-20)
+        task.wait(0.4)
+
+        freeze.Stopped:Wait()
+
+        local pull = PlayTrack(16768625968)
+        follow:setTarget(-3)
+        pull.Stopped:Wait()
+        task.wait(0.5)
+
+        local mid = PlayTrack(2788305271)
+        PlaySound("9046866477")
+
+        task.wait(0.3)
+        follow:setTarget(-20)
+        task.wait(0.4)
+
+        if mid.IsPlaying then mid.Stopped:Wait() end
+
+        follow:stop()
+        task.wait(0.05)
+
+        root.CFrame = victimTorso.CFrame * CFrame.new(0, 0, -4)
+        task.wait(0.1)
+
+        local finish = PlayTrack(2788292075)
+        PlaySound("9046866477")
+
+        local ripBP = Instance.new("BodyPosition", victimTorso)
+        ripBP.MaxForce = Vector3.new(4e5, 4e5, 4e5)
+        ripBP.P = 300000; ripBP.D = 8000
+        ripBP.Position = root.Position + root.CFrame.LookVector * 20 + Vector3.new(0, 9, 0)
+
+        task.wait(0.35)
+
+        if victim:FindFirstChild("LowerTorso") then
+            victim.LowerTorso.Position = Vector3.new(0, -999, 0)
         end
+
+        task.wait(0.2)
+        ripBP:Destroy()
+
+        task.wait(0.1)
+        local right = root.CFrame.RightVector
+        if victim.UpperTorso                      then victim.UpperTorso.Velocity      = root.CFrame.LookVector * 180 + right * 90   end
+        if victim:FindFirstChild("RightUpperLeg") then victim.RightUpperLeg.Velocity    = root.CFrame.LookVector * 180 + right * -90 end
+        if victim:FindFirstChild("LeftUpperLeg")  then victim.LeftUpperLeg.Velocity     = root.CFrame.LookVector * 180 + right * -90 end
+
+        task.wait(0.3)
+        if victim:FindFirstChildOfClass("Humanoid") then
+            victim:FindFirstChildOfClass("Humanoid").Health = 0
+        end
+
+        ReplicatedStorage.MainEvent:FireServer("Grabbing", false)
+
+        for _, d in pairs(victim:GetDescendants()) do
+            if d:IsA("BodyPosition") or d:IsA("BodyGyro") then d:Destroy() end
+        end
+        if GrabbedValue then
+            local function reenableMotor(limb)
+                if GrabbedValue[limb] then
+                    local m = GrabbedValue[limb]:FindFirstChildOfClass("Motor6D")
+                    if m then m.Enabled = true end
+                end
+            end
+            reenableMotor("LeftHand");  reenableMotor("RightHand")
+            reenableMotor("LeftFoot");  reenableMotor("RightFoot")
+        end
+
+        timeStopActive = false
+
+        finish.Stopped:Wait()
+        humanoid.WalkSpeed = 16
+    end)
+
+    return Tool
+end
+
+-- ============================================================
+--  TOOL: CONTROL
+-- ============================================================
+
+function CreateControlTool()
+    if LocalPlayer.Backpack:FindFirstChild("Control") then
+        LocalPlayer.Backpack:FindFirstChild("Control"):Destroy()
+    end
+    task.wait(0.1)
+    local Tool22 = Instance.new("Tool", LocalPlayer.Backpack)
+    Tool22.RequiresHandle = false
+    Tool22.Name = "Control"
+    Tool22.Activated:Connect(function()
+        if LocalPlayer.Character.BodyEffects.Grabbed.Value then
+            task.wait(1)
+            if LocalPlayer.Character:FindFirstChild("Control") then
+                LocalPlayer.Character.Control.Parent = LocalPlayer.Backpack
+            end
+            task.wait()
+            u19 = true
+            task.wait()
+            u19 = false
+            u20 = u32(GrabbedValue)
+            workspace.CurrentCamera.CameraSubject = u20
+            u25(t4, u26("Heartbeat", function()
+                for _, v in pairs(LocalPlayer.Character:FindFirstChild("Humanoid"):GetPlayingAnimationTracks()) do
+                    v:Stop()
+                end
+                LocalPlayer.Character.HumanoidRootPart.CFrame = u20.HumanoidRootPart.CFrame * CFrame.new(0, -15, 0) * CFrame.Angles(math.pi * 0.5, 0, 0)
+                ZeroVelocity___(LocalPlayer.Character.HumanoidRootPart)
+                u23(GrabbedValue.Head, u20:FindFirstChild("Head"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.HumanoidRootPart, u20:FindFirstChild("HumanoidRootPart"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.UpperTorso, u20:FindFirstChild("UpperTorso"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.LowerTorso, u20:FindFirstChild("LowerTorso"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.LeftUpperArm, u20:FindFirstChild("LeftUpperArm"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.LeftLowerArm, u20:FindFirstChild("LeftLowerArm"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.RightUpperArm, u20:FindFirstChild("RightUpperArm"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.RightLowerArm, u20:FindFirstChild("RightLowerArm"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.LeftHand, u20:FindFirstChild("LeftHand"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.RightHand, u20:FindFirstChild("RightHand"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.LeftUpperLeg, u20:FindFirstChild("LeftUpperLeg"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.LeftLowerLeg, u20:FindFirstChild("LeftLowerLeg"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.RightUpperLeg, u20:FindFirstChild("RightUpperLeg"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.RightLowerLeg, u20:FindFirstChild("RightLowerLeg"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.LeftFoot, u20:FindFirstChild("LeftFoot"), CFrame.new(0, 0, 0))
+                u23(GrabbedValue.RightFoot, u20:FindFirstChild("RightFoot"), CFrame.new(0, 0, 0))
+                u29(3152375249)
+                u29(3152378852)
+                u29(3189773368)
+                u29(3189776546)
+                u29(3189777795)
+                u29(3189779152)
+                u29(3487719500)
+                u29(11710529975)
+                u29(11710524717)
+                u29(11710527244)
+                u29(11710529220)
+                u29(11710529220)
+                u29(11710524200)
+                u29(11710541744)
+                for _, v in pairs(u20.Humanoid:GetPlayingAnimationTracks()) do
+                    if v.Animation.AnimationId:match("rbxassetid://3152394906") then
+                        if not (u20.Humanoid.MoveDirection.magnitude > 0) then
+                            v:AdjustSpeed(0)
+                        else
+                            v:AdjustSpeed(1)
+                        end
+                    end
+                end
+                u20.Humanoid.Jump = LocalPlayer.Character.Humanoid.Jump
+                u20.Humanoid:Move(LocalPlayer.Character.Humanoid.MoveDirection, false)
+            end))
+            u33()
+        end
+    end)
+    return Tool22
+end
+
+-- ============================================================
+--  TOOL: MADE IN HEAVEN  (with lift)
+-- ============================================================
+
+function CreateMadeInHeavenTool()
+    if LocalPlayer.Backpack:FindFirstChild("Made in Heaven") then
+        LocalPlayer.Backpack:FindFirstChild("Made in Heaven"):Destroy()
+    end
+    task.wait(0.1)
+
+    local Tool = Instance.new("Tool")
+    Tool.RequiresHandle = false
+    Tool.Name = "Made in Heaven"
+    Tool.Parent = LocalPlayer.Backpack
+
+    local follow = StartFollowLoop()
+
+    Tool.Activated:Connect(function()
+        local victim = LocalPlayer.Character.BodyEffects.Grabbed.Value
+        if not victim or not victim:FindFirstChild("UpperTorso") then return end
+
+        local Character   = LocalPlayer.Character
+        local Humanoid    = Character:FindFirstChildOfClass("Humanoid")
+        local BodyEffects = Character:FindFirstChild("BodyEffects")
+        if not BodyEffects or not BodyEffects:FindFirstChild("Grabbed") then return end
+
+        local str = tostring(BodyEffects.Grabbed.Value)
+        local victimPlayer = Players:FindFirstChild(str)
+        if not victimPlayer or not victimPlayer.Character then return end
+
+        local FogEnd      = Lighting.FogEnd
+        local FogColor    = Lighting.FogColor
+        local FieldOfView = workspace.CurrentCamera.FieldOfView
+
+        timeStopActive = true
+
+        AnimStopv2(3135389157)
+        AnimStopv2(11075367458)
+
+        Humanoid.WalkSpeed = 0
+
+        follow:start()
+        follow:setTarget(-10)
+        follow:setLift(10)
+
+        AnimPlayvv2(11394033602, 1)
+
+        TweenService:Create(workspace.CurrentCamera, TweenInfo.new(1), {FieldOfView = 120}):Play()
+        TweenService:Create(Lighting, TweenInfo.new(1), {FogEnd = 20, FogColor = Color3.new(1, 1, 1)}):Play()
+        TweenService:Create(Humanoid, TweenInfo.new(1), {HipHeight = 3.5}):Play()
+
+        repeat task.wait() until Humanoid.HipHeight == 3.5
+
+        task.wait(7)
+
+        local str5 = tostring(LocalPlayer.Character.BodyEffects.Grabbed.Value)
+        if Players:FindFirstChild(str5) and Players[str5].Character then
+            local t = Players[str5].Character:FindFirstChild("UpperTorso")
+            if t then t.CFrame = CFrame.new(0, -12000, 0) end
+        end
+
+        task.wait(0.9)
+        ReplicatedStorage.MainEvent:FireServer("Grabbing")
+
+        follow:stop()
+        AnimStopv2(11394033602, 0.5)
+
+        TweenService:Create(workspace.CurrentCamera, TweenInfo.new(1), {FieldOfView = FieldOfView}):Play()
+        TweenService:Create(Lighting, TweenInfo.new(1), {FogColor = FogColor, FogEnd = FogEnd}):Play()
+        TweenService:Create(Humanoid, TweenInfo.new(1), {HipHeight = 2.008}):Play()
+
+        Humanoid.WalkSpeed = 16
+        timeStopActive = false
+    end)
+
+    return Tool
+end
+
+-- ============================================================
+--  TOOL: OFFERINGS  (legs first, then arms, 1s apart)
+-- ============================================================
+
+function CreateOfferingsTool()
+    if LocalPlayer.Backpack:FindFirstChild("Offerings") then
+        LocalPlayer.Backpack:FindFirstChild("Offerings"):Destroy()
+    end
+    task.wait(0.1)
+
+    local Tool = Instance.new("Tool")
+    Tool.RequiresHandle = false
+    Tool.Name = "Offerings"
+    Tool.Parent = LocalPlayer.Backpack
+
+    local follow = StartFollowLoop()
+    local offeringsRunning = false
+
+    Tool.Activated:Connect(function()
+        if offeringsRunning then return end
+        local victim = LocalPlayer.Character.BodyEffects.Grabbed.Value
+        if not victim or not victim:FindFirstChild("UpperTorso") then return end
+
+        offeringsRunning = true
+        timeStopActive = true
+
+        AnimStopv2(3135389157)
+        AnimStopv2(11075367458)
+
+        local Character = LocalPlayer.Character
+        local Humanoid  = Character:FindFirstChildOfClass("Humanoid")
+        if not Humanoid then offeringsRunning = false; return end
+
+        follow:start()
+        follow:setTarget(-11)
+        follow:setLift(11)
+
+        local mihTrack = PlayTrack(11394033602, 1)
+
+        Chat("Six offerings…")
+        PlaySound("5747238236")
+        task.wait(2.4)
+
+        Chat("Say Goodbye…")
+        task.wait(1.8)
+
+        PlaySound("429400881")
+        task.wait(1.7)
+
+        if victim and victim.Parent then
+            -- 1) Rip LEFT leg
+            local leftLeg = victim:FindFirstChild("LeftUpperLeg")
+            if leftLeg then
+                leftLeg.Position = Vector3.new(0, -999, 0)
+                task.wait(0.07)
+                leftLeg.Velocity = Character.HumanoidRootPart.CFrame.RightVector * -400 + Vector3.new(0, 170, 0)
+            end
+            task.wait(1)
+
+            -- 2) Rip RIGHT leg
+            local rightLeg = victim:FindFirstChild("RightUpperLeg")
+            if rightLeg then
+                rightLeg.Position = Vector3.new(0, -999, 0)
+                task.wait(0.07)
+                rightLeg.Velocity = Character.HumanoidRootPart.CFrame.RightVector * 400 + Vector3.new(0, 170, 0)
+            end
+            task.wait(1)
+
+            -- 3) Rip LEFT arm
+            local leftArm = victim:FindFirstChild("LeftUpperArm")
+            if leftArm then
+                leftArm.Position = Vector3.new(0, -999, 0)
+                task.wait(0.07)
+                leftArm.Velocity = Character.HumanoidRootPart.CFrame.RightVector * -400 + Vector3.new(0, 170, 0)
+            end
+            task.wait(1)
+
+            -- 4) Rip RIGHT arm
+            local rightArm = victim:FindFirstChild("RightUpperArm")
+            if rightArm then
+                rightArm.Position = Vector3.new(0, -999, 0)
+                task.wait(0.07)
+                rightArm.Velocity = Character.HumanoidRootPart.CFrame.RightVector * 400 + Vector3.new(0, 170, 0)
+            end
+
+            -- Kill
+            if victim:FindFirstChildOfClass("Humanoid") then
+                victim:FindFirstChildOfClass("Humanoid").Health = 0
+            end
+        end
+
+        task.wait(1.5)
+        follow:stop()
+        if mihTrack then mihTrack:Stop(0.4) end
+        ReplicatedStorage.MainEvent:FireServer("Grabbing", false)
+
+        timeStopActive = false
+        offeringsRunning = false
     end)
 
     return Tool
@@ -782,7 +1543,12 @@ local function buildAll()
     CreateTimeStopTool()
     CreateDomainExpansionTool()
     CreateSexTool()
-    CreateFullKickTool()
+    CreateOrbitTool()
+    CreatePpTool()
+    CreateFullComboTool()
+    CreateControlTool()
+    CreateMadeInHeavenTool()
+    CreateOfferingsTool()
 end
 
 buildAll()
