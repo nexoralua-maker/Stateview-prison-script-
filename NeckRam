@@ -1,10 +1,9 @@
 -- ============================================================
 --  Universal DaHood Script
 --  Title: .Soda.Fun /discord
---  GUI: Draggable, Left = Neckgrabs toggles, Right = Customization sliders
---  Sliders: mouse + touch
---  Tools: Activate, Chezburger, Goku, Time Stop, Domain Expansion,
---         Sex, Orbit, Pp, Full Combo, Control, Made in Heaven, Offerings
+--  Draggable toggle: ".Soda.Fun" opens/closes GUI
+--  Left: Neckgrabs toggles | Right: Customization + keybind sliders
+--  Control: mobile Cframe/Fly toggle buttons (draggable)
 -- ============================================================
 
 local Players           = game:GetService("Players")
@@ -36,6 +35,8 @@ if not getgenv().config.control.flyspeed    then getgenv().config.control.flyspe
 
 getgenv().SexSpeed   = getgenv().SexSpeed   or 2
 getgenv().OrbitSpeed = getgenv().OrbitSpeed or 1
+getgenv().ControlCframeKey = getgenv().ControlCframeKey or Enum.KeyCode.X
+getgenv().ControlFlyKey    = getgenv().ControlFlyKey    or Enum.KeyCode.C
 
 function Settings_Effects()
     return EffectsEnabled
@@ -277,7 +278,7 @@ function EnsureColorCorrection()
 end
 
 -- ============================================================
---  GOKU-STYLE FOLLOW LOOP (with Y-lift support)
+--  FOLLOW LOOP (with Y-lift)
 -- ============================================================
 
 local function StartFollowLoop()
@@ -457,6 +458,9 @@ local function u33()
     local u146 = nil
 
     u25(t4, LocalPlayer:GetMouse().KeyDown:Connect(function(p31)
+        local flyKey    = tostring(getgenv().ControlFlyKey):gsub("Enum.KeyCode.", ""):lower()
+        local cframeKey = tostring(getgenv().ControlCframeKey):gsub("Enum.KeyCode.", ""):lower()
+
         if p31 == "v" then
             u30(7024352298)
             repeat wait() until LocalPlayer.Character:WaitForChild("Humanoid").MoveDirection.magnitude > 0
@@ -497,9 +501,9 @@ local function u33()
             u31(2788354405)
         elseif p31 == "0" then
             u20.Humanoid.WalkSpeed = 24
-        elseif p31 == "c" then
+        elseif p31 == flyKey then
             _G.FlyClone = not _G.FlyClone
-        elseif p31 == "x" then
+        elseif p31 == cframeKey then
             u146 = not u146
             if u146 == true then
                 u30(3189777795)
@@ -578,15 +582,6 @@ RunService.RenderStepped:Connect(function(dt)
         return
     end
 end)
-
-local function ControlAlign222(p46, p47, p48)
-    p46.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-    p46.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-    p46.Velocity = Vector3.new(0, 0, 0)
-    p46.CFrame = p47.CFrame * (p48 or CFrame.new())
-    p46.CanCollide = false
-    p47.CanCollide = false
-end
 
 -- ============================================================
 --  TOOL BUILDERS
@@ -890,10 +885,24 @@ toolBuilders["Sex"] = function()
         getgenv().Furry_ = false
 
         AnimPlayvv2(4784557631)
-        AnimPlayvv2(3119980985, getgenv().SexSpeed or 2)
+
+        for _, v in pairs(LocalPlayer.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
+            if v.Animation.AnimationId:match("rbxassetid://3119980985") then v:Stop() end
+        end
+        local sexAnim = Instance.new("Animation", workspace)
+        sexAnim.AnimationId = "rbxassetid://3119980985"
+        local sexTrack = LocalPlayer.Character:WaitForChild("Humanoid"):LoadAnimation(sexAnim)
+        sexTrack.Priority = Enum.AnimationPriority.Action4
+        sexTrack:Play()
+        sexTrack:AdjustSpeed(getgenv().SexSpeed or 2)
+        sexAnim:Destroy()
 
         repeat
             task.wait()
+
+            if sexTrack and sexTrack.IsPlaying then
+                sexTrack:AdjustSpeed(getgenv().SexSpeed or 2)
+            end
 
             for _, descendant in pairs(grabbed:GetDescendants()) do
                 if descendant:IsA("BasePart") or descendant:IsA("MeshPart") or descendant:IsA("Part") then
@@ -1255,6 +1264,7 @@ toolBuilders["Control"] = function()
     Tool22.Name = "Control"
     Tool22.Activated:Connect(function()
         if LocalPlayer.Character.BodyEffects.Grabbed.Value then
+            if ControlUI then ControlUI:Show() end
             task.wait(1)
             if LocalPlayer.Character:FindFirstChild("Control") then
                 LocalPlayer.Character.Control.Parent = LocalPlayer.Backpack
@@ -1314,6 +1324,7 @@ toolBuilders["Control"] = function()
                 u20.Humanoid:Move(LocalPlayer.Character.Humanoid.MoveDirection, false)
             end))
             u33()
+            if ControlUI then ControlUI:Hide() end
         end
     end)
     return Tool22
@@ -1481,14 +1492,181 @@ toolBuilders["Offerings"] = function()
 end
 
 -- ============================================================
---  GUI  —  Left: Neckgrabs | Right: Customization
---  Title: .Soda.Fun /discord   |   X: no bg, grey text
+--  CONTROL MOBILE TOGGLE BUTTONS  (Cframe / Fly)
+-- ============================================================
+
+local ControlUI = {}
+ControlUI.Gui = nil
+
+function ControlUI:Create()
+    if ControlUI.Gui then ControlUI.Gui:Destroy() end
+
+    local Screen = Instance.new("ScreenGui")
+    Screen.Name = "ControlMobileUI"
+    Screen.ResetOnSpawn = false
+    Screen.IgnoreGuiInset = true
+    Screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    Screen.Enabled = false
+    pcall(function() Screen.Parent = CoreGui end)
+    if not Screen.Parent then Screen.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+    ControlUI.Gui = Screen
+
+    local function makeButton(name, defaultPos, onClick)
+        local Btn = Instance.new("TextButton")
+        Btn.Name = name
+        Btn.Size = UDim2.new(0, 90, 0, 34)
+        Btn.Position = defaultPos
+        Btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        Btn.BorderSizePixel = 0
+        Btn.Text = name
+        Btn.Font = Enum.Font.GothamBold
+        Btn.TextSize = 13
+        Btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+        Btn.AutoButtonColor = false
+        Btn.Active = true
+        Btn.Parent = Screen
+
+        local Corner = Instance.new("UICorner")
+        Corner.CornerRadius = UDim.new(0, 6)
+        Corner.Parent = Btn
+
+        local Stroke = Instance.new("UIStroke")
+        Stroke.Color = Color3.fromRGB(60, 60, 60)
+        Stroke.Thickness = 1.2
+        Stroke.Parent = Btn
+
+        local Dot = Instance.new("TextButton")
+        Dot.Size = UDim2.new(0, 10, 0, 10)
+        Dot.Position = UDim2.new(1, -16, 0.5, -5)
+        Dot.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        Dot.BorderSizePixel = 0
+        Dot.Text = ""
+        Dot.AutoButtonColor = false
+        Dot.Parent = Btn
+        local DotCorner = Instance.new("UICorner")
+        DotCorner.CornerRadius = UDim.new(1, 0)
+        DotCorner.Parent = Dot
+
+        local dragging, dragStart, startPos, moved = false, nil, nil, false
+
+        Btn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                moved = false
+                dragStart = input.Position
+                startPos = Btn.Position
+            end
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if not dragging then return end
+            if input.UserInputType == Enum.UserInputType.MouseMovement
+                or input.UserInputType == Enum.UserInputType.Touch then
+                local delta = input.Position - dragStart
+                if math.abs(delta.X) > 3 or math.abs(delta.Y) > 3 then
+                    moved = true
+                end
+                Btn.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + delta.X,
+                    startPos.Y.Scale, startPos.Y.Offset + delta.Y
+                )
+            end
+        end)
+
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                if dragging and not moved then
+                    onClick()
+                end
+                dragging = false
+            end
+        end)
+
+        Btn.MouseEnter:Connect(function()
+            TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
+        end)
+        Btn.MouseLeave:Connect(function()
+            TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(25, 25, 25)}):Play()
+        end)
+
+        return Btn, Stroke, Dot
+    end
+
+    -- Cframe button
+    local cframeOn = false
+    local CframeBtn, CframeStroke, CframeDot = makeButton(
+        "Cframe",
+        UDim2.new(0.02, 0, 0.55, 0),
+        function()
+            cframeOn = not cframeOn
+            if cframeOn then
+                if not _G.ControlCframeActive then
+                    _G.ControlCframeActive = true
+                    task.spawn(function()
+                        if u20 then u30(3189777795) end
+                        while _G.ControlCframeActive and u20 and u20.Parent do
+                            task.wait()
+                            u20.HumanoidRootPart.CFrame = u20.HumanoidRootPart.CFrame
+                                + u20.Humanoid.MoveDirection * getgenv().config.control.cframespeed
+                        end
+                    end)
+                end
+                TweenService:Create(CframeDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
+                TweenService:Create(CframeStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(80, 200, 80)}):Play()
+            else
+                _G.ControlCframeActive = false
+                TweenService:Create(CframeDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+                TweenService:Create(CframeStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+            end
+        end
+    )
+
+    -- Fly button
+    local FlyBtn, FlyStroke, FlyDot = makeButton(
+        "Fly",
+        UDim2.new(0.02, 0, 0.63, 0),
+        function()
+            _G.FlyClone = not _G.FlyClone
+            if _G.FlyClone then
+                TweenService:Create(FlyDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
+                TweenService:Create(FlyStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(80, 200, 80)}):Play()
+            else
+                TweenService:Create(FlyDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+                TweenService:Create(FlyStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+            end
+        end
+    )
+end
+
+function ControlUI:Show()
+    if ControlUI.Gui then ControlUI.Gui.Enabled = true end
+end
+
+function ControlUI:Hide()
+    if ControlUI.Gui then
+        ControlUI.Gui.Enabled = false
+        _G.FlyClone = false
+        _G.ControlCframeActive = false
+    end
+end
+
+ControlUI:Create()
+
+-- ============================================================
+--  MAIN GUI  —  Draggable, Left: Neckgrabs, Right: Customization
 -- ============================================================
 
 local GUI = {}
+GUI.Connections = {}
+GUI.Sliders = {}
 
 function GUI:Create()
     if GUI.Screen then GUI.Screen:Destroy() end
+    for _, c in ipairs(GUI.Connections) do pcall(function() c:Disconnect() end) end
+    GUI.Connections = {}
+    GUI.Sliders = {}
 
     local Screen = Instance.new("ScreenGui")
     Screen.Name = "NeckgrabsUI"
@@ -1499,9 +1677,8 @@ function GUI:Create()
     if not Screen.Parent then Screen.Parent = LocalPlayer:WaitForChild("PlayerGui") end
     GUI.Screen = Screen
 
-    -- Main frame
     local Main = Instance.new("Frame")
-    Main.Size = UDim2.new(0, 440, 0, 420)
+    Main.Size = UDim2.new(0, 440, 0, 500)
     Main.Position = UDim2.new(0.02, 0, 0.25, 0)
     Main.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
     Main.BorderSizePixel = 0
@@ -1518,7 +1695,6 @@ function GUI:Create()
     MainStroke.Thickness = 1.2
     MainStroke.Parent = Main
 
-    -- Title bar
     local TitleBar = Instance.new("Frame")
     TitleBar.Size = UDim2.new(1, 0, 0, 34)
     TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -1539,7 +1715,6 @@ function GUI:Create()
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.Parent = TitleBar
 
-    -- Close button: no background, grey text
     local Close = Instance.new("TextButton")
     Close.Size = UDim2.new(0, 22, 0, 22)
     Close.Position = UDim2.new(1, -28, 0.5, -11)
@@ -1551,9 +1726,7 @@ function GUI:Create()
     Close.TextColor3 = Color3.fromRGB(130, 130, 130)
     Close.AutoButtonColor = false
     Close.Parent = TitleBar
-
-    Close.MouseButton1Click:Connect(function() Screen:Destroy() end)
-
+    Close.MouseButton1Click:Connect(function() Screen.Enabled = false end)
     Close.MouseEnter:Connect(function()
         TweenService:Create(Close, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(220, 220, 220)}):Play()
     end)
@@ -1561,7 +1734,7 @@ function GUI:Create()
         TweenService:Create(Close, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(130, 130, 130)}):Play()
     end)
 
-    -- ============ LEFT COLUMN ============
+    -- LEFT
     local LeftContainer = Instance.new("Frame")
     LeftContainer.Size = UDim2.new(0, 202, 1, -46)
     LeftContainer.Position = UDim2.new(0, 8, 0, 42)
@@ -1593,12 +1766,11 @@ function GUI:Create()
     LeftLayout.Padding = UDim.new(0, 6)
     LeftLayout.SortOrder = Enum.SortOrder.LayoutOrder
     LeftLayout.Parent = Left
-
     LeftLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         Left.CanvasSize = UDim2.new(0, 0, 0, LeftLayout.AbsoluteContentSize.Y + 8)
     end)
 
-    -- ============ RIGHT COLUMN ============
+    -- RIGHT
     local Right = Instance.new("Frame")
     Right.Size = UDim2.new(0, 216, 1, -46)
     Right.Position = UDim2.new(0, 216, 0, 42)
@@ -1608,23 +1780,28 @@ function GUI:Create()
     local RightCorner = Instance.new("UICorner")
     RightCorner.CornerRadius = UDim.new(0, 6)
     RightCorner.Parent = Right
-
     local RightStroke = Instance.new("UIStroke")
     RightStroke.Color = Color3.fromRGB(40, 40, 40)
     RightStroke.Thickness = 1
     RightStroke.Parent = Right
 
-    local RightPad = Instance.new("UIPadding")
-    RightPad.PaddingLeft   = UDim.new(0, 10)
-    RightPad.PaddingRight  = UDim.new(0, 10)
-    RightPad.PaddingTop    = UDim.new(0, 10)
-    RightPad.PaddingBottom = UDim.new(0, 10)
-    RightPad.Parent = Right
+    local RightScroll = Instance.new("ScrollingFrame")
+    RightScroll.Size = UDim2.new(1, -20, 1, -20)
+    RightScroll.Position = UDim2.new(0, 10, 0, 10)
+    RightScroll.BackgroundTransparency = 1
+    RightScroll.BorderSizePixel = 0
+    RightScroll.ScrollBarThickness = 3
+    RightScroll.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+    RightScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    RightScroll.Parent = Right
 
     local RightLayout = Instance.new("UIListLayout")
     RightLayout.Padding = UDim.new(0, 12)
     RightLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    RightLayout.Parent = Right
+    RightLayout.Parent = RightScroll
+    RightLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        RightScroll.CanvasSize = UDim2.new(0, 0, 0, RightLayout.AbsoluteContentSize.Y + 8)
+    end)
 
     local SectionTitle = Instance.new("TextLabel")
     SectionTitle.Size = UDim2.new(1, 0, 0, 22)
@@ -1635,11 +1812,9 @@ function GUI:Create()
     SectionTitle.TextSize = 14
     SectionTitle.TextXAlignment = Enum.TextXAlignment.Left
     SectionTitle.LayoutOrder = 1
-    SectionTitle.Parent = Right
+    SectionTitle.Parent = RightScroll
 
-    -- ============================================================
-    --  Slider creator (mouse + touch)
-    -- ============================================================
+    -- Standard slider
     function GUI:AddSlider(parent, name, minValue, maxValue, default, callback)
         local Slider = Instance.new("Frame")
         Slider.Size = UDim2.new(1, 0, 0, 56)
@@ -1708,9 +1883,9 @@ function GUI:Create()
         DotCorner.CornerRadius = UDim.new(1, 0)
         DotCorner.Parent = Dot
 
-        local dragging = false
+        local sliderObj = { Track = Track, minValue = minValue, maxValue = maxValue, callback = callback }
 
-        local function updateFromX(x)
+        function sliderObj:updateFromX(x)
             local trackAbs = Track.AbsolutePosition.X
             local trackSize = Track.AbsoluteSize.X
             local alpha = math.clamp((x - trackAbs) / trackSize, 0, 1)
@@ -1721,50 +1896,200 @@ function GUI:Create()
             if callback then callback(val) end
         end
 
-        local function isInTrack(x, y)
+        function sliderObj:isInTrack(x, y)
             local absPos  = Track.AbsolutePosition
             local absSize = Track.AbsoluteSize
-            return x >= absPos.X - 8 and x <= absPos.X + absSize.X + 8
-               and y >= absPos.Y - 10 and y <= absPos.Y + absSize.Y + 10
+            return x >= absPos.X - 12 and x <= absPos.X + absSize.X + 12
+               and y >= absPos.Y - 16 and y <= absPos.Y + absSize.Y + 16
         end
 
-        UserInputService.InputBegan:Connect(function(input, gpe)
-            if gpe then return end
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                if isInTrack(input.Position.X, input.Position.Y) then
-                    dragging = true
-                    updateFromX(input.Position.X)
-                end
-            end
-        end)
-
-        UserInputService.InputChanged:Connect(function(input)
-            if not dragging then return end
-            if input.UserInputType == Enum.UserInputType.MouseMovement
-                or input.UserInputType == Enum.UserInputType.Touch then
-                updateFromX(input.Position.X)
-            end
-        end)
-
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = false
-            end
-        end)
-
-        Dot.MouseButton1Down:Connect(function() dragging = true end)
-
+        table.insert(GUI.Sliders, sliderObj)
         if callback then callback(default) end
+        return sliderObj
     end
 
-    GUI:AddSlider(Right, "Sex Speed",   1, 100, getgenv().SexSpeed,   function(v) getgenv().SexSpeed   = v end)
-    GUI:AddSlider(Right, "Orbit Speed", 1, 100, getgenv().OrbitSpeed, function(v) getgenv().OrbitSpeed = v end)
+    -- Slider with keybind
+    function GUI:AddSliderWithKeybind(parent, name, minValue, maxValue, default, defaultKey, onChange, onKeyChange)
+        local Row = Instance.new("Frame")
+        Row.Size = UDim2.new(1, 0, 0, 56)
+        Row.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        Row.BorderSizePixel = 0
+        Row.Parent = parent
+        local RowCorner = Instance.new("UICorner")
+        RowCorner.CornerRadius = UDim.new(0, 5)
+        RowCorner.Parent = Row
+        local RowStroke = Instance.new("UIStroke")
+        RowStroke.Color = Color3.fromRGB(40, 40, 40)
+        RowStroke.Thickness = 1
+        RowStroke.Parent = Row
 
-    -- ============================================================
-    --  Toggle creator
-    -- ============================================================
+        local NameLabel = Instance.new("TextLabel")
+        NameLabel.Size = UDim2.new(1, -80, 0, 18)
+        NameLabel.Position = UDim2.new(0, 8, 0, 4)
+        NameLabel.BackgroundTransparency = 1
+        NameLabel.Font = Enum.Font.Gotham
+        NameLabel.Text = name
+        NameLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        NameLabel.TextSize = 11
+        NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        NameLabel.Parent = Row
+
+        local ValueLabel = Instance.new("TextLabel")
+        ValueLabel.Size = UDim2.new(0, 40, 0, 18)
+        ValueLabel.Position = UDim2.new(1, -88, 0, 4)
+        ValueLabel.BackgroundTransparency = 1
+        ValueLabel.Font = Enum.Font.GothamBold
+        ValueLabel.Text = tostring(default)
+        ValueLabel.TextColor3 = Color3.fromRGB(120, 200, 120)
+        ValueLabel.TextSize = 11
+        ValueLabel.TextXAlignment = Enum.TextXAlignment.Right
+        ValueLabel.Parent = Row
+
+        local KeyBtn = Instance.new("TextButton")
+        KeyBtn.Size = UDim2.new(0, 34, 0, 18)
+        KeyBtn.Position = UDim2.new(1, -44, 0, 4)
+        KeyBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        KeyBtn.BorderSizePixel = 0
+        KeyBtn.Text = tostring((string.split(tostring(defaultKey), "KeyCode")[2]):split(".")[2])
+        KeyBtn.Font = Enum.Font.GothamBold
+        KeyBtn.TextSize = 10
+        KeyBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+        KeyBtn.AutoButtonColor = false
+        KeyBtn.Parent = Row
+        local KeyCorner = Instance.new("UICorner")
+        KeyCorner.CornerRadius = UDim.new(0, 4)
+        KeyCorner.Parent = KeyBtn
+
+        local Track = Instance.new("Frame")
+        Track.Size = UDim2.new(1, -16, 0, 6)
+        Track.Position = UDim2.new(0, 8, 0, 36)
+        Track.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        Track.BorderSizePixel = 0
+        Track.Parent = Row
+        local TrackCorner = Instance.new("UICorner")
+        TrackCorner.CornerRadius = UDim.new(1, 0)
+        TrackCorner.Parent = Track
+
+        local Fill = Instance.new("Frame")
+        Fill.Size = UDim2.new((default - minValue) / (maxValue - minValue), 0, 1, 0)
+        Fill.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
+        Fill.BorderSizePixel = 0
+        Fill.Parent = Track
+        local FillCorner = Instance.new("UICorner")
+        FillCorner.CornerRadius = UDim.new(1, 0)
+        FillCorner.Parent = Fill
+
+        local Dot = Instance.new("TextButton")
+        Dot.Size = UDim2.new(0, 14, 0, 14)
+        Dot.AnchorPoint = Vector2.new(0.5, 0.5)
+        Dot.Position = UDim2.new((default - minValue) / (maxValue - minValue), 0, 0.5, 0)
+        Dot.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+        Dot.BorderSizePixel = 0
+        Dot.Text = ""
+        Dot.AutoButtonColor = false
+        Dot.Parent = Track
+        local DotCorner = Instance.new("UICorner")
+        DotCorner.CornerRadius = UDim.new(1, 0)
+        DotCorner.Parent = Dot
+
+        local sliderObj = { Track = Track, minValue = minValue, maxValue = maxValue, callback = onChange }
+
+        function sliderObj:updateFromX(x)
+            local trackAbs = Track.AbsolutePosition.X
+            local trackSize = Track.AbsoluteSize.X
+            local alpha = math.clamp((x - trackAbs) / trackSize, 0, 1)
+            local val = math.floor(minValue + alpha * (maxValue - minValue) + 0.5)
+            Dot.Position = UDim2.new(alpha, 0, 0.5, 0)
+            Fill.Size = UDim2.new(alpha, 0, 1, 0)
+            ValueLabel.Text = tostring(val)
+            if onChange then onChange(val) end
+        end
+
+        function sliderObj:isInTrack(x, y)
+            local absPos  = Track.AbsolutePosition
+            local absSize = Track.AbsoluteSize
+            return x >= absPos.X - 12 and x <= absPos.X + absSize.X + 12
+               and y >= absPos.Y - 16 and y <= absPos.Y + absSize.Y + 16
+        end
+
+        table.insert(GUI.Sliders, sliderObj)
+
+        local listening = false
+        KeyBtn.MouseButton1Click:Connect(function()
+            if listening then return end
+            listening = true
+            KeyBtn.Text = "..."
+            local conn
+            conn = UserInputService.InputBegan:Connect(function(input, gpe)
+                if gpe then return end
+                if input.UserInputType == Enum.UserInputType.Keyboard then
+                    local keyName = tostring((string.split(tostring(input.KeyCode), "KeyCode")[2]):split(".")[2])
+                    KeyBtn.Text = keyName
+                    if onKeyChange then onKeyChange(input.KeyCode) end
+                    listening = false
+                    conn:Disconnect()
+                end
+            end)
+        end)
+
+        KeyBtn.MouseEnter:Connect(function()
+            TweenService:Create(KeyBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(55, 55, 55)}):Play()
+        end)
+        KeyBtn.MouseLeave:Connect(function()
+            TweenService:Create(KeyBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
+        end)
+
+        if onChange then onChange(default) end
+        return sliderObj
+    end
+
+    -- Add all sliders
+    GUI:AddSlider(RightScroll, "Sex Speed", 1, 100, getgenv().SexSpeed, function(v) getgenv().SexSpeed = v end)
+    GUI:AddSlider(RightScroll, "Orbit Speed", 1, 100, getgenv().OrbitSpeed, function(v) getgenv().OrbitSpeed = v end)
+
+    GUI:AddSliderWithKeybind(RightScroll, "Control Cframe Speed", 1, 100,
+        getgenv().config.control.cframespeed,
+        getgenv().ControlCframeKey,
+        function(v) getgenv().config.control.cframespeed = v end,
+        function(k) getgenv().ControlCframeKey = k end)
+
+    GUI:AddSliderWithKeybind(RightScroll, "Control Fly Speed", 1, 100,
+        getgenv().config.control.flyspeed,
+        getgenv().ControlFlyKey,
+        function(v) getgenv().config.control.flyspeed = v end,
+        function(k) getgenv().ControlFlyKey = k end)
+
+    -- Global slider input handler
+    local draggingSlider = nil
+
+    table.insert(GUI.Connections, UserInputService.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            for _, s in ipairs(GUI.Sliders) do
+                if s:isInTrack(input.Position.X, input.Position.Y) then
+                    draggingSlider = s
+                    s:updateFromX(input.Position.X)
+                    break
+                end
+            end
+        end
+    end))
+
+    table.insert(GUI.Connections, UserInputService.InputChanged:Connect(function(input)
+        if draggingSlider and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            draggingSlider:updateFromX(input.Position.X)
+        end
+    end))
+
+    table.insert(GUI.Connections, UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            draggingSlider = nil
+        end
+    end))
+
+    -- Toggle creator
     function GUI:AddToggle(name, builder)
         local Btn = Instance.new("TextButton")
         Btn.Name = name
@@ -1845,20 +2170,10 @@ function GUI:Create()
     end
 
     local ORDER = {
-        "Activate",
-        "Mmm.. chezburger",
-        "Goku",
-        "Time Stop",
-        "Domain Expansion",
-        "Sex",
-        "Orbit",
-        "Pp",
-        "Full Combo",
-        "Control",
-        "Made in Heaven",
-        "Offerings",
+        "Activate", "Mmm.. chezburger", "Goku", "Time Stop",
+        "Domain Expansion", "Sex", "Orbit", "Pp",
+        "Full Combo", "Control", "Made in Heaven", "Offerings",
     }
-
     for _, toolName in ipairs(ORDER) do
         if toolBuilders[toolName] then
             GUI:AddToggle(toolName, toolBuilders[toolName])
@@ -1867,3 +2182,106 @@ function GUI:Create()
 end
 
 GUI:Create()
+
+-- ============================================================
+--  FLOATING ".Soda.Fun" TOGGLE BUTTON
+-- ============================================================
+
+local ToggleBtn = {}
+
+function ToggleBtn:Create()
+    if ToggleBtn.Gui then ToggleBtn.Gui:Destroy() end
+
+    local BtnGui = Instance.new("ScreenGui")
+    BtnGui.Name = "SodaFunToggle"
+    BtnGui.ResetOnSpawn = false
+    BtnGui.IgnoreGuiInset = true
+    BtnGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    pcall(function() BtnGui.Parent = CoreGui end)
+    if not BtnGui.Parent then BtnGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+    ToggleBtn.Gui = BtnGui
+
+    local Btn = Instance.new("TextButton")
+    Btn.Name = "Toggle"
+    Btn.Size = UDim2.new(0, 110, 0, 34)
+    Btn.Position = UDim2.new(0.02, 0, 0.15, 0)
+    Btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    Btn.BorderSizePixel = 0
+    Btn.Text = ".Soda.Fun"
+    Btn.Font = Enum.Font.GothamBold
+    Btn.TextSize = 13
+    Btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+    Btn.AutoButtonColor = false
+    Btn.Active = true
+    Btn.Parent = BtnGui
+
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 6)
+    BtnCorner.Parent = Btn
+
+    local BtnStroke = Instance.new("UIStroke")
+    BtnStroke.Color = Color3.fromRGB(60, 60, 60)
+    BtnStroke.Thickness = 1.2
+    BtnStroke.Parent = Btn
+
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+    local moved = false
+
+    Btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            moved = false
+            dragStart = input.Position
+            startPos = Btn.Position
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch then
+            local delta = input.Position - dragStart
+            if math.abs(delta.X) > 3 or math.abs(delta.Y) > 3 then
+                moved = true
+            end
+            Btn.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging and not moved then
+                if GUI.Screen then
+                    GUI.Screen.Enabled = not GUI.Screen.Enabled
+                end
+            end
+            dragging = false
+        end
+    end)
+
+    Btn.MouseEnter:Connect(function()
+        TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
+        TweenService:Create(BtnStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(80, 200, 80)}):Play()
+    end)
+    Btn.MouseLeave:Connect(function()
+        TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(25, 25, 25)}):Play()
+        TweenService:Create(BtnStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+    end)
+end
+
+ToggleBtn:Create()
+
+-- ============================================================
+--  RESPAWN HOOK
+-- ============================================================
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    char:WaitForChild("FULLY_LOADED_CHAR")
+end)
