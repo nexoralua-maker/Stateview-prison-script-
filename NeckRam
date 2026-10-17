@@ -3,7 +3,7 @@
 --  Title: .Soda.Fun /discord
 --  Draggable toggle: ".Soda.Fun" opens/closes GUI
 --  Left: Neckgrabs toggles | Right: Customization + keybind sliders
---  Control: mobile Cframe/Fly toggle buttons (draggable)
+--  Control: mobile Cframe/Fly toggle buttons (draggable, show on Equip)
 -- ============================================================
 
 local Players           = game:GetService("Players")
@@ -27,6 +27,8 @@ local t4               = {}
 local stopAlign        = false
 local timeStopActive   = false
 local EffectsEnabled   = true
+
+getgenv().ActiveTools = getgenv().ActiveTools or {}
 
 getgenv().config = getgenv().config or {}
 getgenv().config.control = getgenv().config.control or {}
@@ -137,7 +139,7 @@ function Holding()
                 CFrame.new(-0.2, -1.7, 0.5),
                 CFrame.Angles(math.pi * -0.5, math.pi * 1, math.pi * 0.07))
         end
-    until LocalPlayer.Character.BodyEffects.Grabbed.Value == nil or u19 == true
+    until not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("BodyEffects") or not LocalPlayer.Character.BodyEffects:FindFirstChild("Grabbed") or LocalPlayer.Character.BodyEffects.Grabbed.Value == nil or u19 == true
 end
 
 function Grab()
@@ -543,22 +545,26 @@ local function u33()
         end))
     end
 
-    repeat task.wait() until LocalPlayer.Character.BodyEffects.Grabbed.Value == nil or u19 == true
+    repeat task.wait() until not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("BodyEffects") or not LocalPlayer.Character.BodyEffects:FindFirstChild("Grabbed") or LocalPlayer.Character.BodyEffects.Grabbed.Value == nil or u19 == true
 
-    LocalPlayer.Character.HumanoidRootPart.CFrame = u20.HumanoidRootPart.CFrame
-    ZeroVelocity___(LocalPlayer.Character.HumanoidRootPart)
-    workspace.CurrentCamera.CameraSubject = LocalPlayer.Character
-    u20:Destroy()
-
-    for _, descendant in pairs(GrabbedValue:GetDescendants()) do
-        if descendant:IsA("BodyPosition") then descendant:Destroy() end
-    end
-    for _, v in pairs(t4) do v:Disconnect() end
-
-    GrabbedValue.LeftHand:FindFirstChildOfClass("Motor6D").Enabled = true
-    GrabbedValue.RightHand:FindFirstChildOfClass("Motor6D").Enabled = true
-    GrabbedValue.LeftFoot:FindFirstChildOfClass("Motor6D").Enabled = true
-    GrabbedValue.RightFoot:FindFirstChildOfClass("Motor6D").Enabled = true
+    pcall(function()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and u20 and u20:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = u20.HumanoidRootPart.CFrame
+            ZeroVelocity___(LocalPlayer.Character.HumanoidRootPart)
+        end
+        workspace.CurrentCamera.CameraSubject = LocalPlayer.Character
+        if u20 then u20:Destroy() end
+        if GrabbedValue then
+            for _, descendant in pairs(GrabbedValue:GetDescendants()) do
+                if descendant:IsA("BodyPosition") then descendant:Destroy() end
+            end
+            if GrabbedValue:FindFirstChild("LeftHand") then GrabbedValue.LeftHand:FindFirstChildOfClass("Motor6D").Enabled = true end
+            if GrabbedValue:FindFirstChild("RightHand") then GrabbedValue.RightHand:FindFirstChildOfClass("Motor6D").Enabled = true end
+            if GrabbedValue:FindFirstChild("LeftFoot") then GrabbedValue.LeftFoot:FindFirstChildOfClass("Motor6D").Enabled = true end
+            if GrabbedValue:FindFirstChild("RightFoot") then GrabbedValue.RightFoot:FindFirstChildOfClass("Motor6D").Enabled = true end
+        end
+        for _, v in pairs(t4) do v:Disconnect() end
+    end)
 end
 
 _G.FlyCloneSpeed = getgenv().config.control.flyspeed
@@ -582,6 +588,186 @@ RunService.RenderStepped:Connect(function(dt)
         return
     end
 end)
+
+-- ============================================================
+--  CONTROL MOBILE TOGGLE BUTTONS  (Cframe / Fly)
+-- ============================================================
+
+local ControlUI = {}
+ControlUI.Gui = nil
+ControlUI.CframeOn = false
+ControlUI.CframeDot = nil
+ControlUI.CframeStroke = nil
+ControlUI.FlyDot = nil
+ControlUI.FlyStroke = nil
+
+function ControlUI:Create()
+    if ControlUI.Gui then ControlUI.Gui:Destroy() end
+
+    local Screen = Instance.new("ScreenGui")
+    Screen.Name = "ControlMobileUI"
+    Screen.ResetOnSpawn = false
+    Screen.IgnoreGuiInset = true
+    Screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    Screen.Enabled = false
+    pcall(function() Screen.Parent = CoreGui end)
+    if not Screen.Parent then Screen.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+    ControlUI.Gui = Screen
+
+    local function makeButton(name, defaultPos, onClick)
+        local Btn = Instance.new("TextButton")
+        Btn.Name = name
+        Btn.Size = UDim2.new(0, 90, 0, 34)
+        Btn.Position = defaultPos
+        Btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        Btn.BorderSizePixel = 0
+        Btn.Text = name
+        Btn.Font = Enum.Font.GothamBold
+        Btn.TextSize = 13
+        Btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+        Btn.AutoButtonColor = false
+        Btn.Active = true
+        Btn.Parent = Screen
+
+        local Corner = Instance.new("UICorner")
+        Corner.CornerRadius = UDim.new(0, 6)
+        Corner.Parent = Btn
+
+        local Stroke = Instance.new("UIStroke")
+        Stroke.Color = Color3.fromRGB(60, 60, 60)
+        Stroke.Thickness = 1.2
+        Stroke.Parent = Btn
+
+        local Dot = Instance.new("TextButton")
+        Dot.Size = UDim2.new(0, 10, 0, 10)
+        Dot.Position = UDim2.new(1, -16, 0.5, -5)
+        Dot.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        Dot.BorderSizePixel = 0
+        Dot.Text = ""
+        Dot.AutoButtonColor = false
+        Dot.Parent = Btn
+        local DotCorner = Instance.new("UICorner")
+        DotCorner.CornerRadius = UDim.new(1, 0)
+        DotCorner.Parent = Dot
+
+        local dragging, dragStart, startPos, moved = false, nil, nil, false
+
+        Btn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                moved = false
+                dragStart = input.Position
+                startPos = Btn.Position
+            end
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if not dragging then return end
+            if input.UserInputType == Enum.UserInputType.MouseMovement
+                or input.UserInputType == Enum.UserInputType.Touch then
+                local delta = input.Position - dragStart
+                if math.abs(delta.X) > 3 or math.abs(delta.Y) > 3 then
+                    moved = true
+                end
+                Btn.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + delta.X,
+                    startPos.Y.Scale, startPos.Y.Offset + delta.Y
+                )
+            end
+        end)
+
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                if dragging and not moved then
+                    onClick()
+                end
+                dragging = false
+            end
+        end)
+
+        Btn.MouseEnter:Connect(function()
+            TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
+        end)
+        Btn.MouseLeave:Connect(function()
+            TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(25, 25, 25)}):Play()
+        end)
+
+        return Btn, Stroke, Dot
+    end
+
+    -- Cframe button
+    local CframeBtn, CframeStroke, CframeDot = makeButton(
+        "Cframe",
+        UDim2.new(0.02, 0, 0.55, 0),
+        function()
+            ControlUI.CframeOn = not ControlUI.CframeOn
+            if ControlUI.CframeOn then
+                if not _G.ControlCframeActive then
+                    _G.ControlCframeActive = true
+                    task.spawn(function()
+                        if u20 then u30(3189777795) end
+                        while _G.ControlCframeActive and u20 and u20.Parent do
+                            task.wait()
+                            u20.HumanoidRootPart.CFrame = u20.HumanoidRootPart.CFrame
+                                + u20.Humanoid.MoveDirection * getgenv().config.control.cframespeed
+                        end
+                    end)
+                end
+                TweenService:Create(CframeDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
+                TweenService:Create(CframeStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(80, 200, 80)}):Play()
+            else
+                _G.ControlCframeActive = false
+                TweenService:Create(CframeDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+                TweenService:Create(CframeStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+            end
+        end
+    )
+    ControlUI.CframeDot = CframeDot
+    ControlUI.CframeStroke = CframeStroke
+
+    -- Fly button
+    local FlyBtn, FlyStroke, FlyDot = makeButton(
+        "Fly",
+        UDim2.new(0.02, 0, 0.63, 0),
+        function()
+            _G.FlyClone = not _G.FlyClone
+            if _G.FlyClone then
+                TweenService:Create(FlyDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
+                TweenService:Create(FlyStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(80, 200, 80)}):Play()
+            else
+                TweenService:Create(FlyDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+                TweenService:Create(FlyStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+            end
+        end
+    )
+    ControlUI.FlyDot = FlyDot
+    ControlUI.FlyStroke = FlyStroke
+end
+
+function ControlUI:Show()
+    if ControlUI.Gui then ControlUI.Gui.Enabled = true end
+end
+
+function ControlUI:Hide()
+    if ControlUI.Gui then
+        ControlUI.Gui.Enabled = false
+        _G.FlyClone = false
+        _G.ControlCframeActive = false
+        ControlUI.CframeOn = false
+        if ControlUI.CframeDot then
+            TweenService:Create(ControlUI.CframeDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+            TweenService:Create(ControlUI.CframeStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+        end
+        if ControlUI.FlyDot then
+            TweenService:Create(ControlUI.FlyDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+            TweenService:Create(ControlUI.FlyStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+        end
+    end
+end
+
+ControlUI:Create()
 
 -- ============================================================
 --  TOOL BUILDERS
@@ -918,7 +1104,7 @@ toolBuilders["Sex"] = function()
             Align(10000, 175, "UpperTorso", "HumanoidRootPart",
                 CFrame.new(0, -0.3, -2 + 0.5 * math.sin(v226 / 8)),
                 CFrame.Angles(math.pi * -0.3, 0, 0))
-        until LocalPlayer.Character.BodyEffects.Grabbed.Value == nil or getgenv().Furry_ == true
+        until not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("BodyEffects") or not LocalPlayer.Character.BodyEffects:FindFirstChild("Grabbed") or LocalPlayer.Character.BodyEffects.Grabbed.Value == nil or getgenv().Furry_ == true
 
         Destroy("UpperTorso")
         AnimStopv2(4784557631)
@@ -958,7 +1144,7 @@ toolBuilders["Orbit"] = function()
             currentTime = currentTime + delta * (getgenv().OrbitSpeed or 1)
 
             if not grabbed or not grabbed.Parent
-                or LocalPlayer.Character.BodyEffects.Grabbed.Value == nil then
+                or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("BodyEffects") or not LocalPlayer.Character.BodyEffects:FindFirstChild("Grabbed") or LocalPlayer.Character.BodyEffects.Grabbed.Value == nil then
                 if orbitConn then orbitConn:Disconnect(); orbitConn = nil end
                 timeStopActive = false
                 return
@@ -1060,14 +1246,14 @@ toolBuilders["Pp"] = function()
         ppConn = RunService.Heartbeat:Connect(function(dt)
             local Character = LocalPlayer.Character
 
-            if not (Character and Character.BodyEffects
-                and Character.BodyEffects.Grabbed
+            if not (Character and Character:FindFirstChild("BodyEffects")
+                and Character.BodyEffects:FindFirstChild("Grabbed")
                 and Character.BodyEffects.Grabbed.Value) then
                 if ppConn then ppConn:Disconnect(); ppConn = nil end
                 timeStopActive = false
                 return
             end
-            if not (victim and victim.Parent and Character.HumanoidRootPart) then
+            if not (victim and victim.Parent and Character:FindFirstChild("HumanoidRootPart")) then
                 if ppConn then ppConn:Disconnect(); ppConn = nil end
                 timeStopActive = false
                 return
@@ -1258,13 +1444,24 @@ toolBuilders["Control"] = function()
     if LocalPlayer.Backpack:FindFirstChild("Control") then
         LocalPlayer.Backpack:FindFirstChild("Control"):Destroy()
     end
+    if LocalPlayer.Character:FindFirstChild("Control") then
+        LocalPlayer.Character:FindFirstChild("Control"):Destroy()
+    end
     task.wait(0.1)
+    
     local Tool22 = Instance.new("Tool", LocalPlayer.Backpack)
     Tool22.RequiresHandle = false
     Tool22.Name = "Control"
+
+    Tool22.Equipped:Connect(function()
+        if ControlUI then ControlUI:Show() end
+    end)
+    Tool22.Unequipped:Connect(function()
+        if ControlUI then ControlUI:Hide() end
+    end)
+
     Tool22.Activated:Connect(function()
         if LocalPlayer.Character.BodyEffects.Grabbed.Value then
-            if ControlUI then ControlUI:Show() end
             task.wait(1)
             if LocalPlayer.Character:FindFirstChild("Control") then
                 LocalPlayer.Character.Control.Parent = LocalPlayer.Backpack
@@ -1276,6 +1473,7 @@ toolBuilders["Control"] = function()
             u20 = u32(GrabbedValue)
             workspace.CurrentCamera.CameraSubject = u20
             u25(t4, u26("Heartbeat", function()
+                if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") then return end
                 for _, v in pairs(LocalPlayer.Character:FindFirstChild("Humanoid"):GetPlayingAnimationTracks()) do
                     v:Stop()
                 end
@@ -1324,7 +1522,6 @@ toolBuilders["Control"] = function()
                 u20.Humanoid:Move(LocalPlayer.Character.Humanoid.MoveDirection, false)
             end))
             u33()
-            if ControlUI then ControlUI:Hide() end
         end
     end)
     return Tool22
@@ -1490,169 +1687,6 @@ toolBuilders["Offerings"] = function()
 
     return Tool
 end
-
--- ============================================================
---  CONTROL MOBILE TOGGLE BUTTONS  (Cframe / Fly)
--- ============================================================
-
-local ControlUI = {}
-ControlUI.Gui = nil
-
-function ControlUI:Create()
-    if ControlUI.Gui then ControlUI.Gui:Destroy() end
-
-    local Screen = Instance.new("ScreenGui")
-    Screen.Name = "ControlMobileUI"
-    Screen.ResetOnSpawn = false
-    Screen.IgnoreGuiInset = true
-    Screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    Screen.Enabled = false
-    pcall(function() Screen.Parent = CoreGui end)
-    if not Screen.Parent then Screen.Parent = LocalPlayer:WaitForChild("PlayerGui") end
-    ControlUI.Gui = Screen
-
-    local function makeButton(name, defaultPos, onClick)
-        local Btn = Instance.new("TextButton")
-        Btn.Name = name
-        Btn.Size = UDim2.new(0, 90, 0, 34)
-        Btn.Position = defaultPos
-        Btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        Btn.BorderSizePixel = 0
-        Btn.Text = name
-        Btn.Font = Enum.Font.GothamBold
-        Btn.TextSize = 13
-        Btn.TextColor3 = Color3.fromRGB(220, 220, 220)
-        Btn.AutoButtonColor = false
-        Btn.Active = true
-        Btn.Parent = Screen
-
-        local Corner = Instance.new("UICorner")
-        Corner.CornerRadius = UDim.new(0, 6)
-        Corner.Parent = Btn
-
-        local Stroke = Instance.new("UIStroke")
-        Stroke.Color = Color3.fromRGB(60, 60, 60)
-        Stroke.Thickness = 1.2
-        Stroke.Parent = Btn
-
-        local Dot = Instance.new("TextButton")
-        Dot.Size = UDim2.new(0, 10, 0, 10)
-        Dot.Position = UDim2.new(1, -16, 0.5, -5)
-        Dot.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        Dot.BorderSizePixel = 0
-        Dot.Text = ""
-        Dot.AutoButtonColor = false
-        Dot.Parent = Btn
-        local DotCorner = Instance.new("UICorner")
-        DotCorner.CornerRadius = UDim.new(1, 0)
-        DotCorner.Parent = Dot
-
-        local dragging, dragStart, startPos, moved = false, nil, nil, false
-
-        Btn.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = true
-                moved = false
-                dragStart = input.Position
-                startPos = Btn.Position
-            end
-        end)
-
-        UserInputService.InputChanged:Connect(function(input)
-            if not dragging then return end
-            if input.UserInputType == Enum.UserInputType.MouseMovement
-                or input.UserInputType == Enum.UserInputType.Touch then
-                local delta = input.Position - dragStart
-                if math.abs(delta.X) > 3 or math.abs(delta.Y) > 3 then
-                    moved = true
-                end
-                Btn.Position = UDim2.new(
-                    startPos.X.Scale, startPos.X.Offset + delta.X,
-                    startPos.Y.Scale, startPos.Y.Offset + delta.Y
-                )
-            end
-        end)
-
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                if dragging and not moved then
-                    onClick()
-                end
-                dragging = false
-            end
-        end)
-
-        Btn.MouseEnter:Connect(function()
-            TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
-        end)
-        Btn.MouseLeave:Connect(function()
-            TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(25, 25, 25)}):Play()
-        end)
-
-        return Btn, Stroke, Dot
-    end
-
-    -- Cframe button
-    local cframeOn = false
-    local CframeBtn, CframeStroke, CframeDot = makeButton(
-        "Cframe",
-        UDim2.new(0.02, 0, 0.55, 0),
-        function()
-            cframeOn = not cframeOn
-            if cframeOn then
-                if not _G.ControlCframeActive then
-                    _G.ControlCframeActive = true
-                    task.spawn(function()
-                        if u20 then u30(3189777795) end
-                        while _G.ControlCframeActive and u20 and u20.Parent do
-                            task.wait()
-                            u20.HumanoidRootPart.CFrame = u20.HumanoidRootPart.CFrame
-                                + u20.Humanoid.MoveDirection * getgenv().config.control.cframespeed
-                        end
-                    end)
-                end
-                TweenService:Create(CframeDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
-                TweenService:Create(CframeStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(80, 200, 80)}):Play()
-            else
-                _G.ControlCframeActive = false
-                TweenService:Create(CframeDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
-                TweenService:Create(CframeStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
-            end
-        end
-    )
-
-    -- Fly button
-    local FlyBtn, FlyStroke, FlyDot = makeButton(
-        "Fly",
-        UDim2.new(0.02, 0, 0.63, 0),
-        function()
-            _G.FlyClone = not _G.FlyClone
-            if _G.FlyClone then
-                TweenService:Create(FlyDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
-                TweenService:Create(FlyStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(80, 200, 80)}):Play()
-            else
-                TweenService:Create(FlyDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
-                TweenService:Create(FlyStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
-            end
-        end
-    )
-end
-
-function ControlUI:Show()
-    if ControlUI.Gui then ControlUI.Gui.Enabled = true end
-end
-
-function ControlUI:Hide()
-    if ControlUI.Gui then
-        ControlUI.Gui.Enabled = false
-        _G.FlyClone = false
-        _G.ControlCframeActive = false
-    end
-end
-
-ControlUI:Create()
 
 -- ============================================================
 --  MAIN GUI  —  Draggable, Left: Neckgrabs, Right: Customization
@@ -2133,10 +2167,15 @@ function GUI:Create()
         DotCorner.CornerRadius = UDim.new(1, 0)
         DotCorner.Parent = Dot
 
-        local toggled = false
+        local toggled = getgenv().ActiveTools[name] == true
+        if toggled then
+            TweenService:Create(Dot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
+            BtnStroke.Color = Color3.fromRGB(80, 200, 80)
+        end
 
         local function on()
             toggled = true
+            getgenv().ActiveTools[name] = true
             TweenService:Create(Dot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
             BtnStroke.Color = Color3.fromRGB(80, 200, 80)
             if not LocalPlayer.Backpack:FindFirstChild(name)
@@ -2147,6 +2186,7 @@ function GUI:Create()
 
         local function off()
             toggled = false
+            getgenv().ActiveTools[name] = nil
             TweenService:Create(Dot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
             BtnStroke.Color = Color3.fromRGB(40, 40, 40)
             if LocalPlayer.Backpack:FindFirstChild(name) then
@@ -2279,9 +2319,15 @@ end
 ToggleBtn:Create()
 
 -- ============================================================
---  RESPAWN HOOK
+--  RESPAWN HOOK (Re-add tools if toggled)
 -- ============================================================
 
 LocalPlayer.CharacterAdded:Connect(function(char)
     char:WaitForChild("FULLY_LOADED_CHAR")
+    task.wait(1) -- Give backpack time to load
+    for name, active in pairs(getgenv().ActiveTools) do
+        if active and toolBuilders[name] then
+            toolBuilders[name]()
+        end
+    end
 end)
