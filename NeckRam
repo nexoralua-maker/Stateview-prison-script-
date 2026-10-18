@@ -3,7 +3,7 @@
 --  Title: .Soda.Fun /discord
 --  Draggable toggle: ".Soda.Fun" opens/closes GUI
 --  Left: Neckgrabs toggles | Right: Customization + keybind sliders
---  Control: mobile Cframe/Fly toggle buttons (draggable, show on Equip)
+--  Control: mobile buttons show on equip (Cframe, Fly, Crouch, Shield)
 -- ============================================================
 
 local Players           = game:GetService("Players")
@@ -39,6 +39,12 @@ getgenv().SexSpeed   = getgenv().SexSpeed   or 2
 getgenv().OrbitSpeed = getgenv().OrbitSpeed or 1
 getgenv().ControlCframeKey = getgenv().ControlCframeKey or Enum.KeyCode.X
 getgenv().ControlFlyKey    = getgenv().ControlFlyKey    or Enum.KeyCode.C
+
+-- Defaults for mobile GUI toggles
+if getgenv().ShowCframeBtn == nil then getgenv().ShowCframeBtn = true end
+if getgenv().ShowFlyBtn == nil then getgenv().ShowFlyBtn = true end
+if getgenv().ShowCrouchBtn == nil then getgenv().ShowCrouchBtn = true end
+if getgenv().ShowShieldBtn == nil then getgenv().ShowShieldBtn = true end
 
 function Settings_Effects()
     return EffectsEnabled
@@ -590,16 +596,17 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 -- ============================================================
---  CONTROL MOBILE TOGGLE BUTTONS  (Cframe / Fly)
+--  CONTROL MOBILE TOGGLE BUTTONS  (Cframe / Fly / Crouch / Shield)
 -- ============================================================
 
 local ControlUI = {}
 ControlUI.Gui = nil
 ControlUI.CframeOn = false
-ControlUI.CframeDot = nil
-ControlUI.CframeStroke = nil
-ControlUI.FlyDot = nil
-ControlUI.FlyStroke = nil
+ControlUI.CrouchOn = false
+ControlUI.ShieldOn = false
+ControlUI.CframeTrack = nil
+ControlUI.CrouchTrack = nil
+ControlUI.ShieldTrack = nil
 
 function ControlUI:Create()
     if ControlUI.Gui then ControlUI.Gui:Destroy() end
@@ -724,6 +731,7 @@ function ControlUI:Create()
             end
         end
     )
+    ControlUI.CframeBtn = CframeBtn
     ControlUI.CframeDot = CframeDot
     ControlUI.CframeStroke = CframeStroke
 
@@ -742,11 +750,80 @@ function ControlUI:Create()
             end
         end
     )
+    ControlUI.FlyBtn = FlyBtn
     ControlUI.FlyDot = FlyDot
     ControlUI.FlyStroke = FlyStroke
+
+    -- Crouch button
+    local CrouchBtn, CrouchStroke, CrouchDot = makeButton(
+        "Crouch",
+        UDim2.new(0.02, 0, 0.71, 0),
+        function()
+            ControlUI.CrouchOn = not ControlUI.CrouchOn
+            if ControlUI.CrouchOn then
+                if u20 then
+                    local anim = Instance.new("Animation", u20)
+                    anim.AnimationId = "rbxassetid://3152394906"
+                    local track = u20.Humanoid:LoadAnimation(anim)
+                    track.Looped = true
+                    track.Priority = Enum.AnimationPriority.Action
+                    track:Play()
+                    ControlUI.CrouchTrack = track
+                end
+                TweenService:Create(CrouchDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
+                TweenService:Create(CrouchStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(80, 200, 80)}):Play()
+            else
+                if ControlUI.CrouchTrack then
+                    ControlUI.CrouchTrack:Stop()
+                    ControlUI.CrouchTrack = nil
+                end
+                TweenService:Create(CrouchDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+                TweenService:Create(CrouchStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+            end
+        end
+    )
+    ControlUI.CrouchBtn = CrouchBtn
+    ControlUI.CrouchDot = CrouchDot
+    ControlUI.CrouchStroke = CrouchStroke
+
+    -- Shield button
+    local ShieldBtn, ShieldStroke, ShieldDot = makeButton(
+        "Shield",
+        UDim2.new(0.02, 0, 0.79, 0),
+        function()
+            ControlUI.ShieldOn = not ControlUI.ShieldOn
+            if ControlUI.ShieldOn then
+                if u20 then
+                    local anim = Instance.new("Animation", u20)
+                    anim.AnimationId = "rbxassetid://2788354405"
+                    local track = u20.Humanoid:LoadAnimation(anim)
+                    track.Looped = true
+                    track.Priority = Enum.AnimationPriority.Action
+                    track:Play()
+                    ControlUI.ShieldTrack = track
+                end
+                TweenService:Create(ShieldDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
+                TweenService:Create(ShieldStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(80, 200, 80)}):Play()
+            else
+                if ControlUI.ShieldTrack then
+                    ControlUI.ShieldTrack:Stop()
+                    ControlUI.ShieldTrack = nil
+                end
+                TweenService:Create(ShieldDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+                TweenService:Create(ShieldStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+            end
+        end
+    )
+    ControlUI.ShieldBtn = ShieldBtn
+    ControlUI.ShieldDot = ShieldDot
+    ControlUI.ShieldStroke = ShieldStroke
 end
 
 function ControlUI:Show()
+    if ControlUI.CframeBtn then ControlUI.CframeBtn.Visible = getgenv().ShowCframeBtn end
+    if ControlUI.FlyBtn then ControlUI.FlyBtn.Visible = getgenv().ShowFlyBtn end
+    if ControlUI.CrouchBtn then ControlUI.CrouchBtn.Visible = getgenv().ShowCrouchBtn end
+    if ControlUI.ShieldBtn then ControlUI.ShieldBtn.Visible = getgenv().ShowShieldBtn end
     if ControlUI.Gui then ControlUI.Gui.Enabled = true end
 end
 
@@ -755,7 +832,14 @@ function ControlUI:Hide()
         ControlUI.Gui.Enabled = false
         _G.FlyClone = false
         _G.ControlCframeActive = false
+        
         ControlUI.CframeOn = false
+        ControlUI.CrouchOn = false
+        ControlUI.ShieldOn = false
+        
+        if ControlUI.CrouchTrack then ControlUI.CrouchTrack:Stop() ControlUI.CrouchTrack = nil end
+        if ControlUI.ShieldTrack then ControlUI.ShieldTrack:Stop() ControlUI.ShieldTrack = nil end
+        
         if ControlUI.CframeDot then
             TweenService:Create(ControlUI.CframeDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
             TweenService:Create(ControlUI.CframeStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
@@ -763,6 +847,14 @@ function ControlUI:Hide()
         if ControlUI.FlyDot then
             TweenService:Create(ControlUI.FlyDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
             TweenService:Create(ControlUI.FlyStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+        end
+        if ControlUI.CrouchDot then
+            TweenService:Create(ControlUI.CrouchDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+            TweenService:Create(ControlUI.CrouchStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+        end
+        if ControlUI.ShieldDot then
+            TweenService:Create(ControlUI.ShieldDot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+            TweenService:Create(ControlUI.ShieldStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
         end
     end
 end
@@ -2077,6 +2169,71 @@ function GUI:Create()
         return sliderObj
     end
 
+    -- Simple config toggle
+    function GUI:AddConfigToggle(parent, name, defaultState, callback)
+        local Btn = Instance.new("TextButton")
+        Btn.Size = UDim2.new(1, 0, 0, 34)
+        Btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        Btn.BorderSizePixel = 0
+        Btn.AutoButtonColor = false
+        Btn.Text = ""
+        Btn.Parent = parent
+        
+        local BtnCorner = Instance.new("UICorner")
+        BtnCorner.CornerRadius = UDim.new(0, 5)
+        BtnCorner.Parent = Btn
+        
+        local BtnStroke = Instance.new("UIStroke")
+        BtnStroke.Color = defaultState and Color3.fromRGB(80, 200, 80) or Color3.fromRGB(40, 40, 40)
+        BtnStroke.Thickness = 1
+        BtnStroke.Parent = Btn
+
+        local Label = Instance.new("TextLabel")
+        Label.Size = UDim2.new(1, -50, 1, 0)
+        Label.Position = UDim2.new(0, 10, 0, 0)
+        Label.BackgroundTransparency = 1
+        Label.Font = Enum.Font.Gotham
+        Label.Text = name
+        Label.TextColor3 = Color3.fromRGB(200, 200, 200)
+        Label.TextSize = 12
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.Parent = Btn
+
+        local Dot = Instance.new("TextButton")
+        Dot.Size = UDim2.new(0, 14, 0, 14)
+        Dot.Position = UDim2.new(1, -24, 0.5, -7)
+        Dot.BackgroundColor3 = defaultState and Color3.fromRGB(80, 200, 80) or Color3.fromRGB(40, 40, 40)
+        Dot.BorderSizePixel = 0
+        Dot.Text = ""
+        Dot.AutoButtonColor = false
+        Dot.Parent = Btn
+
+        local DotCorner = Instance.new("UICorner")
+        DotCorner.CornerRadius = UDim.new(1, 0)
+        DotCorner.Parent = Dot
+
+        local toggled = defaultState
+
+        Btn.MouseButton1Click:Connect(function()
+            toggled = not toggled
+            if toggled then
+                TweenService:Create(Dot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(80, 200, 80)}):Play()
+                BtnStroke.Color = Color3.fromRGB(80, 200, 80)
+            else
+                TweenService:Create(Dot, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+                BtnStroke.Color = Color3.fromRGB(40, 40, 40)
+            end
+            if callback then callback(toggled) end
+        end)
+
+        Btn.MouseEnter:Connect(function()
+            TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(30, 30, 30)}):Play()
+        end)
+        Btn.MouseLeave:Connect(function()
+            TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(20, 20, 20)}):Play()
+        end)
+    end
+
     -- Add all sliders
     GUI:AddSlider(RightScroll, "Sex Speed", 1, 100, getgenv().SexSpeed, function(v) getgenv().SexSpeed = v end)
     GUI:AddSlider(RightScroll, "Orbit Speed", 1, 100, getgenv().OrbitSpeed, function(v) getgenv().OrbitSpeed = v end)
@@ -2092,6 +2249,35 @@ function GUI:Create()
         getgenv().ControlFlyKey,
         function(v) getgenv().config.control.flyspeed = v end,
         function(k) getgenv().ControlFlyKey = k end)
+
+    -- Add the visibility toggles
+    GUI:AddConfigToggle(RightScroll, "Cframe Toggle Show", getgenv().ShowCframeBtn, function(state)
+        getgenv().ShowCframeBtn = state
+        if ControlUI.Gui and ControlUI.Gui.Enabled and ControlUI.CframeBtn then
+            ControlUI.CframeBtn.Visible = state
+        end
+    end)
+    
+    GUI:AddConfigToggle(RightScroll, "Fly Toggle Show", getgenv().ShowFlyBtn, function(state)
+        getgenv().ShowFlyBtn = state
+        if ControlUI.Gui and ControlUI.Gui.Enabled and ControlUI.FlyBtn then
+            ControlUI.FlyBtn.Visible = state
+        end
+    end)
+
+    GUI:AddConfigToggle(RightScroll, "Crouch Toggle Show", getgenv().ShowCrouchBtn, function(state)
+        getgenv().ShowCrouchBtn = state
+        if ControlUI.Gui and ControlUI.Gui.Enabled and ControlUI.CrouchBtn then
+            ControlUI.CrouchBtn.Visible = state
+        end
+    end)
+
+    GUI:AddConfigToggle(RightScroll, "Shield Toggle Show", getgenv().ShowShieldBtn, function(state)
+        getgenv().ShowShieldBtn = state
+        if ControlUI.Gui and ControlUI.Gui.Enabled and ControlUI.ShieldBtn then
+            ControlUI.ShieldBtn.Visible = state
+        end
+    end)
 
     -- Global slider input handler
     local draggingSlider = nil
@@ -2123,7 +2309,7 @@ function GUI:Create()
         end
     end))
 
-    -- Toggle creator
+    -- Tool Toggle creator
     function GUI:AddToggle(name, builder)
         local Btn = Instance.new("TextButton")
         Btn.Name = name
