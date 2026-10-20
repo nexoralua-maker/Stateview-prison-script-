@@ -169,19 +169,29 @@ local function ResolveClosestPart(character, requestedPart)
 end
 local dot_gradient_ref = nil
 
---aimlock
+--aimlock (multi-part + forced target + respawn-safe relock)
 local Aimlock = (function()
     local M = {
         enabled = false, initialized = false, onStateChange = nil, onLockChange = nil,
         lockKey = Enum.KeyCode.Insert,
-        state = { locked_target = nil, isTargetting = false, predicted_position = Vector3.new(1,1,1) },
+        state = {
+            locked_target = nil,
+            locked_userid = nil,
+            isTargetting = false,
+            predicted_position = Vector3.new(1,1,1),
+            forced_target = nil,
+            auto_relock = false,
+            missing_char_since = 0,
+            lost_since = 0,
+        },
         camlock = true, camSmooth = true, camSmoothValue = 1,
         autoAir = true, autoAirDelay = 0.2,
     }
     local lastAutoAir = 0
     local Settings = {
         HPrediction = 0.134, VPrediction = 0.134,
-        AimPart = "Head", MaxDistance = 500, LookConeDot = 0.90,
+        AimParts = { "Head" },
+        MaxDistance = 500, LookConeDot = 0.90,
         UseChecks = true,
         Checks = { Knocked = true, Grabbed = true, Friend = false, Wall = false, Vehicle = false },
         AntiGroundShots = true, AntiGroundMult = 0.2,
@@ -245,6 +255,40 @@ local Aimlock = (function()
         local root = p.Character:FindFirstChild("HumanoidRootPart")
         return root and math.abs(root.AssemblyLinearVelocity.Y) > 1 or false
     end
+
+    local function resolve_aim_part(character, parts)
+        if not character then return nil end
+        if type(parts) == "string" then parts = { parts } end
+        if not parts or #parts == 0 then return character:FindFirstChild("HumanoidRootPart") end
+
+        local use_closest = false
+        for _, p in ipairs(parts) do
+            if p == "Closest Part" then use_closest = true; break end
+        end
+
+        if use_closest then
+            local camPos = Camera.CFrame.Position
+            local best, bestDist = nil, math.huge
+            for _, name in ipairs(CLOSEST_PART_NAMES) do
+                local part = character:FindFirstChild(name)
+                if part then
+                    local d = (part.Position - camPos).Magnitude
+                    if d < bestDist then bestDist = d; best = part end
+                end
+            end
+            if best then return best end
+        end
+
+        for _, name in ipairs(parts) do
+            if name ~= "Closest Part" then
+                local part = character:FindFirstChild(name)
+                if part then return part end
+            end
+        end
+
+        return character:FindFirstChild("HumanoidRootPart")
+    end
+
     local function get_target_in_look_direction()
         if not has_char(LP) then return nil end
         local myRoot = LP.Character:FindFirstChild("HumanoidRootPart"); if not myRoot then return nil end
@@ -253,7 +297,7 @@ local Aimlock = (function()
         for _, p in ipairs(Players:GetPlayers()) do
             if p == LP then continue end
             if not has_char(p) then continue end
-            local head = ResolveClosestPart(p.Character, Settings.AimPart); if not head then continue end
+            local head = resolve_aim_part(p.Character, Settings.AimParts); if not head then continue end
             if (head.Position - myRoot.Position).Magnitude > Settings.MaxDistance then continue end
             if Settings.UseChecks then
                 if Settings.Checks.Knocked and is_knocked(p) then continue end
@@ -272,7 +316,7 @@ local Aimlock = (function()
     local function get_predicted_position()
         local target = M.state.locked_target
         if not has_char(target) then return Vector3.new(0, 0, 0) end
-        local aimPart = ResolveClosestPart(target.Character, Settings.AimPart)
+        local aimPart = resolve_aim_part(target.Character, Settings.AimParts)
         if not aimPart then return Vector3.new(0, 0, 0) end
         local pos, vel = aimPart.Position, aimPart.AssemblyLinearVelocity
         if Settings.AntiGroundShots and is_in_air(target) then
@@ -305,13 +349,17 @@ local Aimlock = (function()
     end
     local function do_lock()
         if not M.enabled then return end
-        local target = get_target_in_look_direction()
+        local target = M.state.forced_target or get_target_in_look_direction()
         if target then
             M.state.locked_target = target
+            M.state.locked_userid = target.UserId
             M.state.isTargetting = true
+            M.state.missing_char_since = 0
+            M.state.lost_since = 0
             if M.onLockChange then pcall(M.onLockChange, true, target) end
         else
             M.state.locked_target = nil
+            M.state.locked_userid = nil
             M.state.isTargetting = false
             if M.onLockChange then pcall(M.onLockChange, false, nil) end
         end
@@ -319,7 +367,10 @@ local Aimlock = (function()
     local function do_unlock()
         local had = M.state.locked_target ~= nil
         M.state.locked_target = nil
+        M.state.locked_userid = nil
         M.state.isTargetting = false
+        M.state.missing_char_since = 0
+        M.state.lost_since = 0
         if dot_frame then dot_frame.Visible = false end
         if had and M.onLockChange then pcall(M.onLockChange, false, nil) end
     end
@@ -358,8 +409,47 @@ local Aimlock = (function()
         end)
         RunService.RenderStepped:Connect(function()
             if not M.enabled then if dot_frame then dot_frame.Visible = false end; return end
-            if M.state.locked_target and not M.state.locked_target.Parent then do_unlock() end
-            if M.state.locked_target and not has_char(M.state.locked_target) then do_unlock() end
+
+            if M.state.locked_target then
+                local target = M.state.locked_target
+                local stillInGame = target and target.Parent ~= nil
+                local hasCharacter = has_char(target)
+
+                if M.state.auto_relock then
+                    if not stillInGame then
+                        local reacquired = M.state.locked_userid and Players:GetPlayerByUserId(M.state.locked_userid)
+                        if reacquired then
+                            M.state.locked_target = reacquired
+                            M.state.lost_since = 0
+                            M.state.missing_char_since = 0
+                            target = reacquired
+                            hasCharacter = has_char(reacquired)
+                        else
+                            if M.state.lost_since == 0 then M.state.lost_since = tick() end
+                            if tick() - M.state.lost_since > 120 then do_unlock() end
+                            M.state.isTargetting = false
+                            if dot_frame then dot_frame.Visible = false end
+                            return
+                        end
+                    else
+                        M.state.lost_since = 0
+                    end
+
+                    if not hasCharacter then
+                        if M.state.missing_char_since == 0 then M.state.missing_char_since = tick() end
+                        if tick() - M.state.missing_char_since > 5 then do_unlock() end
+                        M.state.isTargetting = false
+                        if dot_frame then dot_frame.Visible = false end
+                        return
+                    else
+                        M.state.missing_char_since = 0
+                    end
+                else
+                    if not stillInGame then do_unlock(); return end
+                    if not hasCharacter then do_unlock(); return end
+                end
+            end
+
             if not M.state.locked_target then if dot_frame then dot_frame.Visible = false end; return end
             M.state.isTargetting = true; M.state.predicted_position = get_predicted_position()
             if M.camlock then
@@ -373,7 +463,7 @@ local Aimlock = (function()
                 if not M.enabled or not dot_frame then if dot_frame then dot_frame.Visible = false end; return end
                 if not M.state.locked_target or not has_char(M.state.locked_target) then dot_frame.Visible = false; return end
                 if Settings.ShowTargetDot then
-                    local head = ResolveClosestPart(M.state.locked_target.Character, Settings.AimPart)
+                    local head = resolve_aim_part(M.state.locked_target.Character, Settings.AimParts)
                     if head then
                         local above = head.Position + Vector3.new(0, Settings.TargetDotOffset, 0)
                         local sp, on = Camera:WorldToViewportPoint(above)
@@ -406,13 +496,29 @@ local Aimlock = (function()
     end
     function M.setHPrediction(v) Settings.HPrediction = tonumber(v) or Settings.HPrediction end
     function M.setVPrediction(v) Settings.VPrediction = tonumber(v) or Settings.VPrediction end
-    function M.setAimPart(part) Settings.AimPart = part end
+    function M.setAimPart(part)
+        if type(part) == "table" then Settings.AimParts = part
+        elseif type(part) == "string" then Settings.AimParts = { part }
+        else Settings.AimParts = { "Head" } end
+        if #Settings.AimParts == 0 then Settings.AimParts = { "Head" } end
+    end
     function M.setWallCheck(v) Settings.Checks.Wall = v and true or false end
     function M.setCamlock(v) M.camlock = v and true or false end
     function M.setCamSmooth(v) M.camSmooth = v and true or false end
     function M.setCamSmoothValue(v) M.camSmoothValue = math.clamp(tonumber(v) or M.camSmoothValue, 0.01, 1) end
     function M.setAutoAir(v) M.autoAir = v and true or false end
     function M.setAutoAirDelay(v) M.autoAirDelay = tonumber(v) or M.autoAirDelay end
+    function M.setAutoRelock(v) M.state.auto_relock = v and true or false end
+    function M.setForcedTarget(plr)
+        if not plr then M.state.forced_target = nil return end
+        M.state.forced_target = plr
+        if not M.enabled then M.setEnabled(true) else do_lock() end
+    end
+    function M.clearForcedTarget()
+        M.state.forced_target = nil
+        if M.enabled then do_lock()
+        else M.state.locked_target = nil; M.state.isTargetting = false; if dot_frame then dot_frame.Visible = false end end
+    end
     M.Settings = Settings
     return M
 end)()
@@ -622,49 +728,197 @@ local SilentAimPrediction = (function()
     return M
 end)()
 
---auto fire
+--auto fire (with speed + checks)
 local AutoFire = (function()
     local M = { enabled=false, initialized=false }
-    local FIRE_DELAY, IGNORE_MELEE = 0.1, true
+    local SHOTS_PER_SECOND = 10
+    local IGNORE_MELEE = true
+
+    local CheckKnock      = false
+    local CheckKnife      = false
+    local CheckForcefield = false
+    local CheckWall       = false
+
     local activeTool, lastFireTime, loopConn = nil, 0, nil
+
     local function is_melee_or_consumable(tool)
         if not IGNORE_MELEE then return false end
         local n = tool.Name:lower()
-        return n:find("katana") or n:find("knife") or n:find("sword") or n:find("bat") or n:find("fist") or n:find("crowbar") or n:find("pizza") or n:find("donut") or n:find("cola")
+        return n:find("katana") or n:find("knife") or n:find("sword") or n:find("bat")
+            or n:find("fist") or n:find("crowbar") or n:find("pizza") or n:find("donut") or n:find("cola")
     end
-    local function is_gun(tool) if not tool or not tool:IsA("Tool") then return false end; if not tool:FindFirstChild("Handle") then return false end; if is_melee_or_consumable(tool) then return false end; return true end
-    local function activateTool(tool) if not tool or not tool.Parent then return end; if tool.Parent ~= player.Character then return end; pcall(function() tool:Activate() end) end
+    local function is_gun(tool)
+        if not tool or not tool:IsA("Tool") then return false end
+        if not tool:FindFirstChild("Handle") then return false end
+        if is_melee_or_consumable(tool) then return false end
+        return true
+    end
+    local function activateTool(tool)
+        if not tool or not tool.Parent then return end
+        if tool.Parent ~= player.Character then return end
+        pcall(function() tool:Activate() end)
+    end
     local function onEquip(tool)
-        if not M.enabled then return end; if not is_gun(tool) then return end
-        activeTool, lastFireTime = tool, 0; task.wait(0.05)
-        if M.enabled and activeTool == tool and tool.Parent == player.Character then activateTool(tool); lastFireTime = tick() end
+        if not M.enabled then return end
+        if not is_gun(tool) then return end
+        activeTool, lastFireTime = tool, 0
+        task.wait(0.05)
+        if M.enabled and activeTool == tool and tool.Parent == player.Character then
+            activateTool(tool); lastFireTime = tick()
+        end
     end
     local function hookCharacter(character)
         if not character then return end
         character.ChildAdded:Connect(function(child) if child:IsA("Tool") then onEquip(child) end end)
-        character.ChildRemoved:Connect(function(child) if child:IsA("Tool") and child == activeTool then activeTool = nil end end)
+        character.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") and child == activeTool then activeTool = nil end
+        end)
     end
+
+    local function has_char(p) return p and p.Character and p.Character:FindFirstChild("Humanoid") end
+
+    local function is_knocked(plr)
+        if not (plr and plr.Character) then return false end
+        local char = plr.Character
+        if char:GetAttribute("Knocked") then return true end
+        local bodyFx = char:FindFirstChild("BodyEffects")
+        if bodyFx then
+            local ko = bodyFx:FindFirstChild("K.O")
+            if ko and ko.Value then return true end
+        end
+        return false
+    end
+
+    local function has_forcefield(plr)
+        if not (plr and plr.Character) then return false end
+        return plr.Character:FindFirstChildOfClass("ForceField") ~= nil
+    end
+
+    local function local_has_katana()
+        if not player.Character then return false end
+        local tool = player.Character:FindFirstChildWhichIsA("Tool")
+        if not tool then return false end
+        local n = tool.Name:lower()
+        return n:find("katana") or n:find("knife") or n:find("sword") or n:find("bat") or n:find("fist")
+    end
+
+    local function get_aimed_player()
+        local origin, dir
+        if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+            origin = camera.CFrame.Position
+            dir    = camera.CFrame.LookVector
+        else
+            local mousePos = UserInputService:GetMouseLocation()
+            local inset    = GuiService:GetGuiInset()
+            local ray = camera:ViewportPointToRay(mousePos.X - inset.X, mousePos.Y - inset.Y)
+            origin = ray.Origin
+            dir    = ray.Direction
+        end
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        local filter = {}
+        if player.Character then table.insert(filter, player.Character) end
+        params.FilterDescendantsInstances = filter
+        params.IgnoreWater = true
+        local hit = workspace:Raycast(origin, dir.Unit * 1000, params)
+        if hit and hit.Instance then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= player and has_char(p) and hit.Instance:IsDescendantOf(p.Character) then
+                    return p
+                end
+            end
+        end
+        return nil
+    end
+
+    local function is_visible(targetPlayer)
+        if not targetPlayer or not targetPlayer.Character then return false end
+        local targetChar = targetPlayer.Character
+        local head = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
+        if not head then return false end
+        local origin = camera.CFrame.Position
+        local dir = head.Position - origin
+        if dir.Magnitude < 0.1 then return true end
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        local exclude = { camera, targetChar }
+        if player.Character then
+            table.insert(exclude, player.Character)
+            for _, d in ipairs(player.Character:GetDescendants()) do table.insert(exclude, d) end
+        end
+        for _, d in ipairs(targetChar:GetDescendants()) do table.insert(exclude, d) end
+        params.FilterDescendantsInstances = exclude
+        params.IgnoreWater = true
+        local result = workspace:Raycast(origin, dir, params)
+        if not result then return true end
+        return result.Instance and result.Instance:IsDescendantOf(targetChar) or false
+    end
+
+    local function should_fire()
+        if CheckKnife and local_has_katana() then return false end
+        if CheckKnock or CheckForcefield or CheckWall then
+            local target = get_aimed_player()
+            if not target then return false end
+            if CheckKnock      and is_knocked(target)     then return false end
+            if CheckForcefield and has_forcefield(target) then return false end
+            if CheckWall       and not is_visible(target) then return false end
+        end
+        return true
+    end
+
     local function startLoop()
         if loopConn then return end
         loopConn = RunService.Heartbeat:Connect(function()
             if not M.enabled then return end
             if not activeTool or activeTool.Parent ~= player.Character then return end
-            if tick() - lastFireTime >= FIRE_DELAY then activateTool(activeTool); lastFireTime = tick() end
+            local interval = 1 / SHOTS_PER_SECOND
+            if tick() - lastFireTime < interval then return end
+            if should_fire() then
+                activateTool(activeTool)
+                lastFireTime = tick()
+            end
         end)
     end
+
     local function init()
-        if M.initialized then return end; M.initialized = true
-        if player.Character then hookCharacter(player.Character); local already = player.Character:FindFirstChildWhichIsA("Tool"); if already then onEquip(already) end end
-        player.CharacterAdded:Connect(function(char) activeTool = nil; task.wait(0.2); hookCharacter(char) end)
+        if M.initialized then return end
+        M.initialized = true
+        if player.Character then
+            hookCharacter(player.Character)
+            local already = player.Character:FindFirstChildWhichIsA("Tool")
+            if already then onEquip(already) end
+        end
+        player.CharacterAdded:Connect(function(char)
+            activeTool = nil
+            task.wait(0.2)
+            hookCharacter(char)
+        end)
         startLoop()
     end
+
     function M.setEnabled(state)
         M.enabled = state and true or false
-        if M.enabled then init()
-            if player.Character then local tool = player.Character:FindFirstChildWhichIsA("Tool"); if tool and is_gun(tool) then onEquip(tool) end end
-        else activeTool = nil end
+        if M.enabled then
+            init()
+            if player.Character then
+                local tool = player.Character:FindFirstChildWhichIsA("Tool")
+                if tool and is_gun(tool) then onEquip(tool) end
+            end
+        else
+            activeTool = nil
+        end
     end
-    function M.setFireDelay(v) FIRE_DELAY = math.clamp(tonumber(v) or 0.1, 0.01, 10) end
+
+    function M.setSpeed(v) SHOTS_PER_SECOND = math.clamp(tonumber(v) or 10, 0.1, 100) end
+    function M.setFireDelay(v)
+        local d = tonumber(v)
+        if d and d > 0 then SHOTS_PER_SECOND = 1 / d end
+    end
+    function M.setKnockCheck(v)      CheckKnock      = v and true or false end
+    function M.setKnifeCheck(v)      CheckKnife      = v and true or false end
+    function M.setForcefieldCheck(v) CheckForcefield = v and true or false end
+    function M.setWallCheck(v)       CheckWall       = v and true or false end
+
     return M
 end)()
 
@@ -1759,13 +2013,11 @@ local HitSounds = (function()
     local function PlaySound()
         local id = SOUNDS[State.Sound]
         if not id then return end
-
         local sound   = Instance.new("Sound")
         sound.SoundId = id
         sound.Volume  = State.Volume
         sound.Parent  = Workspace
         sound:Play()
-
         local cleaned = false
         local function cleanup()
             if cleaned then return end
@@ -1776,25 +2028,17 @@ local HitSounds = (function()
         task.delay(5, cleanup)
     end
 
-    local function MarkAttack()
-        State.LastAttack = tick()
-    end
+    local function MarkAttack() State.LastAttack = tick() end
 
     local function HookTool(tool)
-        if tool:IsA("Tool") then
-            tool.Activated:Connect(MarkAttack)
-        end
+        if tool:IsA("Tool") then tool.Activated:Connect(MarkAttack) end
     end
-
     local function HookCharacter(char)
-        for _, child in ipairs(char:GetChildren()) do
-            HookTool(child)
-        end
+        for _, child in ipairs(char:GetChildren()) do HookTool(child) end
         char.ChildAdded:Connect(function(child)
             if child:IsA("Tool") then HookTool(child) end
         end)
     end
-
     if LP.Character then HookCharacter(LP.Character) end
     LP.CharacterAdded:Connect(HookCharacter)
 
@@ -1822,9 +2066,7 @@ local HitSounds = (function()
 
     local connection = RunService.Heartbeat:Connect(function()
         if not State.Enabled then return end
-
         local now = tick()
-
         if now - State.LastPlay < State.Cooldown then
             for _, p in ipairs(Players:GetPlayers()) do
                 if p ~= LP and p.Character then
@@ -1834,32 +2076,23 @@ local HitSounds = (function()
             end
             return
         end
-
         local attackedRecently = (now - State.LastAttack) < State.HitWindow
-
         for _, p in ipairs(Players:GetPlayers()) do
             if p == LP or not p.Character then continue end
             local hum = p.Character:FindFirstChildOfClass("Humanoid")
             if not hum then continue end
-
             local health     = hum.Health
             local lastHealth = State.LastHealth[p.UserId] or health
-
             if health < lastHealth and attackedRecently then
                 PlaySound()
                 State.LastPlay = now
             end
-
             State.LastHealth[p.UserId] = health
         end
     end)
 
-    LP.CharacterAdded:Connect(function()
-        State.LastHealth = {}
-    end)
-    Players.PlayerRemoving:Connect(function(p)
-        State.LastHealth[p.UserId] = nil
-    end)
+    LP.CharacterAdded:Connect(function() State.LastHealth = {} end)
+    Players.PlayerRemoving:Connect(function(p) State.LastHealth[p.UserId] = nil end)
 
     return {
         SetEnabled = function(v) State.Enabled = v and true or false end,
@@ -1886,10 +2119,7 @@ local KnockStomp = (function()
     }
 
     local function hasCharacter(plr)
-        return plr
-            and plr.Character
-            and plr.Character:FindFirstChild("Humanoid")
-            and plr.Character:FindFirstChild("HumanoidRootPart")
+        return plr and plr.Character and plr.Character:FindFirstChild("Humanoid") and plr.Character:FindFirstChild("HumanoidRootPart")
     end
 
     local function isKnocked(plr)
@@ -1917,23 +2147,15 @@ local KnockStomp = (function()
     function M.FindTargetKnocked()
         local name = State.knockstomp.targetName
         if not name or name == "" then return nil, nil, nil end
-
         local plr = Players:FindFirstChild(name)
         if not plr or plr == LP then return nil, nil, nil end
         if not plr.Character then return nil, nil, nil end
         if isDead(plr) then return nil, nil, nil end
         if not isKnocked(plr) then return nil, nil, nil end
-
         local folder = Workspace:FindFirstChild(plr.Name)
-        if folder and folder:FindFirstChild("HB") then
-            return folder.HB, plr.Character, plr
-        end
-
+        if folder and folder:FindFirstChild("HB") then return folder.HB, plr.Character, plr end
         local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            return hrp, plr.Character, plr
-        end
-
+        if hrp then return hrp, plr.Character, plr end
         return nil, nil, nil
     end
 
@@ -1942,39 +2164,24 @@ local KnockStomp = (function()
             local char = LP.Character
             if char and char:FindFirstChild("HumanoidRootPart") then
                 local hrp = char.HumanoidRootPart
-
                 local hitbox, targetChar, targetPlr = M.FindTargetKnocked()
-
                 if hitbox and targetPlr then
                     State.knockstomp.originalcframe = hrp.CFrame
-
                     local pos = hitbox.Position
                     hrp.CFrame = CFrame.new(pos.X, pos.Y, pos.Z)
                     hrp.Velocity = Vector3.new(0, 0, 0)
                     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-
-                    while not (
-                        not isKnocked(targetPlr)
-                        or isDead(targetPlr)
-                        or not State.knockstomp.isactive
-                    ) do
+                    while not (not isKnocked(targetPlr) or isDead(targetPlr) or not State.knockstomp.isactive) do
                         if hitbox and hitbox.Parent then
                             local p = hitbox.Position
                             hrp.CFrame = CFrame.new(p.X, p.Y, p.Z)
                             hrp.Velocity = Vector3.new(0, 0, 0)
                             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                         end
-
-                        pcall(function()
-                            ReplicatedStorage.MainEvent:FireServer("Stomp")
-                        end)
-                        pcall(function()
-                            ReplicatedStorage.MAINEVENT:FireServer("STOMP")
-                        end)
-
+                        pcall(function() ReplicatedStorage.MainEvent:FireServer("Stomp") end)
+                        pcall(function() ReplicatedStorage.MAINEVENT:FireServer("STOMP") end)
                         task.wait(0.05)
                     end
-
                     if State.knockstomp.originalcframe then
                         hrp.CFrame = State.knockstomp.originalcframe
                         hrp.Velocity = Vector3.new(0, 0, 0)
@@ -1986,16 +2193,12 @@ local KnockStomp = (function()
         end
     end
 
-    function M.setTargetName(name)
-        State.knockstomp.targetName = name
-    end
-
+    function M.setTargetName(name) State.knockstomp.targetName = name end
     function M.Start()
         if State.knockstomp.isactive then return end
         State.knockstomp.isactive = true
         task.spawn(M.Loop)
     end
-
     function M.Stop()
         State.knockstomp.isactive = false
         State.knockstomp.targetName = nil
@@ -2008,37 +2211,30 @@ local KnockStomp = (function()
         end
         State.knockstomp.originalcframe = nil
     end
-
     return M
 end)()
 
 --auto kill
 local AutoKill = (function()
     local M = { enabled = false }
-
-    local TARGET_TOOL        = "katana"
+    local TARGET_TOOL = "katana"
     local KATANA_CLICK_DELAY = 0.01
-
-    local autoKillTask    = nil
-    local pauseTask       = nil
-    local pauseTp         = false
-    local targetHistory   = {}
-    local HISTORY_SIZE    = 5
-    local katanaToken     = 0
-    local katanaConns     = {}
+    local autoKillTask, pauseTask = nil, nil
+    local pauseTp = false
+    local targetHistory = {}
+    local HISTORY_SIZE = 5
+    local katanaToken = 0
+    local katanaConns = {}
     local currentTargetName = nil
 
     local function getEquippedKatana()
         local char = player.Character
         if not char then return nil end
         for _, c in ipairs(char:GetChildren()) do
-            if c:IsA("Tool") and c.Name:lower() == TARGET_TOOL then
-                return c
-            end
+            if c:IsA("Tool") and c.Name:lower() == TARGET_TOOL then return c end
         end
         return nil
     end
-
     local function startKatanaClick()
         katanaToken += 1
         local tok = katanaToken
@@ -2051,18 +2247,11 @@ local AutoKill = (function()
             end
         end)
     end
-
-    local function stopKatanaClick()
-        katanaToken += 1
-    end
-
+    local function stopKatanaClick() katanaToken += 1 end
     local function unhookKatana()
-        for _, c in ipairs(katanaConns) do
-            pcall(function() c:Disconnect() end)
-        end
+        for _, c in ipairs(katanaConns) do pcall(function() c:Disconnect() end) end
         katanaConns = {}
     end
-
     local function hookKatana(char)
         unhookKatana()
         table.insert(katanaConns, char.ChildAdded:Connect(function(child)
@@ -2071,13 +2260,10 @@ local AutoKill = (function()
             end
         end))
         table.insert(katanaConns, char.ChildRemoved:Connect(function(child)
-            if child:IsA("Tool") and child.Name:lower() == TARGET_TOOL then
-                stopKatanaClick()
-            end
+            if child:IsA("Tool") and child.Name:lower() == TARGET_TOOL then stopKatanaClick() end
         end))
         if getEquippedKatana() and M.enabled then startKatanaClick() end
     end
-
     local function resolveTarget(targetName)
         if targetName and targetName ~= "" and targetName ~= player.Name then
             local p = Players:FindFirstChild(targetName)
@@ -2085,7 +2271,6 @@ local AutoKill = (function()
         end
         return nil
     end
-
     local function getRealTargetPosition(tgtRoot)
         local now = tick()
         local currentPos = tgtRoot.Position
@@ -2104,25 +2289,21 @@ local AutoKill = (function()
         end
         return currentPos
     end
-
     local function runAutoKillTick(targetName)
         local t = resolveTarget(targetName)
         if not t or not t.Parent or t == player then return end
-        local myChar  = player.Character
-        local tgtChar = t.Character
+        local myChar, tgtChar = player.Character, t.Character
         if not myChar or not tgtChar then return end
-        local myRoot   = myChar:FindFirstChild("HumanoidRootPart")
-        local tgtRoot  = tgtChar:FindFirstChild("HumanoidRootPart")
+        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+        local tgtRoot = tgtChar:FindFirstChild("HumanoidRootPart")
         local humanoid = myChar:FindFirstChildOfClass("Humanoid")
         if not myRoot or not tgtRoot or not humanoid then return end
-
         if humanoid.Sit then humanoid.Sit = false end
         humanoid.PlatformStand = false
         humanoid.AutoRotate    = false
         humanoid.WalkSpeed     = 0
         humanoid.JumpPower     = 0
         humanoid.JumpHeight    = 0
-
         local realTargetPos = getRealTargetPosition(tgtRoot)
         local radius = 15
         local theta  = math.random() * math.pi * 2
@@ -2130,37 +2311,25 @@ local AutoKill = (function()
         local offX   = radius * math.sin(phi) * math.cos(theta)
         local offY   = math.max(0, radius * math.cos(phi))
         local offZ   = radius * math.sin(phi) * math.sin(theta)
-        local newPos = Vector3.new(
-            realTargetPos.X + offX,
-            realTargetPos.Y + offY,
-            realTargetPos.Z + offZ
-        )
+        local newPos = Vector3.new(realTargetPos.X + offX, realTargetPos.Y + offY, realTargetPos.Z + offZ)
         local diff = realTargetPos - newPos
         local yRot = math.atan2(diff.X, diff.Z)
         myRoot.CFrame = CFrame.new(newPos) * CFrame.Angles(0, yRot, 0)
         myRoot.AssemblyLinearVelocity  = Vector3.zero
         myRoot.AssemblyAngularVelocity = Vector3.zero
     end
-
-    function M.setTargetName(name)
-        currentTargetName = name
-    end
-
+    function M.setTargetName(name) currentTargetName = name end
     function M.setEnabled(v)
         M.enabled = v and true or false
         if M.enabled then
-            pauseTp       = false
+            pauseTp = false
             targetHistory = {}
-
             autoKillTask = task.spawn(function()
                 while M.enabled do
-                    if not pauseTp then
-                        pcall(runAutoKillTick, currentTargetName)
-                    end
+                    if not pauseTp then pcall(runAutoKillTick, currentTargetName) end
                     task.wait(0.1)
                 end
             end)
-
             pauseTask = task.spawn(function()
                 while M.enabled do
                     task.wait(1)
@@ -2178,43 +2347,32 @@ local AutoKill = (function()
                     pauseTp = false
                 end
             end)
-
             if getEquippedKatana() then startKatanaClick() end
         else
             if autoKillTask then task.cancel(autoKillTask) autoKillTask = nil end
-            if pauseTask    then task.cancel(pauseTask)    pauseTask    = nil end
-            pauseTp       = false
+            if pauseTask then task.cancel(pauseTask) pauseTask = nil end
+            pauseTp = false
             targetHistory = {}
             stopKatanaClick()
             local char = player.Character
             if char then
                 local hum = char:FindFirstChildOfClass("Humanoid")
                 if hum then
-                    hum.Sit           = false
-                    hum.PlatformStand = false
-                    hum.AutoRotate    = true
-                    hum.WalkSpeed     = 16
-                    hum.JumpPower     = 50
-                    hum.JumpHeight    = 7.2
+                    hum.Sit = false; hum.PlatformStand = false; hum.AutoRotate = true
+                    hum.WalkSpeed = 16; hum.JumpPower = 50; hum.JumpHeight = 7.2
                 end
             end
         end
     end
-
-    local function onCharacter(char)
-        task.wait(0.25)
-        hookKatana(char)
-    end
+    local function onCharacter(char) task.wait(0.25); hookKatana(char) end
     if player.Character then task.spawn(onCharacter, player.Character) end
     player.CharacterAdded:Connect(onCharacter)
-
     return M
 end)()
 
 --fling
 local Fling = (function()
     local M = { enabled = false }
-
     local flingRunning = false
     local savedFallenHeight = Workspace.FallenPartsDestroyHeight
     local currentTarget = nil
@@ -2225,90 +2383,59 @@ local Fling = (function()
         local rootPart  = humanoid and humanoid.RootPart
         local tChar     = TargetPlayer.Character
         if not tChar then return end
-
         local tHumanoid = tChar:FindFirstChildOfClass("Humanoid")
         local tRootPart = tHumanoid and tHumanoid.RootPart
         local tHead     = tChar:FindFirstChild("Head")
         local accessory = tChar:FindFirstChildOfClass("Accessory")
         local handle    = accessory and accessory:FindFirstChild("Handle")
-
         if not (character and humanoid and rootPart) then return end
-
         local oldPos
-        if rootPart.Velocity.Magnitude < 50 then
-            oldPos = rootPart.CFrame
-        end
-
+        if rootPart.Velocity.Magnitude < 50 then oldPos = rootPart.CFrame end
         if tHumanoid and tHumanoid.Sit then return end
-
-        if tHead then
-            camera.CameraSubject = tHead
-        elseif handle then
-            camera.CameraSubject = handle
-        elseif tHumanoid and tRootPart then
-            camera.CameraSubject = tHumanoid
-        end
-
+        if tHead then camera.CameraSubject = tHead
+        elseif handle then camera.CameraSubject = handle
+        elseif tHumanoid and tRootPart then camera.CameraSubject = tHumanoid end
         if not tChar:FindFirstChildWhichIsA("BasePart") then return end
-
         local function FPos(basePart, pos, ang)
             rootPart.CFrame = CFrame.new(basePart.Position) * pos * ang
             character:SetPrimaryPartCFrame(CFrame.new(basePart.Position) * pos * ang)
             rootPart.Velocity    = Vector3.new(9e7, 9e7 * 10, 9e7)
             rootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
         end
-
         local function SFBasePart(basePart)
             local timeToWait = 2
             local startTime = tick()
             local angle = 0
-
             repeat
                 if rootPart and tHumanoid and M.enabled then
                     if basePart.Velocity.Magnitude < 50 then
                         angle = angle + 100
-                        FPos(basePart, CFrame.new(0, 1.5, 0) + tHumanoid.MoveDirection * basePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(angle), 0, 0))
-                        task.wait()
-                        FPos(basePart, CFrame.new(0, -1.5, 0) + tHumanoid.MoveDirection * basePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(angle), 0, 0))
-                        task.wait()
-                        FPos(basePart, CFrame.new(0, 1.5, 0) + tHumanoid.MoveDirection, CFrame.Angles(math.rad(angle), 0, 0))
-                        task.wait()
-                        FPos(basePart, CFrame.new(0, -1.5, 0) + tHumanoid.MoveDirection, CFrame.Angles(math.rad(angle), 0, 0))
-                        task.wait()
+                        FPos(basePart, CFrame.new(0, 1.5, 0) + tHumanoid.MoveDirection * basePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(angle), 0, 0)); task.wait()
+                        FPos(basePart, CFrame.new(0, -1.5, 0) + tHumanoid.MoveDirection * basePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(angle), 0, 0)); task.wait()
+                        FPos(basePart, CFrame.new(0, 1.5, 0) + tHumanoid.MoveDirection, CFrame.Angles(math.rad(angle), 0, 0)); task.wait()
+                        FPos(basePart, CFrame.new(0, -1.5, 0) + tHumanoid.MoveDirection, CFrame.Angles(math.rad(angle), 0, 0)); task.wait()
                     else
-                        FPos(basePart, CFrame.new(0, 1.5, tHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-                        task.wait()
-                        FPos(basePart, CFrame.new(0, -1.5, -tHumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
-                        task.wait()
-                        FPos(basePart, CFrame.new(0, 1.5, tHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-                        task.wait()
-                        FPos(basePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-                        task.wait()
+                        FPos(basePart, CFrame.new(0, 1.5, tHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0)); task.wait()
+                        FPos(basePart, CFrame.new(0, -1.5, -tHumanoid.WalkSpeed), CFrame.Angles(0, 0, 0)); task.wait()
+                        FPos(basePart, CFrame.new(0, 1.5, tHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0)); task.wait()
+                        FPos(basePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0)); task.wait()
                     end
                 end
             until startTime + timeToWait < tick() or not M.enabled
-
             pcall(function() Workspace.FallenPartsDestroyHeight = 0/0 end)
             local bv = Instance.new("BodyVelocity")
-            bv.Parent   = rootPart
+            bv.Parent = rootPart
             bv.Velocity = Vector3.new(0, 0, 0)
             bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
             humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
-
             if M.enabled then
-                if tRootPart then
-                    SFBasePart(tRootPart)
-                elseif tHead then
-                    SFBasePart(tHead)
-                elseif handle then
-                    SFBasePart(handle)
-                end
+                if tRootPart then SFBasePart(tRootPart)
+                elseif tHead then SFBasePart(tHead)
+                elseif handle then SFBasePart(handle) end
             end
-
             bv:Destroy()
             humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
             camera.CameraSubject = humanoid
-
             if oldPos then
                 local startT = tick()
                 repeat
@@ -2316,23 +2443,16 @@ local Fling = (function()
                     character:SetPrimaryPartCFrame(oldPos * CFrame.new(0, .5, 0))
                     humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
                     for _, part in pairs(character:GetChildren()) do
-                        if part:IsA("BasePart") then
-                            part.Velocity, part.RotVelocity = Vector3.new(), Vector3.new()
-                        end
+                        if part:IsA("BasePart") then part.Velocity, part.RotVelocity = Vector3.new(), Vector3.new() end
                     end
                     task.wait()
                 until (rootPart.Position - oldPos.p).Magnitude < 25 or tick() - startT > 1
                 pcall(function() Workspace.FallenPartsDestroyHeight = savedFallenHeight end)
             end
         end
-
         SFBasePart(tRootPart or tHead or handle)
     end
-
-    function M.setTargetName(name)
-        currentTarget = name
-    end
-
+    function M.setTargetName(name) currentTarget = name end
     local function resolveTarget()
         if currentTarget and currentTarget ~= "" then
             local p = Players:FindFirstChild(currentTarget)
@@ -2340,7 +2460,6 @@ local Fling = (function()
         end
         return nil
     end
-
     function M.setEnabled(v)
         M.enabled = v and true or false
         if M.enabled then
@@ -2349,8 +2468,7 @@ local Fling = (function()
             task.spawn(function()
                 while M.enabled do
                     local t = resolveTarget()
-                    if t and t ~= player and t.Character
-                        and t.Character:FindFirstChildOfClass("Humanoid") then
+                    if t and t ~= player and t.Character and t.Character:FindFirstChildOfClass("Humanoid") then
                         pcall(doSkidFling, t)
                     end
                     task.wait(0.1)
@@ -2361,267 +2479,168 @@ local Fling = (function()
             pcall(function() Workspace.FallenPartsDestroyHeight = savedFallenHeight end)
         end
     end
-
     return M
 end)()
 
 --self auras
 local SelfAuras = (function()
     local M = {
-        enabled = false,
-        color   = nil,
-        auras = {
-            ["Angel Wings"]   = false,
-            ["Particle Aura"] = false,
-            ["Earthquake"]    = false,
-            ["Halo"]          = false,
-            ["Saturn Ring"]   = false,
-        }
+        enabled = false, color = nil,
+        auras = { ["Angel Wings"]=false, ["Particle Aura"]=false, ["Earthquake"]=false, ["Halo"]=false, ["Saturn Ring"]=false }
     }
-
     local PURPLE = {
-        Deep     = Color3.fromRGB(60, 0, 110),
-        Dark     = Color3.fromRGB(100, 20, 180),
-        Rich     = Color3.fromRGB(138, 43, 226),
-        Vivid    = Color3.fromRGB(160, 60, 255),
-        Bright   = Color3.fromRGB(190, 100, 255),
-        Light    = Color3.fromRGB(215, 150, 255),
-        Lavender = Color3.fromRGB(230, 190, 255),
-        Pink     = Color3.fromRGB(255, 130, 255),
-        White    = Color3.fromRGB(245, 230, 255),
+        Deep=Color3.fromRGB(60,0,110), Dark=Color3.fromRGB(100,20,180), Rich=Color3.fromRGB(138,43,226),
+        Vivid=Color3.fromRGB(160,60,255), Bright=Color3.fromRGB(190,100,255), Light=Color3.fromRGB(215,150,255),
+        Lavender=Color3.fromRGB(230,190,255), Pink=Color3.fromRGB(255,130,255), White=Color3.fromRGB(245,230,255),
     }
-
     local function shade(c, factor)
         local h, s, v = Color3.toHSV(c)
-        if factor < 0 then
-            v = math.clamp(v * (1 + factor), 0, 1)
-            s = math.clamp(s * (1 + factor * 0.5), 0, 1)
-        else
-            v = math.clamp(v + (1 - v) * factor, 0, 1)
-            s = math.clamp(s * (1 - factor * 0.5), 0, 1)
-        end
+        if factor < 0 then v = math.clamp(v*(1+factor),0,1); s = math.clamp(s*(1+factor*0.5),0,1)
+        else v = math.clamp(v+(1-v)*factor,0,1); s = math.clamp(s*(1-factor*0.5),0,1) end
         return Color3.fromHSV(h, s, v)
     end
-
     local function palette()
         if not M.color then return PURPLE end
         local base = M.color
-        return {
-            Deep     = shade(base, -0.75),
-            Dark     = shade(base, -0.50),
-            Rich     = shade(base, -0.25),
-            Vivid    = base,
-            Bright   = shade(base,  0.20),
-            Light    = shade(base,  0.45),
-            Lavender = shade(base,  0.70),
-            Pink     = shade(base,  0.35),
-            White    = Color3.new(1, 1, 1),
-        }
+        return { Deep=shade(base,-0.75), Dark=shade(base,-0.5), Rich=shade(base,-0.25), Vivid=base,
+            Bright=shade(base,0.20), Light=shade(base,0.45), Lavender=shade(base,0.70), Pink=shade(base,0.35), White=Color3.new(1,1,1) }
     end
-
     local function purple_gradient(reverse)
         local p = palette()
-        local seq = {
-            ColorSequenceKeypoint.new(0.00, p.Deep),
-            ColorSequenceKeypoint.new(0.35, p.Rich),
-            ColorSequenceKeypoint.new(0.65, p.Bright),
-            ColorSequenceKeypoint.new(1.00, p.Lavender),
-        }
+        local seq = { ColorSequenceKeypoint.new(0.00,p.Deep), ColorSequenceKeypoint.new(0.35,p.Rich),
+            ColorSequenceKeypoint.new(0.65,p.Bright), ColorSequenceKeypoint.new(1.00,p.Lavender) }
         if reverse then
             local rev = {}
-            for i = #seq, 1, -1 do
-                table.insert(rev, ColorSequenceKeypoint.new(1 - seq[i].Time, seq[i].Value))
-            end
+            for i = #seq, 1, -1 do table.insert(rev, ColorSequenceKeypoint.new(1-seq[i].Time, seq[i].Value)) end
             return ColorSequence.new(rev)
         end
         return ColorSequence.new(seq)
     end
-
     local function purple_pink_gradient()
         local p = palette()
         return ColorSequence.new({
-            ColorSequenceKeypoint.new(0.00, p.Deep),
-            ColorSequenceKeypoint.new(0.30, p.Rich),
-            ColorSequenceKeypoint.new(0.55, p.Pink),
-            ColorSequenceKeypoint.new(0.80, p.Bright),
-            ColorSequenceKeypoint.new(1.00, p.Lavender),
+            ColorSequenceKeypoint.new(0.00,p.Deep), ColorSequenceKeypoint.new(0.30,p.Rich),
+            ColorSequenceKeypoint.new(0.55,p.Pink), ColorSequenceKeypoint.new(0.80,p.Bright),
+            ColorSequenceKeypoint.new(1.00,p.Lavender)
         })
     end
 
     local function create_aura_effect(aura_type, attachment, parent_part)
-        local emitters = {}
-        local extra_attachments = {}
-
+        local emitters, extra_attachments = {}, {}
         if aura_type == "Angel Wings" then
             attachment.Name = "ParticleAttachment"
-            attachment.CFrame = CFrame.new(0, 0, 0, 0.965, 0.259, 0, -0.259, 0.965, 0, 0, 0, 1)
-            attachment.Axis = Vector3.new(0.966, -0.259, 0)
-            attachment.SecondaryAxis = Vector3.new(0.259, 0.966, 0)
-
+            attachment.CFrame = CFrame.new(0,0,0,0.965,0.259,0,-0.259,0.965,0,0,0,1)
+            attachment.Axis = Vector3.new(0.966,-0.259,0)
+            attachment.SecondaryAxis = Vector3.new(0.259,0.966,0)
             local pe = Instance.new("ParticleEmitter")
-            pe.Name = "ParticleEmitter"
-            pe.Texture = "rbxassetid://14054635072"
-            pe.LockedToPart = true
-            pe.Brightness = 1.5
-            pe.LightEmission = 1
-            pe.LightInfluence = 0
+            pe.Name = "ParticleEmitter"; pe.Texture = "rbxassetid://14054635072"
+            pe.LockedToPart = true; pe.Brightness = 1.5; pe.LightEmission = 1; pe.LightInfluence = 0
             pe.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
             pe.Size = NumberSequence.new(4)
-            pe.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 1),
-                NumberSequenceKeypoint.new(0.5, 0),
-                NumberSequenceKeypoint.new(1, 1)
-            })
-            pe.Color = purple_gradient()
-            pe.Lifetime = NumberRange.new(1)
-            pe.Rate = 10
-            pe.Rotation = NumberRange.new(0, 360)
-            pe.RotSpeed = NumberRange.new(30, 60)
-            pe.Speed = NumberRange.new(0.01)
-            pe.SpreadAngle = Vector2.new(0.1)
-            pe.Parent = attachment
-            table.insert(emitters, pe)
+            pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0,1), NumberSequenceKeypoint.new(0.5,0), NumberSequenceKeypoint.new(1,1) })
+            pe.Color = purple_gradient(); pe.Lifetime = NumberRange.new(1); pe.Rate = 10
+            pe.Rotation = NumberRange.new(0,360); pe.RotSpeed = NumberRange.new(30,60)
+            pe.Speed = NumberRange.new(0.01); pe.SpreadAngle = Vector2.new(0.1)
+            pe.Parent = attachment; table.insert(emitters, pe)
 
         elseif aura_type == "Particle Aura" then
             local ringAttachment = Instance.new("Attachment")
-            ringAttachment.Name = "ParticleAttachment"
-            ringAttachment.Parent = parent_part
-            ringAttachment.CFrame = CFrame.new(0, -3, 0)
-            ringAttachment.Axis = Vector3.new(1, 0, 0)
-            ringAttachment.SecondaryAxis = Vector3.new(0, 1, 0)
+            ringAttachment.Name = "ParticleAttachment"; ringAttachment.Parent = parent_part
+            ringAttachment.CFrame = CFrame.new(0,-3,0); ringAttachment.Axis = Vector3.new(1,0,0); ringAttachment.SecondaryAxis = Vector3.new(0,1,0)
             table.insert(extra_attachments, ringAttachment)
-
             local purpleColor = purple_gradient()
-            local purplePink  = purple_pink_gradient()
-
-            local emitterProps = {
-                Brightness = 2.5, LightEmission = 1, LightInfluence = 0,
-                Orientation = Enum.ParticleOrientation.VelocityPerpendicular, LockedToPart = true,
-                EmissionDirection = Enum.NormalId.Top, Lifetime = NumberRange.new(2, 2), Rate = 20,
-                Rotation = NumberRange.new(0, 360), Speed = NumberRange.new(0.001, 0.001),
-                SpreadAngle = Vector2.new(0.001, 0.001)
+            local purplePink = purple_pink_gradient()
+            local props = {
+                Brightness=2.5, LightEmission=1, LightInfluence=0,
+                Orientation=Enum.ParticleOrientation.VelocityPerpendicular, LockedToPart=true,
+                EmissionDirection=Enum.NormalId.Top, Lifetime=NumberRange.new(2,2), Rate=20,
+                Rotation=NumberRange.new(0,360), Speed=NumberRange.new(0.001,0.001),
+                SpreadAngle=Vector2.new(0.001,0.001)
             }
-
-            local sizeLarge = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(0.3, 2),NumberSequenceKeypoint.new(0.6, 5),NumberSequenceKeypoint.new(0.8, 8),NumberSequenceKeypoint.new(1, 12)})
-            local sizeSmall = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(0.3, 1),NumberSequenceKeypoint.new(0.6, 2.5),NumberSequenceKeypoint.new(0.8, 4),NumberSequenceKeypoint.new(1, 6)})
-            local squashLight = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(1, 0.2)})
-            local squashHeavy = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(1, 2)})
-            local transFade = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(0.2, 0.3),NumberSequenceKeypoint.new(1, 1)})
-            local transQuick = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(1, 1)})
-            local transMidFade = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),NumberSequenceKeypoint.new(0.2, 0.6),NumberSequenceKeypoint.new(1, 1)})
+            local sizeLarge = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.3,2),NumberSequenceKeypoint.new(0.6,5),NumberSequenceKeypoint.new(0.8,8),NumberSequenceKeypoint.new(1,12)})
+            local sizeSmall = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.3,1),NumberSequenceKeypoint.new(0.6,2.5),NumberSequenceKeypoint.new(0.8,4),NumberSequenceKeypoint.new(1,6)})
+            local squashLight = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,0.2)})
+            local squashHeavy = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,2)})
+            local transFade = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.2,0.3),NumberSequenceKeypoint.new(1,1)})
+            local transQuick = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,1)})
+            local transMid = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(0.2,0.6),NumberSequenceKeypoint.new(1,1)})
 
             local e1 = Instance.new("ParticleEmitter")
-            e1.Name = "ParticleEmitter1"
-            for k, v in pairs(emitterProps) do e1[k] = v end
+            e1.Name = "ParticleEmitter1"; for k,v in pairs(props) do e1[k]=v end
             e1.Size = sizeLarge; e1.Squash = squashLight
             e1.Texture = "rbxassetid://7216855136"; e1.Transparency = transFade
-            e1.Color = purpleColor; e1.RotSpeed = NumberRange.new(-40, 40)
-            e1.Parent = ringAttachment
-            table.insert(emitters, e1)
+            e1.Color = purpleColor; e1.RotSpeed = NumberRange.new(-40,40)
+            e1.Parent = ringAttachment; table.insert(emitters, e1)
 
             local e2 = Instance.new("ParticleEmitter")
-            e2.Name = "ParticleEmitter2"
-            for k, v in pairs(emitterProps) do e2[k] = v end
+            e2.Name = "ParticleEmitter2"; for k,v in pairs(props) do e2[k]=v end
             e2.Size = sizeSmall; e2.Squash = squashLight
             e2.Texture = "https://assetgame.roblox.com/asset/?id=12713358087&assetName=crescent"
             e2.Transparency = transQuick; e2.Color = purplePink
-            e2.RotSpeed = NumberRange.new(-600, 600)
-            e2.Parent = ringAttachment
-            table.insert(emitters, e2)
+            e2.RotSpeed = NumberRange.new(-600,600)
+            e2.Parent = ringAttachment; table.insert(emitters, e2)
 
             local e3 = Instance.new("ParticleEmitter")
-            e3.Name = "ParticleEmitter3"
-            for k, v in pairs(emitterProps) do e3[k] = v end
+            e3.Name = "ParticleEmitter3"; for k,v in pairs(props) do e3[k]=v end
             e3.Size = sizeSmall; e3.Squash = squashHeavy
-            e3.Texture = "rbxassetid://7216849325"; e3.Transparency = transMidFade
-            e3.Color = purple_gradient(true); e3.RotSpeed = NumberRange.new(-30, 30)
-            e3.Parent = ringAttachment
-            table.insert(emitters, e3)
+            e3.Texture = "rbxassetid://7216849325"; e3.Transparency = transMid
+            e3.Color = purple_gradient(true); e3.RotSpeed = NumberRange.new(-30,30)
+            e3.Parent = ringAttachment; table.insert(emitters, e3)
 
         elseif aura_type == "Earthquake" then
-            local transparency1 = NumberSequence.new({NumberSequenceKeypoint.new(0, 1),NumberSequenceKeypoint.new(0.5, 0.863),NumberSequenceKeypoint.new(1, 1)})
-            local transparency2 = NumberSequence.new({NumberSequenceKeypoint.new(0, 1),NumberSequenceKeypoint.new(0.5, 0.225),NumberSequenceKeypoint.new(1, 1)})
-
-            local attachmentOffsets = {
-                CFrame.new(2.9, 0.42, 0.65, 1, 0, 0, 0, 0, -1, 0, 1, 0),
-                CFrame.new(0.91, 0.42, -2.98, 1, 0, 0, 0, 0, -1, 0, 1, 0),
-                CFrame.new(0.84, 0.06, 2.57, 0, 0, 1, 1, 0, 0, 0, 1, 0),
-                CFrame.new(2.67, -0.84, -1.51, 0, 0, 1, 1, 0, 0, 0, 1, 0),
-                CFrame.new(-1.63, 1.88, 2.09, 0, 0, 1, 1, 0, 0, 0, 1, 0),
-                CFrame.new(-1.68, -0.18, -2.84, 0, 0, 1, 1, 0, 0, 0, 1, 0),
-                CFrame.new(-3.29, 0.2, 0.32, 0, 0, 1, 1, 0, 0, 0, 1, 0),
-                CFrame.new(-0.87, -0.53, 1.34, 0, 0, 1, 1, 0, 0, 0, 1, 0),
-                CFrame.new(-3.21, 0.91, -2.04, 0, 0, 1, 1, 0, 0, 0, 1, 0)
+            local transparency1 = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.5,0.863),NumberSequenceKeypoint.new(1,1)})
+            local transparency2 = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.5,0.225),NumberSequenceKeypoint.new(1,1)})
+            local offsets = {
+                CFrame.new(2.9,0.42,0.65,1,0,0,0,0,-1,0,1,0), CFrame.new(0.91,0.42,-2.98,1,0,0,0,0,-1,0,1,0),
+                CFrame.new(0.84,0.06,2.57,0,0,1,1,0,0,0,1,0), CFrame.new(2.67,-0.84,-1.51,0,0,1,1,0,0,0,1,0),
+                CFrame.new(-1.63,1.88,2.09,0,0,1,1,0,0,0,1,0), CFrame.new(-1.68,-0.18,-2.84,0,0,1,1,0,0,0,1,0),
+                CFrame.new(-3.29,0.2,0.32,0,0,1,1,0,0,0,1,0), CFrame.new(-0.87,-0.53,1.34,0,0,1,1,0,0,0,1,0),
+                CFrame.new(-3.21,0.91,-2.04,0,0,1,1,0,0,0,1,0)
             }
-
-            local wingAttachments = {}
-            for i, offset in ipairs(attachmentOffsets) do
-                local wa = Instance.new("Attachment")
-                wa.Name = "ParticleAttachment" .. i
-                wa.Parent = parent_part
-                wa.CFrame = offset
-                wa.Axis = Vector3.new(1, 0, 0)
-                wa.SecondaryAxis = Vector3.new(0, 0, 1)
-
-                local e1 = Instance.new("ParticleEmitter")
-                e1.Name = "ParticleEmitter1"
-                e1.Parent = wa
+            local wing = {}
+            for i, offset in ipairs(offsets) do
+                local wa = Instance.new("Attachment"); wa.Name = "ParticleAttachment"..i; wa.Parent = parent_part
+                wa.CFrame = offset; wa.Axis = Vector3.new(1,0,0); wa.SecondaryAxis = Vector3.new(0,0,1)
+                local e1 = Instance.new("ParticleEmitter"); e1.Name = "ParticleEmitter1"; e1.Parent = wa
                 e1.Brightness = 10; e1.Size = NumberSequence.new(1); e1.Squash = NumberSequence.new(0)
                 e1.LockedToPart = true; e1.Color = purple_gradient()
                 e1.LightEmission = 1; e1.LightInfluence = 0.65
                 e1.Orientation = Enum.ParticleOrientation.FacingCamera
                 e1.EmissionDirection = Enum.NormalId.Top
                 e1.Lifetime = NumberRange.new(1); e1.Rate = 5
-                e1.Speed = NumberRange.new(0.001); e1.SpreadAngle = Vector2.new(0.1, 0.1)
+                e1.Speed = NumberRange.new(0.001); e1.SpreadAngle = Vector2.new(0.1,0.1)
                 e1.Texture = "rbxassetid://9922864240"; e1.Transparency = transparency1
                 table.insert(emitters, e1)
-
-                local e2 = Instance.new("ParticleEmitter")
-                e2.Name = "ParticleEmitter2"
-                e2.Parent = wa
+                local e2 = Instance.new("ParticleEmitter"); e2.Name = "ParticleEmitter2"; e2.Parent = wa
                 e2.Brightness = 3; e2.Size = NumberSequence.new(0.75); e2.Squash = NumberSequence.new(0)
                 e2.LockedToPart = true; e2.Color = purple_pink_gradient()
                 e2.LightEmission = 1; e2.LightInfluence = 0
                 e2.Orientation = Enum.ParticleOrientation.FacingCamera
                 e2.EmissionDirection = Enum.NormalId.Top
                 e2.Lifetime = NumberRange.new(1); e2.Rate = 5
-                e2.Speed = NumberRange.new(0.001); e2.SpreadAngle = Vector2.new(0.1, 0.1)
+                e2.Speed = NumberRange.new(0.001); e2.SpreadAngle = Vector2.new(0.1,0.1)
                 e2.Texture = "rbxassetid://16444981264"; e2.Transparency = transparency2
                 table.insert(emitters, e2)
-
-                table.insert(extra_attachments, wa)
-                wingAttachments[i] = wa
+                table.insert(extra_attachments, wa); wing[i] = wa
             end
-
             local textures = {
                 { "rbxassetid://15687629443", 0.5, -2, NumberSequence.new({NumberSequenceKeypoint.new(0,0.3),NumberSequenceKeypoint.new(0.018,0.3),NumberSequenceKeypoint.new(0.019,0),NumberSequenceKeypoint.new(0.991,0),NumberSequenceKeypoint.new(0.992,0.3),NumberSequenceKeypoint.new(1,0.3)}), 0.15, 0.15 },
                 { "rbxassetid://15687532616", 0.5, -0.8, NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.018,1),NumberSequenceKeypoint.new(0.019,0),NumberSequenceKeypoint.new(0.798,0),NumberSequenceKeypoint.new(0.847,0.546),NumberSequenceKeypoint.new(1,1)}), 0.3, 0.15 },
                 { "rbxassetid://16726908900", 1, -0.8, NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.018,1),NumberSequenceKeypoint.new(0.019,0.2),NumberSequenceKeypoint.new(0.798,0.2),NumberSequenceKeypoint.new(0.847,0.546),NumberSequenceKeypoint.new(1,1)}), 0.25, 0.25 },
                 { "rbxassetid://623219622", 0.5, -0.8, NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.018,1),NumberSequenceKeypoint.new(0.019,0.2),NumberSequenceKeypoint.new(0.798,0.2),NumberSequenceKeypoint.new(0.847,0.546),NumberSequenceKeypoint.new(1,1)}), 0.25, 0.25 }
             }
-
             for _, pair in ipairs({
-                {wingAttachments[2], wingAttachments[4]}, {wingAttachments[4], wingAttachments[1]}, {wingAttachments[1], wingAttachments[3]}, {wingAttachments[3], wingAttachments[8]},
-                {wingAttachments[3], wingAttachments[5]}, {wingAttachments[5], wingAttachments[7]}, {wingAttachments[7], wingAttachments[9]}, {wingAttachments[7], wingAttachments[6]}
+                {wing[2],wing[4]},{wing[4],wing[1]},{wing[1],wing[3]},{wing[3],wing[8]},
+                {wing[3],wing[5]},{wing[5],wing[7]},{wing[7],wing[9]},{wing[7],wing[6]}
             }) do
                 for i = 1, 4 do
-                    local selected = textures[i]
+                    local sel = textures[i]
                     local beam = Instance.new("Beam")
-                    beam.Parent = parent_part
-                    beam.Attachment0 = pair[1]
-                    beam.Attachment1 = pair[2]
-                    beam.FaceCamera = true
-                    beam.Segments = 10
-                    beam.Brightness = 6
-                    beam.Color = purple_gradient()
-                    beam.LightEmission = 1
-                    beam.LightInfluence = 0
-                    beam.Texture = selected[1]
-                    beam.TextureLength = selected[2]
-                    beam.TextureSpeed = selected[3]
-                    beam.Transparency = selected[4]
-                    beam.Width0 = selected[5]
-                    beam.Width1 = selected[6]
+                    beam.Parent = parent_part; beam.Attachment0 = pair[1]; beam.Attachment1 = pair[2]
+                    beam.FaceCamera = true; beam.Segments = 10; beam.Brightness = 6
+                    beam.Color = purple_gradient(); beam.LightEmission = 1; beam.LightInfluence = 0
+                    beam.Texture = sel[1]; beam.TextureLength = sel[2]; beam.TextureSpeed = sel[3]
+                    beam.Transparency = sel[4]; beam.Width0 = sel[5]; beam.Width1 = sel[6]
                     table.insert(emitters, beam)
                 end
             end
@@ -2629,389 +2648,194 @@ local SelfAuras = (function()
         elseif aura_type == "Halo" then
             local head = parent_part:FindFirstChild("Head")
             if not head then return emitters, extra_attachments end
-
-            local haloAttachment = Instance.new("Attachment")
-            haloAttachment.Name = "CustomAttachment"
-            haloAttachment.CFrame = CFrame.new(-0.05, 0.933012962, 0.25881958,
-                0.965931654, -0.249973103, 0.0670034066,
-                0.258797228, 0.933025956, -0.249973089,
-                -2.9373914e-05, 0.258797228, 0.965931654)
-            haloAttachment.Axis = Vector3.new(0.9659316539764404, 0.25879722833633423, -0.000029373914003372192)
-            haloAttachment.SecondaryAxis = Vector3.new(-0.2499731034040451, 0.9330259561538696, 0.25879722833633423)
-            haloAttachment.Parent = head
-            table.insert(extra_attachments, haloAttachment)
-
-            local e1 = Instance.new("ParticleEmitter")
-            e1.Name = "ParticleEmitter1"
-            e1.Brightness = 3; e1.Color = purple_gradient()
-            e1.LightEmission = 1; e1.LightInfluence = 0
+            local halo = Instance.new("Attachment"); halo.Name = "CustomAttachment"
+            halo.CFrame = CFrame.new(-0.05,0.933012962,0.25881958,0.965931654,-0.249973103,0.0670034066,0.258797228,0.933025956,-0.249973089,-2.9373914e-05,0.258797228,0.965931654)
+            halo.Axis = Vector3.new(0.9659316539764404,0.25879722833633423,-0.000029373914003372192)
+            halo.SecondaryAxis = Vector3.new(-0.2499731034040451,0.9330259561538696,0.25879722833633423)
+            halo.Parent = head; table.insert(extra_attachments, halo)
+            local e1 = Instance.new("ParticleEmitter"); e1.Name = "ParticleEmitter1"
+            e1.Brightness = 3; e1.Color = purple_gradient(); e1.LightEmission = 1; e1.LightInfluence = 0
             e1.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
-            e1.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2.5), NumberSequenceKeypoint.new(1, 3)})
+            e1.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,2.5),NumberSequenceKeypoint.new(1,3)})
             e1.Squash = NumberSequence.new(0)
             e1.Texture = "rbxassetid://8819682608"
-            e1.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1),NumberSequenceKeypoint.new(0.2, 0),NumberSequenceKeypoint.new(0.8, 0),NumberSequenceKeypoint.new(1, 1)})
+            e1.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.2,0),NumberSequenceKeypoint.new(0.8,0),NumberSequenceKeypoint.new(1,1)})
             e1.EmissionDirection = Enum.NormalId.Top
-            e1.Lifetime = NumberRange.new(1, 1); e1.Rate = 7
-            e1.Rotation = NumberRange.new(0, 360); e1.RotSpeed = NumberRange.new(-400, 400)
-            e1.Speed = NumberRange.new(0.001); e1.SpreadAngle = Vector2.new(5, 5)
-            e1.Shape = Enum.ParticleEmitterShape.Box
-            e1.LockedToPart = true
-            e1.Parent = haloAttachment
-            table.insert(emitters, e1)
-
-            local e2 = Instance.new("ParticleEmitter")
-            e2.Name = "ParticleEmitter2"
-            e2.Brightness = 3; e2.Color = purple_pink_gradient()
-            e2.LightEmission = 1
+            e1.Lifetime = NumberRange.new(1,1); e1.Rate = 7
+            e1.Rotation = NumberRange.new(0,360); e1.RotSpeed = NumberRange.new(-400,400)
+            e1.Speed = NumberRange.new(0.001); e1.SpreadAngle = Vector2.new(5,5)
+            e1.Shape = Enum.ParticleEmitterShape.Box; e1.LockedToPart = true
+            e1.Parent = halo; table.insert(emitters, e1)
+            local e2 = Instance.new("ParticleEmitter"); e2.Name = "ParticleEmitter2"
+            e2.Brightness = 3; e2.Color = purple_pink_gradient(); e2.LightEmission = 1
             e2.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
-            e2.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2), NumberSequenceKeypoint.new(1, 3)})
+            e2.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,2),NumberSequenceKeypoint.new(1,3)})
             e2.Squash = NumberSequence.new(0)
             e2.Texture = "rbxassetid://8819682608"
-            e2.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1),NumberSequenceKeypoint.new(0.2, 0),NumberSequenceKeypoint.new(0.8, 0),NumberSequenceKeypoint.new(1, 1)})
+            e2.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.2,0),NumberSequenceKeypoint.new(0.8,0),NumberSequenceKeypoint.new(1,1)})
             e2.EmissionDirection = Enum.NormalId.Top
-            e2.Lifetime = NumberRange.new(1, 1); e2.Rate = 7
-            e2.Rotation = NumberRange.new(0, 360); e2.RotSpeed = NumberRange.new(-400, 400)
-            e2.Speed = NumberRange.new(0.001); e2.SpreadAngle = Vector2.new(5, 5)
-            e2.Shape = Enum.ParticleEmitterShape.Box
-            e2.LockedToPart = true
-            e2.Parent = haloAttachment
-            table.insert(emitters, e2)
+            e2.Lifetime = NumberRange.new(1,1); e2.Rate = 7
+            e2.Rotation = NumberRange.new(0,360); e2.RotSpeed = NumberRange.new(-400,400)
+            e2.Speed = NumberRange.new(0.001); e2.SpreadAngle = Vector2.new(5,5)
+            e2.Shape = Enum.ParticleEmitterShape.Box; e2.LockedToPart = true
+            e2.Parent = halo; table.insert(emitters, e2)
 
         elseif aura_type == "Saturn Ring" then
-            local a1 = Instance.new("Attachment")
-            a1.Name = "ParticleAttachment1"
-            a1.CFrame = CFrame.new(2, 0.5, 1) * CFrame.fromMatrix(Vector3.new(), Vector3.new(0.965929627, 0, 0.258804798), Vector3.new(0, 1, 0), Vector3.new(-0.258804798, 0, 0.965929627))
-            a1.Axis = Vector3.new(0.9659296274185181, 0, 0.2588047981262207)
-            a1.SecondaryAxis = Vector3.new(0, 1, 0)
-            a1.Parent = parent_part
-            table.insert(extra_attachments, a1)
-
-            local e1 = Instance.new("ParticleEmitter")
-            e1.Name = "ParticleEmitter1"
-            e1.Brightness = 3; e1.Color = purple_gradient()
-            e1.LightEmission = 1; e1.LightInfluence = 0
+            local a1 = Instance.new("Attachment"); a1.Name = "ParticleAttachment1"
+            a1.CFrame = CFrame.new(2,0.5,1) * CFrame.fromMatrix(Vector3.new(),Vector3.new(0.965929627,0,0.258804798),Vector3.new(0,1,0),Vector3.new(-0.258804798,0,0.965929627))
+            a1.Axis = Vector3.new(0.9659296274185181,0,0.2588047981262207); a1.SecondaryAxis = Vector3.new(0,1,0)
+            a1.Parent = parent_part; table.insert(extra_attachments, a1)
+            local e1 = Instance.new("ParticleEmitter"); e1.Name = "ParticleEmitter1"
+            e1.Brightness = 3; e1.Color = purple_gradient(); e1.LightEmission = 1; e1.LightInfluence = 0
             e1.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
-            e1.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2.75), NumberSequenceKeypoint.new(1, 3.5)})
-            e1.Squash = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0)})
+            e1.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,2.75),NumberSequenceKeypoint.new(1,3.5)})
+            e1.Squash = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,0)})
             e1.Texture = "http://www.roblox.com/asset/?id=13267054240"
-            e1.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.944444),NumberSequenceKeypoint.new(0.5, 0.2),NumberSequenceKeypoint.new(0.8, 0.8),NumberSequenceKeypoint.new(1, 1)})
-            e1.LockedToPart = true
-            e1.EmissionDirection = Enum.NormalId.Front
-            e1.Lifetime = NumberRange.new(1, 1); e1.Rate = 4
-            e1.Rotation = NumberRange.new(-15, -15)
-            e1.Speed = NumberRange.new(0.05000000074505806, 0.05000000074505806)
-            e1.Parent = a1
+            e1.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0.944444),NumberSequenceKeypoint.new(0.5,0.2),NumberSequenceKeypoint.new(0.8,0.8),NumberSequenceKeypoint.new(1,1)})
+            e1.LockedToPart = true; e1.EmissionDirection = Enum.NormalId.Front
+            e1.Lifetime = NumberRange.new(1,1); e1.Rate = 4; e1.Rotation = NumberRange.new(-15,-15)
+            e1.Speed = NumberRange.new(0.05,0.05); e1.Parent = a1
             table.insert(emitters, e1)
-
-            local a2 = Instance.new("Attachment")
-            a2.Name = "ParticleAttachment2"
-            a2.CFrame = CFrame.new(-2, 0.5, 1) * CFrame.fromMatrix(Vector3.new(), Vector3.new(0.965929627, 0, -0.258804798), Vector3.new(0, 1, 0), Vector3.new(0.258804798, 0, 0.965929627))
-            a2.Axis = Vector3.new(0.9659296274185181, 0, -0.2588047981262207)
-            a2.SecondaryAxis = Vector3.new(0, 1, 0)
-            a2.Parent = parent_part
-            table.insert(extra_attachments, a2)
-
-            local e2 = Instance.new("ParticleEmitter")
-            e2.Name = "ParticleEmitter2"
-            e2.Brightness = 3; e2.Color = purple_gradient(true)
-            e2.LightEmission = 1; e2.LightInfluence = 0
+            local a2 = Instance.new("Attachment"); a2.Name = "ParticleAttachment2"
+            a2.CFrame = CFrame.new(-2,0.5,1) * CFrame.fromMatrix(Vector3.new(),Vector3.new(0.965929627,0,-0.258804798),Vector3.new(0,1,0),Vector3.new(0.258804798,0,0.965929627))
+            a2.Axis = Vector3.new(0.9659296274185181,0,-0.2588047981262207); a2.SecondaryAxis = Vector3.new(0,1,0)
+            a2.Parent = parent_part; table.insert(extra_attachments, a2)
+            local e2 = Instance.new("ParticleEmitter"); e2.Name = "ParticleEmitter2"
+            e2.Brightness = 3; e2.Color = purple_gradient(true); e2.LightEmission = 1; e2.LightInfluence = 0
             e2.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
-            e2.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 2.75), NumberSequenceKeypoint.new(1, 3.5)})
-            e2.Squash = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0)})
+            e2.Size = NumberSequence.new({NumberSequenceKeypoint.new(0,2.75),NumberSequenceKeypoint.new(1,3.5)})
+            e2.Squash = NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,0)})
             e2.Texture = "http://www.roblox.com/asset/?id=13267054240"
-            e2.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.944444),NumberSequenceKeypoint.new(0.5, 0.2),NumberSequenceKeypoint.new(0.8, 0.8),NumberSequenceKeypoint.new(1, 1)})
-            e2.LockedToPart = true
-            e2.EmissionDirection = Enum.NormalId.Back
-            e2.Lifetime = NumberRange.new(1, 1); e2.Rate = 4
-            e2.Rotation = NumberRange.new(-15, -15)
-            e2.Speed = NumberRange.new(0.05000000074505806, 0.05000000074505806)
-            e2.Parent = a2
+            e2.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0.944444),NumberSequenceKeypoint.new(0.5,0.2),NumberSequenceKeypoint.new(0.8,0.8),NumberSequenceKeypoint.new(1,1)})
+            e2.LockedToPart = true; e2.EmissionDirection = Enum.NormalId.Back
+            e2.Lifetime = NumberRange.new(1,1); e2.Rate = 4; e2.Rotation = NumberRange.new(-15,-15)
+            e2.Speed = NumberRange.new(0.05,0.05); e2.Parent = a2
             table.insert(emitters, e2)
         end
-
         return emitters, extra_attachments
     end
 
-    local aura_cache = {}
-
-    local function destroy_cache(cache)
-        if not cache then return end
-        if cache.attachment then cache.attachment:Destroy() end
-        if cache.attachments then
-            for _, att in ipairs(cache.attachments) do
-                if att and att.Parent then att:Destroy() end
-            end
-        end
-        if cache.emitters then
-            for _, emitter in ipairs(cache.emitters) do
-                if emitter and emitter.Parent then emitter:Destroy() end
-            end
-        end
+    local cache = {}
+    local function destroy_cache(c)
+        if not c then return end
+        if c.attachment then c.attachment:Destroy() end
+        if c.attachments then for _, att in ipairs(c.attachments) do if att and att.Parent then att:Destroy() end end end
+        if c.emitters then for _, em in ipairs(c.emitters) do if em and em.Parent then em:Destroy() end end end
     end
-
-    local function cleanup_all()
-        for _, cache in pairs(aura_cache) do
-            destroy_cache(cache)
-        end
-        aura_cache = {}
-    end
-
+    local function cleanup_all() for _, c in pairs(cache) do destroy_cache(c) end cache = {} end
     local function update_aura()
         local char = LP.Character
-        if not char then
-            cleanup_all()
-            return
-        end
-
-        local current_types = {}
-        for name, enabled in pairs(M.auras) do
-            if enabled then table.insert(current_types, name) end
-        end
-
+        if not char then cleanup_all(); return end
+        local types = {}
+        for n, e in pairs(M.auras) do if e then table.insert(types, n) end end
         local to_remove = {}
-        for cached_type in pairs(aura_cache) do
+        for ct in pairs(cache) do
             local found = false
-            for _, t in ipairs(current_types) do
-                if cached_type == t then found = true break end
-            end
-            if not found then table.insert(to_remove, cached_type) end
+            for _, t in ipairs(types) do if ct == t then found = true break end end
+            if not found then table.insert(to_remove, ct) end
         end
-
-        for _, type_to_remove in ipairs(to_remove) do
-            destroy_cache(aura_cache[type_to_remove])
-            aura_cache[type_to_remove] = nil
-        end
-
-        for _, current_type in ipairs(current_types) do
-            local use_upper_torso = (current_type == "Angel Wings")
+        for _, tr in ipairs(to_remove) do destroy_cache(cache[tr]); cache[tr] = nil end
+        for _, ct in ipairs(types) do
             local target_part
-
-            if use_upper_torso then
-                target_part = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
-            else
-                target_part = char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart")
-            end
-
-            if current_type == "Halo" then
-                target_part = char:FindFirstChild("Head")
-            end
-
+            if ct == "Angel Wings" then target_part = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+            else target_part = char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart") end
+            if ct == "Halo" then target_part = char:FindFirstChild("Head") end
             if target_part then
-                if not aura_cache[current_type] then
-                    local attachment = Instance.new("Attachment")
-                    if use_upper_torso then
-                        attachment.Position = Vector3.new(0, 0.5, 0)
-                    end
-                    attachment.Parent = target_part
-
-                    local emitters, extra_attachments = create_aura_effect(current_type, attachment, target_part)
-
-                    aura_cache[current_type] = {
-                        attachment = attachment,
-                        emitters = emitters,
-                        attachments = extra_attachments or {}
-                    }
+                if not cache[ct] then
+                    local att = Instance.new("Attachment")
+                    if ct == "Angel Wings" then att.Position = Vector3.new(0,0.5,0) end
+                    att.Parent = target_part
+                    local emitters, extras = create_aura_effect(ct, att, target_part)
+                    cache[ct] = { attachment=att, emitters=emitters, attachments=extras or {} }
                 else
-                    local cache = aura_cache[current_type]
-                    if cache.attachment and cache.attachment.Parent ~= target_part then
-                        cache.attachment.Parent = target_part
-                        if cache.attachments then
-                            for _, att in ipairs(cache.attachments) do
-                                if att then att.Parent = target_part end
-                            end
-                        end
+                    local c = cache[ct]
+                    if c.attachment and c.attachment.Parent ~= target_part then
+                        c.attachment.Parent = target_part
+                        if c.attachments then for _, att in ipairs(c.attachments) do if att then att.Parent = target_part end end end
                     end
-                    if cache.emitters then
-                        for _, emitter in ipairs(cache.emitters) do
-                            if emitter then
-                                pcall(function() emitter.Enabled = true end)
-                            end
-                        end
-                    end
+                    if c.emitters then for _, em in ipairs(c.emitters) do if em then pcall(function() em.Enabled = true end) end end end
                 end
             end
         end
     end
-
-    RunService.RenderStepped:Connect(function()
-        if not M.enabled then return end
-        update_aura()
-    end)
-
-    LP.CharacterAdded:Connect(function()
-        task.wait(0.5)
-        cleanup_all()
-    end)
-
-    function M.setEnabled(v)
-        M.enabled = v and true or false
-        if not M.enabled then cleanup_all() end
-    end
-
+    RunService.RenderStepped:Connect(function() if not M.enabled then return end; update_aura() end)
+    LP.CharacterAdded:Connect(function() task.wait(0.5); cleanup_all() end)
+    function M.setEnabled(v) M.enabled = v and true or false; if not M.enabled then cleanup_all() end end
     function M.setAura(name, v)
         if M.auras[name] == nil then return end
         M.auras[name] = v and true or false
         if not M.enabled then return end
-        if not v then
-            local cache = aura_cache[name]
-            if cache then
-                destroy_cache(cache)
-                aura_cache[name] = nil
-            end
-        end
+        if not v then local c = cache[name]; if c then destroy_cache(c); cache[name] = nil end end
     end
-
-    function M.setColor(c)
-        M.color = c
-        if M.enabled then
-            cleanup_all()
-        end
-    end
-
-    function M.cleanupAll()
-        cleanup_all()
-    end
-
+    function M.setColor(c) M.color = c; if M.enabled then cleanup_all() end end
+    function M.cleanupAll() cleanup_all() end
     return M
 end)()
 
 --self material
 local SelfMaterial = (function()
     local M = { enabled = false, color = DARK_PURPLE }
-    local savedMaterials = {}
-
-    local function restoreAll()
-        for part, data in pairs(savedMaterials) do
-            if part and part.Parent then
-                pcall(function()
-                    part.Material = data.Material
-                    part.Color    = data.Color
-                end)
-            end
+    local saved = {}
+    local function restore()
+        for p, d in pairs(saved) do
+            if p and p.Parent then pcall(function() p.Material = d.Material; p.Color = d.Color end) end
         end
-        table.clear(savedMaterials)
+        table.clear(saved)
     end
-
     local function apply()
-        local char = LP.Character
-        if not char then return end
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                local isToolPart = part:FindFirstAncestorOfClass("Tool") ~= nil
-                if not isToolPart then
-                    if not savedMaterials[part] then
-                        savedMaterials[part] = {
-                            Material = part.Material,
-                            Color    = part.Color,
-                        }
-                    end
-                    part.Material = Enum.Material.ForceField
-                    part.Color    = M.color
+        local char = LP.Character; if not char then return end
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+                if not p:FindFirstAncestorOfClass("Tool") then
+                    if not saved[p] then saved[p] = { Material = p.Material, Color = p.Color } end
+                    p.Material = Enum.Material.ForceField; p.Color = M.color
                 end
             end
         end
     end
-
     RunService.Heartbeat:Connect(function()
         if not M.enabled then return end
         local char = LP.Character
-        if not char then
-            if next(savedMaterials) then restoreAll() end
-            return
-        end
+        if not char then if next(saved) then restore() end return end
         apply()
     end)
-
-    LP.CharacterAdded:Connect(function()
-        restoreAll()
-    end)
-
-    function M.setEnabled(v)
-        M.enabled = v and true or false
-        if not M.enabled then restoreAll() end
-    end
-
-    function M.setColor(c)
-        M.color = c
-    end
-
-    function M.restoreAll()
-        restoreAll()
-    end
-
+    LP.CharacterAdded:Connect(function() restore() end)
+    function M.setEnabled(v) M.enabled = v and true or false; if not M.enabled then restore() end end
+    function M.setColor(c) M.color = c end
+    function M.restoreAll() restore() end
     return M
 end)()
 
 --self tool material
 local SelfToolMaterial = (function()
     local M = { enabled = false, color = DARK_PURPLE }
-    local savedToolMaterials = {}
-
-    local function restoreAll()
-        for part, data in pairs(savedToolMaterials) do
-            if part and part.Parent then
-                pcall(function()
-                    part.Material = data.Material
-                    part.Color    = data.Color
-                end)
-            end
+    local saved = {}
+    local function restore()
+        for p, d in pairs(saved) do
+            if p and p.Parent then pcall(function() p.Material = d.Material; p.Color = d.Color end) end
         end
-        table.clear(savedToolMaterials)
+        table.clear(saved)
     end
-
     local function applyTool(tool)
         if not tool or not tool:IsA("Tool") then return end
-        for _, part in ipairs(tool:GetDescendants()) do
-            if part:IsA("BasePart") then
-                if not savedToolMaterials[part] then
-                    savedToolMaterials[part] = {
-                        Material = part.Material,
-                        Color    = part.Color,
-                    }
-                end
-                part.Material = Enum.Material.ForceField
-                part.Color    = M.color
+        for _, p in ipairs(tool:GetDescendants()) do
+            if p:IsA("BasePart") then
+                if not saved[p] then saved[p] = { Material = p.Material, Color = p.Color } end
+                p.Material = Enum.Material.ForceField; p.Color = M.color
             end
         end
     end
-
     local function apply()
         local char = LP.Character
-        if char then
-            for _, tool in ipairs(char:GetDescendants()) do
-                if tool:IsA("Tool") then applyTool(tool) end
-            end
-        end
-        local backpack = LP:FindFirstChildOfClass("Backpack")
-        if backpack then
-            for _, tool in ipairs(backpack:GetChildren()) do
-                if tool:IsA("Tool") then applyTool(tool) end
-            end
-        end
+        if char then for _, t in ipairs(char:GetDescendants()) do if t:IsA("Tool") then applyTool(t) end end end
+        local bp = LP:FindFirstChildOfClass("Backpack")
+        if bp then for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") then applyTool(t) end end end
     end
-
-    RunService.Heartbeat:Connect(function()
-        if not M.enabled then return end
-        apply()
-    end)
-
-    LP.CharacterAdded:Connect(function()
-        restoreAll()
-    end)
-
-    function M.setEnabled(v)
-        M.enabled = v and true or false
-        if not M.enabled then restoreAll() end
-    end
-
-    function M.setColor(c)
-        M.color = c
-    end
-
-    function M.restoreAll()
-        restoreAll()
-    end
-
+    RunService.Heartbeat:Connect(function() if not M.enabled then return end; apply() end)
+    LP.CharacterAdded:Connect(function() restore() end)
+    function M.setEnabled(v) M.enabled = v and true or false; if not M.enabled then restore() end end
+    function M.setColor(c) M.color = c end
+    function M.restoreAll() restore() end
     return M
 end)()
 
@@ -3027,7 +2851,12 @@ local BulletTracer = (function()
         local p = Instance.new("Part"); p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch = true, false, false, false
         p.Transparency = 1; p.Size = Vector3.zero; p.CFrame = CFrame.new(pos); p.Parent = Workspace; return p
     end
-    local function isMine(pos) if not S.LocalOnly then return true end; local h = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart"); if not h then return false end; return (h.Position - pos).Magnitude <= S.MaxDistFromMe end
+    local function isMine(pos)
+        if not S.LocalOnly then return true end
+        local h = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+        if not h then return false end
+        return (h.Position - pos).Magnitude <= S.MaxDistFromMe
+    end
     local function spawnTracer(a, b)
         local p0, p1 = mkPart(a), mkPart(b)
         local a0, a1 = Instance.new("Attachment", p0), Instance.new("Attachment", p1)
@@ -3058,7 +2887,12 @@ local BulletTracer = (function()
         spawnTracer(a, b); pcall(function() beam:Destroy() end)
     end
     local hooked
-    local function install() if hooked then return end; hooked = Workspace.DescendantAdded:Connect(function(d) if d:IsA("Beam") and d.Name == S.BeamName then task.defer(handle, d) end end) end
+    local function install()
+        if hooked then return end
+        hooked = Workspace.DescendantAdded:Connect(function(d)
+            if d:IsA("Beam") and d.Name == S.BeamName then task.defer(handle, d) end
+        end)
+    end
     RunService.RenderStepped:Connect(function()
         local now = tick()
         for i = #M.active, 1, -1 do
@@ -3119,15 +2953,13 @@ local ESP = (function()
         return false
     end
     local function anyOn() return S.Box or S.Skeleton or S.Chams or S.Name or S.Distance or S.Tool or S.Health or S.Armor end
-    local function dremove(obj) if not obj then return end; pcall(function() obj:Remove() end); pcall(function() obj:Destroy() end) end
+    local function dremove(o) if not o then return end; pcall(function() o:Remove() end); pcall(function() o:Destroy() end) end
     local function new_player_obj(plr)
         if not ensure_draw() then return nil end
         local o = { plr=plr, box_lines={}, skel_lines={}, box_strips={} }
         for i = 1, 4 do local l = Draw.new("Line"); l.Visible, l.Thickness = false, 1; o.box_lines[i] = l end
         o.box_fill = Draw.new("Square"); o.box_fill.Visible = false; o.box_fill.Filled = true; o.box_fill.Thickness = 0
-        for i = 1, GRADIENT_STRIPS do
-            local s = Draw.new("Square"); s.Visible=false; s.Filled=true; s.Thickness=0; o.box_strips[i] = s
-        end
+        for i = 1, GRADIENT_STRIPS do local s = Draw.new("Square"); s.Visible=false; s.Filled=true; s.Thickness=0; o.box_strips[i] = s end
         for i = 1, #skeleton_bones do local l = Draw.new("Line"); l.Visible, l.Thickness = false, 1; o.skel_lines[i] = l end
         o.name_txt = Draw.new("Text"); o.name_txt.Visible=false; o.name_txt.Size=13; o.name_txt.Center=true; o.name_txt.Outline=true; o.name_txt.Font=2
         o.dist_txt = Draw.new("Text"); o.dist_txt.Visible=false; o.dist_txt.Size=12; o.dist_txt.Center=true; o.dist_txt.Outline=true; o.dist_txt.Font=2
@@ -3200,18 +3032,13 @@ local ESP = (function()
                             local col = S.BoxGradientColor1:Lerp(S.BoxGradientColor2, t)
                             local stripH = height / GRADIENT_STRIPS + 1
                             strip.Position = Vector2.new(topLeft.X, topLeft.Y + (i - 1) * (height / GRADIENT_STRIPS))
-                            strip.Size = Vector2.new(width, stripH)
-                            strip.Color = col
-                            strip.Transparency = S.BoxFillTrans
-                            strip.Visible = true
+                            strip.Size = Vector2.new(width, stripH); strip.Color = col
+                            strip.Transparency = S.BoxFillTrans; strip.Visible = true
                         end
                     else
                         for _, s in ipairs(o.box_strips) do s.Visible = false end
-                        o.box_fill.Position = topLeft
-                        o.box_fill.Size = Vector2.new(width, height)
-                        o.box_fill.Color = S.BoxFillColor
-                        o.box_fill.Transparency = S.BoxFillTrans
-                        o.box_fill.Visible = true
+                        o.box_fill.Position = topLeft; o.box_fill.Size = Vector2.new(width, height)
+                        o.box_fill.Color = S.BoxFillColor; o.box_fill.Transparency = S.BoxFillTrans; o.box_fill.Visible = true
                     end
                 else
                     if o.box_fill then o.box_fill.Visible = false end
@@ -3392,7 +3219,12 @@ end)()
 local AutoBuyState = { AutoFood=false, SelectedFood="[Chicken]", AutoArmor=false, SelectedArmor="[Medium Armor]", AutoGun=false, SelectedGun="[Silencer]" }
 local function SafeFireClickDetector(padName)
     if not padName then return false end
-    local function tryClick(obj) if not obj then return false end; local det = obj:FindFirstChildOfClass("ClickDetector") or obj:FindFirstChildWhichIsA("ClickDetector"); if det then pcall(function() fireclickdetector(det) end); return true end; return false end
+    local function tryClick(obj)
+        if not obj then return false end
+        local det = obj:FindFirstChildOfClass("ClickDetector") or obj:FindFirstChildWhichIsA("ClickDetector")
+        if det then pcall(function() fireclickdetector(det) end); return true end
+        return false
+    end
     local map = Workspace:FindFirstChild("MAP")
     if map then
         for _, group in ipairs({ "Pads","Shops","Shop","Items" }) do
@@ -3421,7 +3253,9 @@ RunService.RenderStepped:Connect(function()
             if StompState.Mode == "normal" then
                 if not stompFirstFired then pcall(function() remote:FireServer("STOMP") end); stompLastFire, stompFirstFired = tick(), true
                 elseif tick() - stompLastFire >= 0.8 then pcall(function() remote:FireServer("STOMP") end); stompLastFire = tick() end
-            else if tick() - stompLastFire >= 0.05 then pcall(function() remote:FireServer("STOMP") end); stompLastFire = tick() end end
+            else
+                if tick() - stompLastFire >= 0.05 then pcall(function() remote:FireServer("STOMP") end); stompLastFire = tick() end
+            end
         end
     else stompFirstFired = false end
 end)
@@ -3566,10 +3400,22 @@ aimSec:ColorPicker({ Text = "dot color", Flag = "ta_dot_color", Default = WHITE,
         if dot_gradient_ref then dot_gradient_ref.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0.00,c), ColorSequenceKeypoint.new(0.50,c), ColorSequenceKeypoint.new(1.00,c) }) end
     end })
 
---aim options
+--aim options (multi-part + auto relock)
 local optsSec = LegitbotTab:Section("aim options", 2)
-optsSec:Dropdown({ Text = "aim part", Flag = "ta_part", Options = HitParts, Default = "head",
-    Callback = function(v) Aimlock.setAimPart(HITPART_MAP[v] or "Head") end })
+optsSec:Dropdown({ Text = "aim part", Flag = "ta_part", Options = HitParts, Default = { "head" },
+    Multi = true,
+    Callback = function(v)
+        local parts = {}
+        if type(v) == "table" then
+            for _, name in ipairs(v) do
+                if HITPART_MAP[name] then table.insert(parts, HITPART_MAP[name]) end
+            end
+        elseif type(v) == "string" and HITPART_MAP[v] then
+            table.insert(parts, HITPART_MAP[v])
+        end
+        if #parts == 0 then parts = { "Head" } end
+        Aimlock.setAimPart(parts)
+    end })
 optsSec:Input({ Text = "x prediction", Flag = "ta_xpred", Default = "0.134", Numeric = true,
     Callback = function(v) local n = tonumber(v); if n then Aimlock.setHPrediction(n) end end })
 optsSec:Input({ Text = "y prediction", Flag = "ta_ypred", Default = "0.134", Numeric = true,
@@ -3581,6 +3427,11 @@ optsSec:Input({ Text = "anti ground multiplier", Flag = "ta_agm", Default = "0.2
 optsSec:Toggle({ Text = "auto air", Flag = "ta_autoair", Default = true, Callback = function(v) Aimlock.setAutoAir(v) end })
 optsSec:Input({ Text = "auto air delay", Flag = "ta_autoairdelay", Default = "0.2", Numeric = true,
     Callback = function(v) local n = tonumber(v); if n then Aimlock.setAutoAirDelay(n) end end })
+optsSec:Toggle({ Text = "Auto Lock if player rejoin", Flag = "ta_autorelock", Default = false,
+    Callback = function(v)
+        Aimlock.setAutoRelock(v)
+        notify("auto relock", v and "enabled" or "disabled", v and "success" or "warn")
+    end })
 
 --aim checks
 local checksSec = LegitbotTab:Section("aim checks", 1)
@@ -3609,14 +3460,26 @@ silentSec:Input({ Text = "v prediction", Flag = "sa_vp", Default = "0.134", Nume
     Callback = function(v) local n = tonumber(v); if n then SilentAimPrediction.setVPrediction(n) end end })
 silentSec:Toggle({ Text = "wallcheck", Flag = "sa_wall", Default = false, Callback = function(v) SilentAimPrediction.setWallCheck(v) end })
 
---auto shoot
+--auto shoot (with speed + checks)
 local asSec = LegitbotTab:Section("auto shoot", 1)
 asSec:Toggle({ Text = "enabled", Flag = "as_enabled", Default = false, Callback = function(v)
     AutoFire.setEnabled(v)
     notify("auto shoot", v and "enabled" or "disabled", v and "success" or "warn")
 end })
-asSec:Input({ Text = "fire delay", Flag = "as_delay", Default = "0.1", Numeric = true,
-    Callback = function(v) local n = tonumber(v); if n then AutoFire.setFireDelay(n) end end })
+asSec:Input({ Text = "speed of shoot", Flag = "as_speed", Default = "10", Numeric = true,
+    Callback = function(v) local n = tonumber(v); if n then AutoFire.setSpeed(n) end end })
+asSec:Toggle({ Text = "knock check", Flag = "as_knock", Default = false, Callback = function(v)
+    AutoFire.setKnockCheck(v)
+end })
+asSec:Toggle({ Text = "knife check", Flag = "as_knife", Default = false, Callback = function(v)
+    AutoFire.setKnifeCheck(v)
+end })
+asSec:Toggle({ Text = "forcefield check", Flag = "as_ff", Default = false, Callback = function(v)
+    AutoFire.setForcefieldCheck(v)
+end })
+asSec:Toggle({ Text = "wall check", Flag = "as_wall", Default = false, Callback = function(v)
+    AutoFire.setWallCheck(v)
+end })
 
 --triggerbot
 local tbSec = LegitbotTab:Section("triggerbot", 2)
@@ -3648,7 +3511,6 @@ antiAimSec:Toggle({ Text = "Invisible desync", Flag = "aa_invdesync", Default = 
     invisibleDesync(v)
     notify("anti aim", v and "invisible desync on" or "invisible desync off", v and "success" or "warn")
 end })
-
 antiAimSec:Toggle({ Text = "C sync", Flag = "aa_csync", Default = false, Callback = function(v)
     CSync.setEnabled(v)
     notify("anti aim", v and "c-sync on" or "c-sync off", v and "success" or "warn")
@@ -3705,11 +3567,8 @@ ragePosSec:Button({ Text = "Auto katana", Callback = function()
     local ok, err = pcall(function()
         loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Stateview-prison-script-/main/Katanaaayyyy"))()
     end)
-    if ok then
-        notify("auto katana", "loaded", "success")
-    else
-        notify("auto katana", "failed: " .. tostring(err), "error")
-    end
+    if ok then notify("auto katana", "loaded", "success")
+    else notify("auto katana", "failed: " .. tostring(err), "error") end
 end })
 
 --information
@@ -3753,16 +3612,12 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
--- ARMOR MODULE (no bar — text only)
--- ============================================================
+--armor module
 local ArmorModule = {}
-
 local ARMOR_ATTRIBUTES      = {"Armor", "ArmorPercent", "ArmorPercentage", "ArmorValue", "Shield"}
 local ARMOR_MAX_ATTRIBUTES  = {"MaxArmor", "ArmorMax", "MaxShield"}
 local ARMOR_VALUES          = {"Armor", "ArmorValue", "Shield"}
 local DEFAULT_MAX_ARMOR     = 200
-
 local function findAttribute(container, names)
     if not container then return nil end
     for _, n in ipairs(names) do
@@ -3771,37 +3626,30 @@ local function findAttribute(container, names)
     end
     return nil
 end
-
 local function findValueObject(container, names)
     if not container then return nil end
     for _, n in ipairs(names) do
         local v = container:FindFirstChild(n)
-        if v and (v:IsA("NumberValue") or v:IsA("IntValue")) then
-            return v.Value, n, v
-        end
+        if v and (v:IsA("NumberValue") or v:IsA("IntValue")) then return v.Value, n, v end
     end
     return nil
 end
-
 function ArmorModule.get(targetPlayer)
     if not targetPlayer or not targetPlayer.Parent then return nil end
     local character = targetPlayer.Character
     if not character then return nil end
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if not humanoid then return nil end
-
     local armor = findAttribute(humanoid, ARMOR_ATTRIBUTES)
     if armor ~= nil then
         local maxArmor = findAttribute(humanoid, ARMOR_MAX_ATTRIBUTES) or DEFAULT_MAX_ARMOR
         return { percent = math.clamp((armor / maxArmor) * 100, 0, 100), current = armor, max = maxArmor }
     end
-
     armor = findAttribute(character, ARMOR_ATTRIBUTES)
     if armor ~= nil then
         local maxArmor = findAttribute(character, ARMOR_MAX_ATTRIBUTES) or DEFAULT_MAX_ARMOR
         return { percent = math.clamp((armor / maxArmor) * 100, 0, 100), current = armor, max = maxArmor }
     end
-
     for _, container in ipairs({humanoid, character}) do
         local value = findValueObject(container, ARMOR_VALUES)
         if value ~= nil then
@@ -3810,10 +3658,8 @@ function ArmorModule.get(targetPlayer)
             return { percent = math.clamp((value / max) * 100, 0, 100), current = value, max = max }
         end
     end
-
     return { percent = 0, current = 0, max = DEFAULT_MAX_ARMOR }
 end
-
 function ArmorModule.getColor(percent)
     if percent >= 75 then return Color3.fromRGB(90, 170, 255)
     elseif percent >= 50 then return Color3.fromRGB(60, 130, 230)
@@ -3821,14 +3667,12 @@ function ArmorModule.getColor(percent)
     else return Color3.fromRGB(30, 60, 160) end
 end
 
---target
+--target tab
 local selTarget = { Player = nil }
 local targetAvatarSection = TargetTab:Section("profile", 1)
-
 local targetAvatarFrame = Instance.new("Frame")
 targetAvatarFrame.Size = UDim2.new(1, 0, 0, 130)
 targetAvatarFrame.BackgroundTransparency = 1
-
 local targetAvatar = Instance.new("ImageLabel")
 targetAvatar.Size = UDim2.new(0, 120, 0, 120)
 targetAvatar.Position = UDim2.new(0.5, -60, 0, 0)
@@ -3839,11 +3683,9 @@ targetAvatar.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
 targetAvatar.ScaleType = Enum.ScaleType.Crop
 targetAvatar.Parent = targetAvatarFrame
 Instance.new("UICorner", targetAvatar).CornerRadius = UDim.new(0, 12)
-
 pcall(function()
     targetAvatarSection:AddUIPassthrough("TargetAvatarView", { Instance = targetAvatarFrame, Height = 130 })
 end)
-
 local targetHeaderLabel = targetAvatarSection:Label("no target selected")
 local targetHealthLabel = targetAvatarSection:Label("health: — | dist: —")
 local targetArmorLabel  = targetAvatarSection:Label("armor: —")
@@ -3879,38 +3721,27 @@ task.spawn(function()
     while task.wait(0.25) do
         pcall(function()
             local p = selTarget.Player
-
             if p and p.Parent and p.UserId then
                 if p.UserId ~= lastUserId then
                     lastUserId = p.UserId
                     loadAvatar(targetAvatar, p.UserId)
                 end
-
                 setLabelText(targetHeaderLabel, "Target selected !")
-
                 local char = p.Character
                 if char then
                     local hum    = char:FindFirstChildOfClass("Humanoid")
                     local myHRP  = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
                     local hrp    = char:FindFirstChild("HumanoidRootPart")
-
                     local hp     = hum and math.floor(hum.Health)    or 0
                     local maxHp  = hum and math.floor(hum.MaxHealth) or 100
                     local dist   = (myHRP and hrp) and math.floor((myHRP.Position - hrp.Position).Magnitude) or 0
-
                     local armorData = ArmorModule.get(p)
                     local armorCur  = armorData and math.floor(armorData.current) or 0
                     local armorMax  = armorData and math.floor(armorData.max)     or 200
-
                     local status
-                    if hp <= 0 then
-                        status = "Bozo Died"
-                    elseif hp <= 20 then
-                        status = "Knocked"
-                    else
-                        status = "Alive"
-                    end
-
+                    if hp <= 0 then status = "Bozo Died"
+                    elseif hp <= 20 then status = "Knocked"
+                    else status = "Alive" end
                     setLabelText(targetHealthLabel, "health: " .. hp .. "/" .. maxHp .. " | dist: " .. dist)
                     setLabelText(targetArmorLabel,  "armor: "  .. armorCur .. "/" .. armorMax)
                     setLabelText(targetStateLabel,  "status: " .. status)
@@ -3933,6 +3764,161 @@ task.spawn(function()
     end
 end)
 
+--target visuals module (highlight + tracer + auto lock sync)
+local TargetVisuals = {
+    autoLock = false,
+    autoLockTarget = nil,
+    autoLockPrevEnabled = false,
+    highlight = false,
+    highlightColor = WHITE,
+    highlightInst = nil,
+    tracer = false,
+    tracerColor = WHITE,
+    tracerDraw = nil,
+    tracerDrawing = nil,
+}
+
+local function ensureTracerDrawing()
+    if TargetVisuals.tracerDrawing then return TargetVisuals.tracerDrawing end
+    local ok, Drawing = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/linemaster2/storage/main/Drawing.lua"))()
+    end)
+    if not ok or not Drawing then return nil end
+    TargetVisuals.tracerDrawing = Drawing
+    return Drawing
+end
+
+RunService.RenderStepped:Connect(function()
+    local targetChar = selTarget.Player and selTarget.Player.Character
+    if not TargetVisuals.highlight or not targetChar then
+        if TargetVisuals.highlightInst then TargetVisuals.highlightInst.Enabled = false end
+    else
+        if not TargetVisuals.highlightInst then
+            local h = Instance.new("Highlight")
+            h.Name = "TargetHighlight"
+            h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            h.FillTransparency = 0.5
+            h.OutlineTransparency = 0
+            h.Parent = CoreGui
+            TargetVisuals.highlightInst = h
+        end
+        TargetVisuals.highlightInst.Adornee = targetChar
+        TargetVisuals.highlightInst.FillColor = TargetVisuals.highlightColor
+        TargetVisuals.highlightInst.OutlineColor = TargetVisuals.highlightColor
+        TargetVisuals.highlightInst.Enabled = true
+    end
+
+    if not TargetVisuals.tracer or not targetChar then
+        if TargetVisuals.tracerDraw then TargetVisuals.tracerDraw.Visible = false end
+    else
+        if not TargetVisuals.tracerDraw then
+            local Drawing = ensureTracerDrawing()
+            if Drawing then
+                local line = Drawing.new("Line")
+                line.Thickness = 2; line.Transparency = 0.5; line.Visible = false
+                TargetVisuals.tracerDraw = line
+            end
+        end
+        if TargetVisuals.tracerDraw then
+            local head = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
+            if not head then
+                TargetVisuals.tracerDraw.Visible = false
+            else
+                local sp, on = Camera:WorldToViewportPoint(head.Position)
+                if not on or sp.Z <= 0 then
+                    TargetVisuals.tracerDraw.Visible = false
+                else
+                    local vp = Camera.ViewportSize
+                    TargetVisuals.tracerDraw.From = Vector2.new(vp.X / 2, vp.Y)
+                    TargetVisuals.tracerDraw.To = Vector2.new(sp.X, sp.Y)
+                    TargetVisuals.tracerDraw.Color = TargetVisuals.tracerColor
+                    TargetVisuals.tracerDraw.Visible = true
+                end
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.2) do
+        if TargetVisuals.autoLock then
+            local current = selTarget.Player
+            local valid = current and current.Parent
+            if valid then
+                if current ~= TargetVisuals.autoLockTarget then
+                    TargetVisuals.autoLockTarget = current
+                    Aimlock.setForcedTarget(current)
+                end
+            else
+                if TargetVisuals.autoLockTarget ~= nil then
+                    TargetVisuals.autoLockTarget = nil
+                    Aimlock.clearForcedTarget()
+                end
+            end
+        end
+    end
+end)
+
+--auto lock & visuals section
+local targetVisualsSec = TargetTab:Section("auto lock & visuals", 1)
+
+targetVisualsSec:Toggle({
+    Text = "Auto Lock", Flag = "target_autolock", Default = false,
+    Callback = function(v)
+        if v then
+            if not selTarget.Player then
+                notify("auto lock", "select a target first", "warn")
+                if Toggles and Toggles.target_autolock then Toggles.target_autolock:SetValue(false) end
+                return
+            end
+            TargetVisuals.autoLock = true
+            TargetVisuals.autoLockTarget = selTarget.Player
+            TargetVisuals.autoLockPrevEnabled = Aimlock.enabled
+            Aimlock.setForcedTarget(selTarget.Player)
+            notify("auto lock", "locked on " .. selTarget.Player.Name, "success")
+        else
+            TargetVisuals.autoLock = false
+            TargetVisuals.autoLockTarget = nil
+            Aimlock.clearForcedTarget()
+            if not TargetVisuals.autoLockPrevEnabled then
+                Aimlock.setEnabled(false)
+            end
+            notify("auto lock", "unlocked", "warn")
+        end
+    end,
+})
+
+targetVisualsSec:Toggle({
+    Text = "Highlight", Flag = "target_highlight", Default = false,
+    Callback = function(v)
+        TargetVisuals.highlight = v
+        if not v and TargetVisuals.highlightInst then
+            TargetVisuals.highlightInst.Enabled = false
+        end
+    end,
+})
+
+targetVisualsSec:ColorPicker({
+    Text = "Highlight color", Flag = "target_highlight_color", Default = WHITE,
+    Callback = function(c) TargetVisuals.highlightColor = c end,
+})
+
+targetVisualsSec:Toggle({
+    Text = "Tracer", Flag = "target_tracer", Default = false,
+    Callback = function(v)
+        TargetVisuals.tracer = v
+        if not v and TargetVisuals.tracerDraw then
+            TargetVisuals.tracerDraw.Visible = false
+        end
+    end,
+})
+
+targetVisualsSec:ColorPicker({
+    Text = "Tracer color", Flag = "target_tracer_color", Default = WHITE,
+    Callback = function(c) TargetVisuals.tracerColor = c end,
+})
+
+--utility
 local spectateActive = false
 local spectateConn = nil
 local function stopSpectate()
@@ -4008,8 +3994,7 @@ utilSec:Toggle({
     Text = "Fling", Flag = "target_fling", Default = false,
     Callback = function(v)
         if v then
-            if selTarget.Player then
-                Fling.setTargetName(selTarget.Player.Name)
+            if selTarget.Player then Fling.setTargetName(selTarget.Player.Name)
             else
                 Fling.setTargetName(nil)
                 notify("fling", "select a target first", "warn")
@@ -4051,21 +4036,11 @@ espSec:Toggle({ Text = "Self auras", Flag = "esp_self_auras", Default = false, C
 end })
 espSec:ColorPicker({ Text = "Aura color", Flag = "esp_aura_color", Default = DARK_PURPLE,
     Callback = function(c) SelfAuras.setColor(c) end })
-espSec:Toggle({ Text = "Angel wings", Flag = "esp_aura_angel", Default = false, Callback = function(v)
-    SelfAuras.setAura("Angel Wings", v)
-end })
-espSec:Toggle({ Text = "Particle aura", Flag = "esp_aura_particle", Default = false, Callback = function(v)
-    SelfAuras.setAura("Particle Aura", v)
-end })
-espSec:Toggle({ Text = "Earthquake", Flag = "esp_aura_earthquake", Default = false, Callback = function(v)
-    SelfAuras.setAura("Earthquake", v)
-end })
-espSec:Toggle({ Text = "Halo", Flag = "esp_aura_halo", Default = false, Callback = function(v)
-    SelfAuras.setAura("Halo", v)
-end })
-espSec:Toggle({ Text = "Saturn ring", Flag = "esp_aura_saturn", Default = false, Callback = function(v)
-    SelfAuras.setAura("Saturn Ring", v)
-end })
+espSec:Toggle({ Text = "Angel wings", Flag = "esp_aura_angel", Default = false, Callback = function(v) SelfAuras.setAura("Angel Wings", v) end })
+espSec:Toggle({ Text = "Particle aura", Flag = "esp_aura_particle", Default = false, Callback = function(v) SelfAuras.setAura("Particle Aura", v) end })
+espSec:Toggle({ Text = "Earthquake", Flag = "esp_aura_earthquake", Default = false, Callback = function(v) SelfAuras.setAura("Earthquake", v) end })
+espSec:Toggle({ Text = "Halo", Flag = "esp_aura_halo", Default = false, Callback = function(v) SelfAuras.setAura("Halo", v) end })
+espSec:Toggle({ Text = "Saturn ring", Flag = "esp_aura_saturn", Default = false, Callback = function(v) SelfAuras.setAura("Saturn Ring", v) end })
 espSec:Toggle({ Text = "Self material", Flag = "esp_selfmat", Default = false, Callback = function(v)
     SelfMaterial.setEnabled(v)
     notify("self material", v and "on" or "off", v and "success" or "warn")
@@ -4090,93 +4065,52 @@ labelsSec:Toggle({ Text = "armor bar", Flag = "esp_armor", Default = false, Call
 
 --misc
 local miscSec = MiscTab:Section("misc", 1)
-
 miscSec:Toggle({ Text = "rapid fire", Flag = "misc_rf", Default = false, Callback = function(v)
     RapidFire.setEnabled(v)
     notify("rapid fire", v and "on" or "off", v and "success" or "warn")
 end })
 miscSec:Input({ Text = "fire rate", Flag = "misc_rfr", Default = "0.015", Numeric = true,
     Callback = function(v) local n = tonumber(v); if n then RapidFire.setFireRate(n) end end })
-
--- macro (button)
 miscSec:Button({ Text = "Macro", Callback = function()
     local ok = pcall(function()
         loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Stateview-prison-script-/main/Macro"))()
     end)
-    if ok then
-        notify("macro", "loaded", "success")
-    else
-        notify("macro", "failed to load", "error")
-    end
+    if ok then notify("macro", "loaded", "success")
+    else notify("macro", "failed to load", "error") end
 end })
-
--- no slow (button)
 miscSec:Button({ Text = "No slow", Callback = function()
-    if _G.__NO_SLOW_ACTIVE then
-        notify("no slow", "already active", "warn")
-        return
-    end
+    if _G.__NO_SLOW_ACTIVE then notify("no slow", "already active", "warn"); return end
     local ok, err = pcall(function()
         local mt = getrawmetatable(game)
         if not mt then error("no metatable") end
         local backup
         backup = hookfunction(mt.__newindex, newcclosure(function(self, key, value)
-            if key == "WalkSpeed" and type(value) == "number" and value < 16 then
-                value = 16
-            end
+            if key == "WalkSpeed" and type(value) == "number" and value < 16 then value = 16 end
             return backup(self, key, value)
         end))
     end)
-    if ok then
-        _G.__NO_SLOW_ACTIVE = true
-        notify("no slow", "enabled", "success")
-    else
-        notify("no slow", "failed: " .. tostring(err), "error")
-    end
+    if ok then _G.__NO_SLOW_ACTIVE = true; notify("no slow", "enabled", "success")
+    else notify("no slow", "failed: " .. tostring(err), "error") end
 end })
-
--- no jump cooldown (button)
 miscSec:Button({ Text = "No jump Cooldown", Callback = function()
-    if _G.__NO_JUMP_CD_ACTIVE then
-        notify("no jump cooldown", "already active", "warn")
-        return
-    end
-    if type(hookfunction) ~= "function" then
-        notify("no jump cooldown", "hookfunction not supported", "error")
-        return
-    end
+    if _G.__NO_JUMP_CD_ACTIVE then notify("no jump cooldown", "already active", "warn"); return end
+    if type(hookfunction) ~= "function" then notify("no jump cooldown", "hookfunction not supported", "error"); return end
     local ok, err = pcall(function()
         local originalWait
-        originalWait = hookfunction(wait, newcclosure(function(seconds)
-            return originalWait(0)
-        end))
+        originalWait = hookfunction(wait, newcclosure(function(seconds) return originalWait(0) end))
     end)
-    if ok then
-        _G.__NO_JUMP_CD_ACTIVE = true
-        notify("no jump cooldown", "enabled", "success")
-    else
-        notify("no jump cooldown", "failed: " .. tostring(err), "error")
-    end
+    if ok then _G.__NO_JUMP_CD_ACTIVE = true; notify("no jump cooldown", "enabled", "success")
+    else notify("no jump cooldown", "failed: " .. tostring(err), "error") end
 end })
-
--- anti mod (toggle)
-miscSec:Toggle({ Text = "Anti mod", Flag = "misc_antimod", Default = false, Callback = function(v)
-    AntiMod.setEnabled(v)
-end })
-
--- chatlogs (toggle)
+miscSec:Toggle({ Text = "Anti mod", Flag = "misc_antimod", Default = false, Callback = function(v) AntiMod.setEnabled(v) end })
 miscSec:Toggle({ Text = "chatlogs", Flag = "misc_chatlogs", Default = false, Callback = function(v)
     local ok = pcall(function()
         local TextChatService = game:GetService("TextChatService")
         TextChatService.ChatWindowConfiguration.Enabled = v
     end)
-    if ok then
-        notify("chatlogs", v and "enabled" or "disabled", v and "success" or "warn")
-    else
-        notify("chatlogs", "failed", "error")
-    end
+    if ok then notify("chatlogs", v and "enabled" or "disabled", v and "success" or "warn")
+    else notify("chatlogs", "failed", "error") end
 end })
-
 miscSec:Toggle({ Text = "auto reload", Flag = "misc_ar", Default = false, Callback = function(v) AutoReloadState.Enabled = v end })
 miscSec:Toggle({ Text = "anti stomp", Flag = "misc_as", Default = false, Callback = function(v) AntiStompState.Enabled = v end })
 miscSec:Toggle({ Text = "auto stomp", Flag = "misc_astomp", Default = false, Callback = function(v) StompState.Enabled = v end })
@@ -4235,12 +4169,10 @@ buySec:Dropdown({ Text = "gun types", Flag = "ab_gunt", Options = { "[silencer]"
     Callback = function(v) local map = { ["[silencer]"]="[Silencer]",["[usp]"]="[USP]",["[tactical shotgun]"]="[Tactical Shotgun]" }; AutoBuyState.SelectedGun = map[v] or "[Silencer]" end })
 
 local hitSoundSec = MiscTab:Section("Hit Sounds", 1)
-
 hitSoundSec:Toggle({ Text = "Enable", Flag = "hs_enabled", Default = false, Callback = function(v)
     HitSounds.SetEnabled(v)
     notify("hit sounds", v and "enabled" or "disabled", v and "success" or "warn")
 end })
-
 hitSoundSec:Dropdown({ Text = "Sounds", Flag = "hs_sound",
     Options = {
         "Call of Duty", "Bubble", "Error", "Lazer", "Pop", "OSU",
@@ -4249,7 +4181,6 @@ hitSoundSec:Dropdown({ Text = "Sounds", Flag = "hs_sound",
     },
     Default = "Hitmarker",
     Callback = function(v) HitSounds.SetSound(v) end })
-
 hitSoundSec:Slider({ Text = "Volume", Flag = "hs_volume", Min = 0, Max = 10, Default = 5, Decimals = 1,
     Callback = function(v) HitSounds.SetVolume(v) end })
 
