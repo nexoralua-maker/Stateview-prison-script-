@@ -91,13 +91,16 @@ do
     do
         function Library:Connection(signal, Callback) return signal:Connect(Callback) end
         function Library:Disconnect(Connection) Connection:Disconnect() end
-        function Library:Round(Number, Float) return Float * math.floor(Number / Float) end
+        -- FIXED NAN ERROR HERE (Division by zero when Decimals = 0)
+        function Library:Round(Number, Float) 
+            if not Float or Float <= 0 then return math.floor(Number + 0.5) end
+            return Float * math.floor((Number / Float) + 0.5) 
+        end
         function Library.NextFlag()
             Library.UnNamedFlags = Library.UnNamedFlags + 1
             return string.format("%.14g", Library.UnNamedFlags)
         end
 
-        -- Same color scheme as reference (red → blue gradient, red base)
         function Library:ApplyTheme(instance, rotation)
             rotation = rotation or 0
             instance.BackgroundColor3 = Library.AccentGradient[1]
@@ -603,6 +606,7 @@ do
 
             local Sliding = false
             local function Set(value)
+                value = tonumber(value) or Slider.Min
                 value = math.clamp(Library:Round(value, Slider.Decimals), Slider.Min, Slider.Max)
                 local sizeX = ((value - Slider.Min) / (Slider.Max - Slider.Min))
                 TweenService:Create(Fill, TweenInfo.new(0.1), {Size = UDim2.new(sizeX, 0, 1, 0)}):Play()
@@ -2258,6 +2262,43 @@ do
                 God.running = false
                 Soda:Notification("Godmode OFF", 2)
             end
+        end
+    })
+end
+
+--====================================================================
+-- FUN STUFF TAB
+--====================================================================
+do
+    local fun_section = tab_fun:Section({Name = "Fun stuff", Side = "Left", Size = "Fill"})
+
+    fun_section:Button({
+        Name = "Troll Sign",
+        Callback = function()
+            pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Da-hood-/main/Nazi"))()
+            end)
+            Soda:Notification("Loaded Troll Sign", 2)
+        end
+    })
+
+    fun_section:Button({
+        Name = "Male",
+        Callback = function()
+            pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Da-hood-/main/Penis"))()
+            end)
+            Soda:Notification("Loaded Male", 2)
+        end
+    })
+
+    fun_section:Button({
+        Name = "Female",
+        Callback = function()
+            pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Da-hood-/main/HornySlut"))()
+            end)
+            Soda:Notification("Loaded Female", 2)
         end
     })
 end
