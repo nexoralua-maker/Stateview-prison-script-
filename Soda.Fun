@@ -1877,7 +1877,8 @@ do
     })
 
     ragebot_section:Toggle({
-        Name = "Enabled", Flag = "ragebot_enabled",
+        Name = "Kill aura (detected)", -- Renamed here
+        Flag = "ragebot_enabled",
         Callback = function(state)
             if state then aura:Start(); Soda:Notification("Ragebot ON — " .. aura.Config.TargetMode, 2)
             else aura:Stop(); Soda:Notification("Ragebot OFF", 2) end
@@ -2275,8 +2276,159 @@ do
     fun_section:Button({
         Name = "Troll Sign",
         Callback = function()
-            pcall(function()
-                loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Da-hood-/main/Nazi"))()
+            task.spawn(function()
+                -- ============================================================
+                -- Troll Nazi Sign — no GUI, runs once on execute
+                -- ============================================================
+                local Players    = game:GetService("Players")
+                local RunService = game:GetService("RunService")
+
+                local LP      = Players.LocalPlayer
+                local running = true
+
+                local ch = LP.Character or LP.CharacterAdded:Wait()
+                local r  = ch:WaitForChild("HumanoidRootPart", 5)
+                if not r then return end
+
+                local n_cfg = {
+                    { name = "[SledgeHammer]", count = 2, grips = {
+                        { Position = Vector3.new(0, -10, 0),  Rotation = Vector3.new(0, 90, 0)  },
+                        { Position = Vector3.new(0, 0, -10),  Rotation = Vector3.new(0, 90, 90) }
+                    }},
+                    { name = "[Bat]", count = 2, grips = {
+                        { Position = Vector3.new(5, -12.3, 0), Rotation = Vector3.new(0, 0, 0)   },
+                        { Position = Vector3.new(5, 7.7, 0),   Rotation = Vector3.new(0, 0, 180) }
+                    }},
+                    { name = "[Pitchfork]", count = 2, grips = {
+                        { Position = Vector3.new(0, -7.7, 0),  Rotation = Vector3.new(0, 0, 0)   },
+                        { Position = Vector3.new(0, 12.4, 0),  Rotation = Vector3.new(0, 0, 180) }
+                    }},
+                    { name = "[Shovel]", count = 2, grips = {
+                        { Position = Vector3.new(0, -3, -10),  Rotation = Vector3.new(0, 90, 90) },
+                        { Position = Vector3.new(0, -3, 10),   Rotation = Vector3.new(0, 90, -90)}
+                    }},
+                    { name = "[StopSign]", count = 2, grips = {
+                        { Position = Vector3.new(-3, -14.5, 0), Rotation = Vector3.new(0, 0, 0)   },
+                        { Position = Vector3.new(-3, 5.5, 0),   Rotation = Vector3.new(0, 0, 180) }
+                    }}
+                }
+
+                local function count_equipped(n)
+                    local c = 0
+                    for _, k in ipairs(ch:GetChildren()) do
+                        if k:IsA("Tool") and k.Name == n then c = c + 1 end
+                    end
+                    return c
+                end
+
+                local function equip_from_backpack(n, want)
+                    local b = LP:FindFirstChild("Backpack")
+                    local equipped = count_equipped(n)
+                    if not b or equipped >= want then return equipped end
+                    for _, k in ipairs(b:GetChildren()) do
+                        if equipped >= want then break end
+                        if k:IsA("Tool") and k.Name == n then
+                            k.Parent = ch
+                            equipped = equipped + 1
+                            task.wait(0.03)
+                        end
+                    end
+                    return equipped
+                end
+
+                local function buy_tool(n)
+                    local tar
+                    for _, v in ipairs(workspace:GetDescendants()) do
+                        if string.find(v.Name, n, 1, true) then
+                            if v:IsA("ClickDetector") or v:IsA("TouchTransmitter") then
+                                tar = v.Parent; break
+                            elseif v:IsA("Model") and v:FindFirstChild("ClickDetector") then
+                                tar = v; break
+                            end
+                        end
+                    end
+                    if not tar then return false end
+
+                    local pivot
+                    if tar:IsA("Model") then
+                        pivot = tar:GetPivot()
+                    elseif tar:IsA("BasePart") then
+                        pivot = tar.CFrame
+                    else
+                        return false
+                    end
+
+                    local old = r.CFrame
+                    r.CFrame = pivot + Vector3.new(0, 2, 0)
+                    task.wait(0.3)
+
+                    pcall(function()
+                        local cd = tar:FindFirstChildWhichIsA("ClickDetector")
+                                or (tar:IsA("ClickDetector") and tar)
+                        if cd then
+                            fireclickdetector(cd)
+                        else
+                            local tp = tar:IsA("BasePart") and tar
+                                    or tar:FindFirstChildWhichIsA("BasePart")
+                            if tp then
+                                firetouchinterest(r, tp, 0)
+                                firetouchinterest(r, tp, 1)
+                            end
+                        end
+                    end)
+
+                    task.wait(0.3)
+                    r.CFrame = old
+
+                    local s = os.clock()
+                    while os.clock() - s < 6 do
+                        if not running then return false end
+                        local b = LP:FindFirstChild("Backpack")
+                        if b and b:FindFirstChild(n) then
+                            b[n].Parent = ch
+                            return true
+                        end
+                        RunService.Heartbeat:Wait()
+                    end
+                    return false
+                end
+
+                local function apply_grips(n, grips)
+                    local f = {}
+                    for _, k in ipairs(ch:GetChildren()) do
+                        if k:IsA("Tool") and k.Name == n then table.insert(f, k) end
+                    end
+                    for i = 1, #f do
+                        if grips[i] then
+                            local p, r2 = grips[i].Position, grips[i].Rotation
+                            f[i].Grip = CFrame.new(p) * CFrame.Angles(
+                                math.rad(r2.X), math.rad(r2.Y), math.rad(r2.Z)
+                            )
+                        end
+                    end
+                end
+
+                for _, d in ipairs(n_cfg) do
+                    if not running then return end
+
+                    equip_from_backpack(d.name, d.count)
+
+                    local missing = d.count - count_equipped(d.name)
+                    for _ = 1, missing do
+                        if not running then return end
+                        buy_tool(d.name)
+                        task.wait(0.1)
+                    end
+                end
+
+                task.wait(0.4)
+                if not running then return end
+
+                for _, d in ipairs(n_cfg) do
+                    apply_grips(d.name, d.grips)
+                end
+
+                print("[Troll Sign] done.")
             end)
             Soda:Notification("Loaded Troll Sign", 2)
         end
@@ -2285,8 +2437,188 @@ do
     fun_section:Button({
         Name = "Male",
         Callback = function()
-            pcall(function()
-                loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Da-hood-/main/Penis"))()
+            task.spawn(function()
+                local Players    = game:GetService("Players")
+                local RunService = game:GetService("RunService")
+                local LP         = Players.LocalPlayer
+
+                local FeatureActive = true
+
+                local CONFIG = {
+                    { name = "[Hamburger]", count = 2, grips = {
+                        { Position = Vector3.new(2.5, 1, 0), Rotation = Vector3.new(0, 0, 0) },
+                        { Position = Vector3.new(0.5, 1, 0), Rotation = Vector3.new(0, 0, 0) }
+                    }},
+                    { name = "[Hair Glue]", count = 1, grips = {
+                        { Position = Vector3.new(1.5, 0, 1), Rotation = Vector3.new(90, 0, 1) }
+                    }}
+                }
+
+                local function countTool(name)
+                    local count = 0
+                    local backpack = LP:FindFirstChild("Backpack")
+                    local char     = LP.Character
+
+                    if backpack then
+                        for _, item in ipairs(backpack:GetChildren()) do
+                            if item.Name == name then count = count + 1 end
+                        end
+                    end
+                    if char then
+                        for _, item in ipairs(char:GetChildren()) do
+                            if item.Name == name then count = count + 1 end
+                        end
+                    end
+                    return count
+                end
+
+                local function buyTool(name)
+                    local char = LP.Character or LP.CharacterAdded:Wait()
+                    local root = char:WaitForChild("HumanoidRootPart", 5)
+                    if not root then return false end
+
+                    local target = nil
+                    for _, v in ipairs(workspace:GetDescendants()) do
+                        if string.find(v.Name, name, 1, true) then
+                            if v:IsA("ClickDetector") or v:IsA("TouchTransmitter") then
+                                target = v.Parent
+                                break
+                            elseif v:IsA("Model") and v:FindFirstChild("ClickDetector") then
+                                target = v
+                                break
+                            end
+                        end
+                    end
+
+                    if target then
+                        local pos = target:IsA("Model") and target:GetModelCFrame() or target.CFrame
+                        local old = root.CFrame
+                        root.CFrame = pos + Vector3.new(0, 2, 0)
+                        task.wait(0.2)
+
+                        local cd = target:FindFirstChildWhichIsA("ClickDetector")
+                            or (target:IsA("ClickDetector") and target)
+
+                        if cd and fireclickdetector then
+                            fireclickdetector(cd)
+                        elseif firetouchinterest then
+                            firetouchinterest(root, target, 0)
+                            firetouchinterest(root, target, 1)
+                        end
+
+                        task.wait(0.2)
+                        root.CFrame = old
+
+                        local start = tick()
+                        while tick() - start < 5 do
+                            if not FeatureActive then return false end
+                            local backpack = LP:FindFirstChild("Backpack")
+                            if backpack and backpack:FindFirstChild(name) then
+                                backpack[name].Parent = char
+                                return true
+                            end
+                            RunService.Heartbeat:Wait()
+                        end
+                    end
+                    return false
+                end
+
+                local function forceEquip()
+                    local char = LP.Character
+                    local backpack = LP:FindFirstChild("Backpack")
+                    if not char or not backpack then return end
+
+                    for _, data in ipairs(CONFIG) do
+                        local needed = data.count
+                        local equipped = 0
+                        
+                        for _, item in ipairs(char:GetChildren()) do
+                            if item.Name == data.name and item:IsA("Tool") then
+                                equipped = equipped + 1
+                            end
+                        end
+
+                        if equipped < needed then
+                            for _, item in ipairs(backpack:GetChildren()) do
+                                if item.Name == data.name and item:IsA("Tool") then
+                                    item.Parent = char
+                                    equipped = equipped + 1
+                                    task.wait(0.1)
+                                    if equipped >= needed then break end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                local function applyGrips()
+                    local char = LP.Character
+                    if not char then return end
+
+                    for _, data in ipairs(CONFIG) do
+                        local tools = {}
+                        for _, item in ipairs(char:GetChildren()) do
+                            if item.Name == data.name and item:IsA("Tool") then
+                                table.insert(tools, item)
+                            end
+                        end
+
+                        for i = 1, #tools do
+                            if data.grips[i] then
+                                local p, r = data.grips[i].Position, data.grips[i].Rotation
+                                local targetGrip = CFrame.new(p) * CFrame.Angles(
+                                    math.rad(r.X), math.rad(r.Y), math.rad(r.Z)
+                                )
+                                tools[i].Grip = targetGrip
+                                task.wait(0.05)
+                                tools[i].Grip = targetGrip 
+                            end
+                        end
+                    end
+                end
+
+                local char = LP.Character
+                local currentlyEquippedNames = {}
+                if char then
+                    for _, item in ipairs(char:GetChildren()) do
+                        if item:IsA("Tool") then
+                            table.insert(currentlyEquippedNames, item.Name)
+                        end
+                    end
+                end
+
+                for _, data in ipairs(CONFIG) do
+                    if not FeatureActive then break end
+                    local needed = data.count - countTool(data.name)
+                    for i = 1, needed do
+                        if not FeatureActive then break end
+                        buyTool(data.name)
+                        task.wait(0.2)
+                    end
+                end
+
+                task.wait(0.5)
+
+                if char then
+                    local bp = LP:FindFirstChild("Backpack")
+                    if bp then
+                        for _, name in ipairs(currentlyEquippedNames) do
+                            if bp:FindFirstChild(name) then
+                                bp[name].Parent = char
+                            end
+                        end
+                    end
+                end
+
+                task.wait(0.2)
+                forceEquip()
+
+                task.wait(0.2)
+                if FeatureActive then
+                    applyGrips()
+                    task.wait(0.3)
+                    applyGrips()
+                end
             end)
             Soda:Notification("Loaded Male", 2)
         end
@@ -2295,8 +2627,193 @@ do
     fun_section:Button({
         Name = "Female",
         Callback = function()
-            pcall(function()
-                loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Da-hood-/main/HornySlut"))()
+            task.spawn(function()
+                local Players    = game:GetService("Players")
+                local RunService = game:GetService("RunService")
+                local LP         = Players.LocalPlayer
+
+                local FeatureActive = true
+
+                local CONFIG = {
+                    { name = "[Pizza]", count = 2, grips = {
+                        { Position = Vector3.new(2, 1, -1.5), Rotation = Vector3.new(90, 0, -90) },
+                        { Position = Vector3.new(2, 2.5, -1.5), Rotation = Vector3.new(90, 0, -90) }
+                    }},
+                    { name = "[Hair Glue]", count = 2, grips = {
+                        { Position = Vector3.new(0.8, 0.5, 0), Rotation = Vector3.new(90, 0, 0) },
+                        { Position = Vector3.new(2.2, 0.5, 0), Rotation = Vector3.new(90, 0, 0) }
+                    }},
+                    { name = "[Hamburger]", count = 2, grips = {
+                        { Position = Vector3.new(0.8, 1, 0), Rotation = Vector3.new(90, 0, 0) },
+                        { Position = Vector3.new(2.2, 1, 0), Rotation = Vector3.new(90, 0, 0) }
+                    }}
+                }
+
+                local function countTool(name)
+                    local count = 0
+                    local backpack = LP:FindFirstChild("Backpack")
+                    local char     = LP.Character
+
+                    if backpack then
+                        for _, item in ipairs(backpack:GetChildren()) do
+                            if item.Name == name then count = count + 1 end
+                        end
+                    end
+                    if char then
+                        for _, item in ipairs(char:GetChildren()) do
+                            if item.Name == name then count = count + 1 end
+                        end
+                    end
+                    return count
+                end
+
+                local function buyTool(name)
+                    local char = LP.Character or LP.CharacterAdded:Wait()
+                    local root = char:WaitForChild("HumanoidRootPart", 5)
+                    if not root then return false end
+
+                    local target = nil
+                    for _, v in ipairs(workspace:GetDescendants()) do
+                        if string.find(v.Name, name, 1, true) then
+                            if v:IsA("ClickDetector") or v:IsA("TouchTransmitter") then
+                                target = v.Parent
+                                break
+                            elseif v:IsA("Model") and v:FindFirstChild("ClickDetector") then
+                                target = v
+                                break
+                            end
+                        end
+                    end
+
+                    if target then
+                        local pos = target:IsA("Model") and target:GetModelCFrame() or target.CFrame
+                        local old = root.CFrame
+                        root.CFrame = pos + Vector3.new(0, 2, 0)
+                        task.wait(0.2)
+
+                        local cd = target:FindFirstChildWhichIsA("ClickDetector")
+                            or (target:IsA("ClickDetector") and target)
+
+                        if cd and fireclickdetector then
+                            fireclickdetector(cd)
+                        elseif firetouchinterest then
+                            firetouchinterest(root, target, 0)
+                            firetouchinterest(root, target, 1)
+                        end
+
+                        task.wait(0.2)
+                        root.CFrame = old
+
+                        local start = tick()
+                        while tick() - start < 5 do
+                            if not FeatureActive then return false end
+                            local backpack = LP:FindFirstChild("Backpack")
+                            if backpack and backpack:FindFirstChild(name) then
+                                backpack[name].Parent = char
+                                return true
+                            end
+                            RunService.Heartbeat:Wait()
+                        end
+                    end
+                    return false
+                end
+
+                local function forceEquip()
+                    local char = LP.Character
+                    local backpack = LP:FindFirstChild("Backpack")
+                    if not char or not backpack then return end
+
+                    for _, data in ipairs(CONFIG) do
+                        local needed = data.count
+                        local equipped = 0
+                        
+                        for _, item in ipairs(char:GetChildren()) do
+                            if item.Name == data.name and item:IsA("Tool") then
+                                equipped = equipped + 1
+                            end
+                        end
+
+                        if equipped < needed then
+                            for _, item in ipairs(backpack:GetChildren()) do
+                                if item.Name == data.name and item:IsA("Tool") then
+                                    item.Parent = char
+                                    equipped = equipped + 1
+                                    task.wait(0.1)
+                                    if equipped >= needed then break end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                local function applyGrips()
+                    local char = LP.Character
+                    if not char then return end
+
+                    for _, data in ipairs(CONFIG) do
+                        local tools = {}
+                        for _, item in ipairs(char:GetChildren()) do
+                            if item.Name == data.name and item:IsA("Tool") then
+                                table.insert(tools, item)
+                            end
+                        end
+
+                        for i = 1, #tools do
+                            if data.grips[i] then
+                                local p, r = data.grips[i].Position, data.grips[i].Rotation
+                                local targetGrip = CFrame.new(p) * CFrame.Angles(
+                                    math.rad(r.X), math.rad(r.Y), math.rad(r.Z)
+                                )
+                                tools[i].Grip = targetGrip
+                                task.wait(0.05)
+                                tools[i].Grip = targetGrip 
+                            end
+                        end
+                    end
+                end
+
+                local char = LP.Character
+                local currentlyEquippedNames = {}
+                if char then
+                    for _, item in ipairs(char:GetChildren()) do
+                        if item:IsA("Tool") then
+                            table.insert(currentlyEquippedNames, item.Name)
+                        end
+                    end
+                end
+
+                for _, data in ipairs(CONFIG) do
+                    if not FeatureActive then break end
+                    local needed = data.count - countTool(data.name)
+                    for i = 1, needed do
+                        if not FeatureActive then break end
+                        buyTool(data.name)
+                        task.wait(0.2)
+                    end
+                end
+
+                task.wait(0.5)
+
+                if char then
+                    local bp = LP:FindFirstChild("Backpack")
+                    if bp then
+                        for _, name in ipairs(currentlyEquippedNames) do
+                            if bp:FindFirstChild(name) then
+                                bp[name].Parent = char
+                            end
+                        end
+                    end
+                end
+
+                task.wait(0.2)
+                forceEquip()
+
+                task.wait(0.2)
+                if FeatureActive then
+                    applyGrips()
+                    task.wait(0.3)
+                    applyGrips()
+                end
             end)
             Soda:Notification("Loaded Female", 2)
         end
@@ -2321,7 +2838,6 @@ do
         antiGrabConn=nil, antiGrabEnabled=false,
         cashAuraEnabled=false, cashAuraRadius=20, cashAuraDelay=0.5,
         godBlockEnabled=false, godBlockConn=nil,
-        autoReloadConn=nil, autoReloadEnabled=false,
         chatSpamTrashTalk=false, chatSpamLastTime=0, chatSpamIndex=1, chatSpamDelay=3,
         trashTalkList = {
             "imagine getting cracked by Soda.Fun 💀", "Soda.Fun", "get better buddy", "skill issue",
@@ -2586,44 +3102,8 @@ do
         end
     })
 
-    pc_scroll:Toggle({
-        Name = "Auto block", Flag = "pc_auto_block",
-        Callback = function(state)
-            if state then
-                PC_RunService:BindToRenderStep("Soda_AutoBlock", 0, function()
-                    local char = PC_Local.Character
-                    if not char then return end
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    if not hrp then return end
-                    local wplayers = workspace:FindFirstChild("Players")
-                    if not wplayers then return end
-                    for _, other in ipairs(wplayers:GetChildren()) do
-                        if other:FindFirstChild("UpperTorso") and other:FindFirstChild("BodyEffects") then
-                            local dist = (other.UpperTorso.Position - hrp.Position).Magnitude
-                            if dist <= 15 then
-                                local tool = other:FindFirstChildWhichIsA("Tool")
-                                local attacking = other.BodyEffects:FindFirstChild("Attacking") and other.BodyEffects.Attacking.Value
-                                if attacking and tool and other.Name ~= PC_Local.Name then
-                                    local foodWeapons = {
-                                        "[Popcorn]","[HotDog]","[GrenadeLauncher]","[RPG]","[SMG]","[TacticalShotgun]",
-                                        "[AK47]","[AUG]","[Glock]","[Shotgun]","[Flamethrower]","[Silencer]","[AR]",
-                                        "[Revolver]","[SilencerAR]","[LMG]","[P90]","[DrumGun]","[Double-Barrel SG]",
-                                        "[Hamburger]","[Chicken]","[Pizza]","[Cranberry]","[Donut]","[Taco]",
-                                        "[Starblox Latte]","[BrownBag]","[Weights]","[HeavyWeights]"
-                                    }
-                                    if not table.find(foodWeapons, tool.Name) then
-                                        PC_RS.MainEvent:FireServer("Block", PC_Local.Name)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end)
-            else
-                PC_RunService:UnbindFromRenderStep("Soda_AutoBlock")
-            end
-        end
-    })
+    -- REMOVED: Auto block
+    -- REMOVED: Auto reload
 
     pc_scroll:Toggle({
         Name = "Cash aura", Flag = "pc_cash_aura",
@@ -2650,32 +3130,6 @@ do
                             end
                         end
                         task.wait(pc.cashAuraDelay)
-                    end
-                end)
-            end
-        end
-    })
-
-    pc_scroll:Toggle({
-        Name = "Auto reload", Flag = "pc_auto_reload",
-        Callback = function(state)
-            pc.autoReloadEnabled = state
-            if pc.autoReloadConn then pc.autoReloadConn:Disconnect(); pc.autoReloadConn = nil end
-            if state then
-                pc.autoReloadConn = PC_RunService.RenderStepped:Connect(function()
-                    if not pc.autoReloadEnabled then
-                        if pc.autoReloadConn then pc.autoReloadConn:Disconnect(); pc.autoReloadConn = nil end
-                        return
-                    end
-                    local char = PC_Local.Character
-                    if not char then return end
-                    for _, tool in ipairs(char:GetChildren()) do
-                        if tool:IsA("Tool") and tool:FindFirstChild("Ammo") then
-                            if tool.Ammo.Value <= 1 then
-                                PC_RS.MainEvent:FireServer("Reload", tool)
-                                task.wait(3.7)
-                            end
-                        end
                     end
                 end)
             end
@@ -3198,6 +3652,198 @@ do
                 BoxingToggle:Set(not BoxingToggle.Toggled)
             end
         end)
+    end
+
+    --====================================================================
+    -- AUTO BUY (Da Hood)
+    --====================================================================
+    do
+        local CONFIG = {
+            Weapons      = { "[AK47]", "[Rifle]", "[LMG]" },
+            SpareAmmo    = 5,
+            BuyOnRespawn = false,
+        }
+
+        local ShopItems = {
+            "[Knife]", "[BrownBag]", "[Flamethrower]", "[LMG]", "[AK47]", "[Rifle]",
+            "[AUG]", "[AR]", "[Double-Barrel SG]", "[P90]", "[SMG]", "[Drum-Shotgun]",
+            "[Glock]", "[Flintlock]",
+        }
+
+        local AmmoMap = {
+            ["[LMG]"]              = "[LMG Ammo]",
+            ["[AK47]"]             = "[AK47 Ammo]",
+            ["[Rifle]"]            = "[Rifle Ammo]",
+            ["[AUG]"]              = "[AUG Ammo]",
+            ["[AR]"]               = "[AR Ammo]",
+            ["[Double-Barrel SG]"] = "[Double-Barrel SG Ammo]",
+            ["[P90]"]              = "[P90 Ammo]",
+            ["[SMG]"]              = "[SMG Ammo]",
+            ["[Drum-Shotgun]"]     = "[Drum-Shotgun Ammo]",
+            ["[Glock]"]            = "[Glock Ammo]",
+            ["[Flamethrower]"]     = "[Flamethrower Ammo]",
+            ["[Flintlock]"]        = "[Flintlock Ammo]",
+        }
+
+        local isBuying = false
+        local lastRoot = nil
+
+        local function getRoot()
+            local char = PC_Local.Character
+            return char and char:FindFirstChild("HumanoidRootPart")
+        end
+
+        local function getShop()
+            local ignored = workspace:FindFirstChild("Ignored")
+            return ignored and ignored:FindFirstChild("Shop")
+        end
+
+        local function buyItem(itemName)
+            if not itemName then return false end
+
+            local root = lastRoot or getRoot()
+            if not root or not root.Parent then return false end
+
+            local shop = getShop()
+            if not shop then return false end
+
+            local model
+            for _, v in ipairs(shop:GetChildren()) do
+                if string.find(v.Name, itemName, 1, true) then
+                    model = v
+                    break
+                end
+            end
+            if not model then return false end
+
+            local cd   = model:FindFirstChildOfClass("ClickDetector")
+            local part = model:FindFirstChild("Head")
+                      or model:FindFirstChild("Handle")
+                      or model:FindFirstChildWhichIsA("BasePart")
+            if not (cd and part) then return false end
+
+            local moved = pcall(function()
+                root.CFrame = CFrame.new(part.Position + Vector3.new(0, 5, 0))
+            end)
+            if not moved then return false end
+
+            task.wait(0.19)
+            pcall(fireclickdetector, cd, 0)
+            task.wait(0.15)
+            pcall(fireclickdetector, cd, 0)
+            task.wait(0.10)
+            return true
+        end
+
+        local function purchase(weaponList, spareAmmo)
+            if isBuying then return end
+            if not weaponList or #weaponList == 0 then return end
+
+            local root = getRoot()
+            if not root then return end
+
+            isBuying = true
+            lastRoot = root
+            local saved = root.CFrame
+
+            for _, gunName in ipairs(weaponList) do
+                local clean = gunName:gsub(" %- %$%d+", "")
+                buyItem(clean)
+
+                local ammo = AmmoMap[clean]
+                if ammo then
+                    for _ = 1, (spareAmmo or 0) do
+                        if not lastRoot or not lastRoot.Parent then break end
+                        buyItem(ammo)
+                    end
+                end
+            end
+
+            if lastRoot and lastRoot.Parent then
+                pcall(function() lastRoot.CFrame = saved end)
+            end
+
+            lastRoot = nil
+            isBuying = false
+        end
+
+        local function buyAmmoOnly(weaponList, spareAmmo)
+            if isBuying then return end
+            if not weaponList or #weaponList == 0 then return end
+
+            local root = getRoot()
+            if not root then return end
+
+            isBuying = true
+            lastRoot = root
+            local saved = root.CFrame
+
+            for _, gunName in ipairs(weaponList) do
+                local clean = gunName:gsub(" %- %$%d+", "")
+                local ammo = AmmoMap[clean]
+                if ammo then
+                    for _ = 1, (spareAmmo or 0) do
+                        if not lastRoot or not lastRoot.Parent then break end
+                        buyItem(ammo)
+                    end
+                end
+            end
+
+            if lastRoot and lastRoot.Parent then
+                pcall(function() lastRoot.CFrame = saved end)
+            end
+
+            lastRoot = nil
+            isBuying = false
+        end
+
+        PC_Local.CharacterAdded:Connect(function()
+            if not CONFIG.BuyOnRespawn then return end
+            task.wait(1.5)
+            purchase(CONFIG.Weapons, CONFIG.SpareAmmo)
+        end)
+
+        move_section:List({
+            Name = "Auto Buy Weapons",
+            Flag = "ab_weapons",
+            Options = ShopItems,
+            Max = 3,
+            Callback = function(t)
+                CONFIG.Weapons = t or {}
+            end,
+        })
+
+        move_section:Slider({
+            Name = "Auto Buy Spare Ammo",
+            Flag = "ab_spare",
+            Min = 1, Max = 15, Default = 5, Decimals = 0,
+            Callback = function(v)
+                CONFIG.SpareAmmo = v
+            end,
+        })
+
+        move_section:Toggle({
+            Name = "Purchase On Respawn",
+            Flag = "ab_respawn",
+            Default = false,
+            Callback = function(v)
+                CONFIG.BuyOnRespawn = v
+            end,
+        })
+
+        move_section:Button({
+            Name = "Purchase Weapons Now",
+            Callback = function()
+                purchase(CONFIG.Weapons, CONFIG.SpareAmmo)
+            end,
+        })
+
+        move_section:Button({
+            Name = "Buy Ammo Only",
+            Callback = function()
+                buyAmmoOnly(CONFIG.Weapons, CONFIG.SpareAmmo)
+            end,
+        })
     end
 end
 
