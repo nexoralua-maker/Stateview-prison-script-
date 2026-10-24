@@ -706,7 +706,7 @@ do
             end)
         end
 
-        -- List (dropdown)
+        -- List (dropdown) - Made Scrollable!
         function Sections:List(Properties)
             Properties = Properties or {}
             local Dropdown = {
@@ -723,7 +723,7 @@ do
             NewDropdown.LayoutOrder = Properties.LayoutOrder or 0
             local DropdownTitle = Instance.new('TextLabel', NewDropdown)
             local ToggleFrame = Instance.new('TextButton', NewDropdown)
-            local ToggleContent = Instance.new('Frame', ToggleFrame)
+            local ToggleContent = Instance.new('ScrollingFrame', ToggleFrame) -- Changed to ScrollingFrame
             local UIListLayout = Instance.new('UIListLayout', ToggleContent)
             local DropdownTitle_2 = Instance.new('TextLabel', ToggleFrame)
             local Icon = Instance.new('ImageLabel', ToggleFrame)
@@ -738,9 +738,13 @@ do
             ToggleFrame.ZIndex = 54; ToggleFrame.AutoButtonColor = false; ToggleFrame.Text = ""
             local UICorner_2 = Instance.new('UICorner', ToggleFrame); UICorner_2.CornerRadius = UDim.new(0, 4)
 
+            -- Scrollable Dropdown Config
             ToggleContent.Position = UDim2.new(0, 0, 1, 0); ToggleContent.Size = UDim2.new(1, 0, 0, 0)
             ToggleContent.BackgroundColor3 = Color3.new(0.0706, 0.0706, 0.0706); ToggleContent.BorderSizePixel = 0
             ToggleContent.ZIndex = 54; ToggleContent.ClipsDescendants = true
+            ToggleContent.ScrollBarThickness = 2
+            ToggleContent.CanvasSize = UDim2.new(0, 0, 0, 0)
+            ToggleContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
             local UICorner_3 = Instance.new('UICorner', ToggleContent); UICorner_3.CornerRadius = UDim.new(0, 4)
             UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
@@ -761,7 +765,9 @@ do
                     NewDropdown.ZIndex = 55
                     TweenService:Create(Icon, TweenInfo.new(0.25), {Rotation = 180}):Play()
                     TweenService:Create(Icon, TweenInfo.new(0.25), {ImageColor3 = Color3.fromRGB(200, 200, 200)}):Play()
-                    TweenService:Create(ToggleContent, TweenInfo.new(0.25), {Size = UDim2.new(1, 0, 0, Count * 22)}):Play()
+                    
+                    local maxH = math.min(Count * 22, 150) -- Scrollable cap at 150px
+                    TweenService:Create(ToggleContent, TweenInfo.new(0.25), {Size = UDim2.new(1, 0, 0, maxH)}):Play()
                 else
                     TweenService:Create(Icon, TweenInfo.new(0.25), {Rotation = 0}):Play()
                     TweenService:Create(Icon, TweenInfo.new(0.25), {ImageColor3 = Color3.fromRGB(120, 120, 120)}):Play()
@@ -2268,6 +2274,421 @@ do
 end
 
 --====================================================================
+-- VISUAL TAB — ESP
+--====================================================================
+do
+    local ESP_State = {
+        Box = false, Name = false, Tracer = false,
+        Distance = false, Weapon = false, Health = false, Armor = false
+    }
+
+    local vis_section = tab_visual:Section({Name = "Visual", Side = "Left", Size = "Fill"})
+
+    vis_section:Toggle({Name = "Box ESP", Callback = function(v) ESP_State.Box = v end})
+    vis_section:Toggle({Name = "Name ESP", Callback = function(v) ESP_State.Name = v end})
+    vis_section:Toggle({Name = "Tracer ESP", Callback = function(v) ESP_State.Tracer = v end})
+    vis_section:Toggle({Name = "Distance ESP", Callback = function(v) ESP_State.Distance = v end})
+    vis_section:Toggle({Name = "Weapon ESP", Callback = function(v) ESP_State.Weapon = v end})
+    vis_section:Toggle({Name = "Health Bar ESP", Callback = function(v) ESP_State.Health = v end})
+    vis_section:Toggle({Name = "Armor Bar ESP", Callback = function(v) ESP_State.Armor = v end})
+
+    -- ==========================================================
+    -- ESP LOGIC
+    -- ==========================================================
+    local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    local Workspace = game:GetService("Workspace")
+    local Camera = Workspace.CurrentCamera
+    local LocalPlayer = Players.LocalPlayer
+
+    local TRACER_COLOR_START    = Color3.fromRGB(255, 0, 0)
+    local TRACER_COLOR_END      = Color3.fromRGB(0, 0, 255)
+    local TRACER_THICKNESS      = 2
+    local TRACER_TRANSPARENCY   = 0.5
+    local TRACER_SEGMENTS       = 20
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "CustomESP"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.IgnoreGuiInset = true
+    ScreenGui.Parent = game:GetService("CoreGui")
+
+    local ESP_Cache = {}
+
+    local function CreateESP(player)
+        local esp = {}
+
+        -- BOX FILL
+        esp.BoxFill = Instance.new("Frame")
+        esp.BoxFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        esp.BoxFill.BackgroundTransparency = 0.6
+        esp.BoxFill.BorderSizePixel = 0
+        esp.BoxFill.Visible = false
+        esp.BoxFill.Parent = ScreenGui
+        local fillGradient = Instance.new("UIGradient")
+        fillGradient.Rotation = 90
+        fillGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)),
+            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(0, 0, 255))
+        })
+        fillGradient.Parent = esp.BoxFill
+
+        -- BOX OUTLINES
+        esp.BoxOutline = Instance.new("Frame")
+        esp.BoxOutline.BackgroundTransparency = 1
+        esp.BoxOutline.BorderSizePixel = 0
+        esp.BoxOutline.Visible = false
+        esp.BoxOutline.Parent = ScreenGui
+        local outlineStroke = Instance.new("UIStroke")
+        outlineStroke.Color = Color3.fromRGB(0, 0, 0)
+        outlineStroke.Thickness = 2
+        outlineStroke.Parent = esp.BoxOutline
+
+        esp.BoxInner = Instance.new("Frame")
+        esp.BoxInner.BackgroundTransparency = 1
+        esp.BoxInner.BorderSizePixel = 0
+        esp.BoxInner.Visible = false
+        esp.BoxInner.Parent = ScreenGui
+        local innerStroke = Instance.new("UIStroke")
+        innerStroke.Color = Color3.fromRGB(255, 255, 255)
+        innerStroke.Thickness = 1
+        innerStroke.Parent = esp.BoxInner
+
+        -- HEALTH BAR
+        esp.HealthBg = Instance.new("Frame")
+        esp.HealthBg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        esp.HealthBg.BorderSizePixel = 0
+        esp.HealthBg.Visible = false
+        esp.HealthBg.Parent = ScreenGui
+
+        esp.HealthFill = Instance.new("Frame")
+        esp.HealthFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        esp.HealthFill.BorderSizePixel = 0
+        esp.HealthFill.Visible = false
+        esp.HealthFill.Parent = ScreenGui
+        local healthGradient = Instance.new("UIGradient")
+        healthGradient.Rotation = 90
+        healthGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(0, 255, 0)),
+            ColorSequenceKeypoint.new(0.50, Color3.fromRGB(255, 255, 0)),
+            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 0))
+        })
+        healthGradient.Parent = esp.HealthFill
+
+        -- ARMOR BAR
+        esp.ArmorBg = Instance.new("Frame")
+        esp.ArmorBg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        esp.ArmorBg.BorderSizePixel = 0
+        esp.ArmorBg.Visible = false
+        esp.ArmorBg.Parent = ScreenGui
+
+        esp.ArmorFill = Instance.new("Frame")
+        esp.ArmorFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        esp.ArmorFill.BorderSizePixel = 0
+        esp.ArmorFill.Visible = false
+        esp.ArmorFill.Parent = ScreenGui
+        local armorGradient = Instance.new("UIGradient")
+        armorGradient.Rotation = 90
+        armorGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(0, 0, 139)),
+            ColorSequenceKeypoint.new(0.50, Color3.fromRGB(0, 0, 255)),
+            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(0, 191, 255))
+        })
+        armorGradient.Parent = esp.ArmorFill
+
+        -- TEXT
+        esp.NameText = Instance.new("TextLabel")
+        esp.NameText.BackgroundTransparency = 1
+        esp.NameText.TextColor3 = Color3.fromRGB(255, 255, 255)
+        esp.NameText.TextStrokeTransparency = 0
+        esp.NameText.Font = Enum.Font.Gotham
+        esp.NameText.TextSize = 14
+        esp.NameText.Visible = false
+        esp.NameText.Parent = ScreenGui
+
+        esp.DistanceText = Instance.new("TextLabel")
+        esp.DistanceText.BackgroundTransparency = 1
+        esp.DistanceText.TextColor3 = Color3.fromRGB(255, 255, 255)
+        esp.DistanceText.TextStrokeTransparency = 0
+        esp.DistanceText.Font = Enum.Font.Gotham
+        esp.DistanceText.TextSize = 14
+        esp.DistanceText.Visible = false
+        esp.DistanceText.Parent = ScreenGui
+
+        esp.ToolText = Instance.new("TextLabel")
+        esp.ToolText.BackgroundTransparency = 1
+        esp.ToolText.TextColor3 = Color3.fromRGB(255, 255, 255)
+        esp.ToolText.TextStrokeTransparency = 0
+        esp.ToolText.Font = Enum.Font.Gotham
+        esp.ToolText.TextSize = 14
+        esp.ToolText.Visible = false
+        esp.ToolText.Parent = ScreenGui
+
+        -- TRACER
+        if Drawing then
+            esp.TracerSegments = {}
+            for i = 1, TRACER_SEGMENTS do
+                local seg = Drawing.new("Line")
+                seg.Thickness    = TRACER_THICKNESS
+                seg.Transparency = TRACER_TRANSPARENCY
+                seg.Visible      = false
+                esp.TracerSegments[i] = seg
+            end
+        end
+
+        ESP_Cache[player] = esp
+    end
+
+    local function HideESP(esp)
+        if not esp then return end
+        for key, v in pairs(esp) do
+            if key == "TracerSegments" then
+                for _, seg in ipairs(v) do
+                    pcall(function() seg.Visible = false end)
+                end
+            else
+                pcall(function() v.Visible = false end)
+            end
+        end
+    end
+
+    local function RemoveESP(player)
+        local esp = ESP_Cache[player]
+        if not esp then return end
+
+        if esp.TracerSegments then
+            for _, seg in ipairs(esp.TracerSegments) do
+                pcall(function() seg:Remove() end)
+                pcall(function() seg:Destroy() end)
+            end
+            esp.TracerSegments = nil
+        end
+
+        for key, gui in pairs(esp) do
+            if key ~= "TracerSegments" then
+                pcall(function() if type(gui.Destroy) == "function" then gui:Destroy() end end)
+                pcall(function() if type(gui.Remove) == "function" then gui:Remove() end end)
+            end
+        end
+        ESP_Cache[player] = nil
+    end
+
+    local function GetBoxSize(char)
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil end
+
+        local size = Vector3.new(3, 5.8, 2)
+        local cf = hrp.CFrame
+
+        local corners = {
+            cf * CFrame.new(-size.X/2,  size.Y/2, -size.Z/2),
+            cf * CFrame.new( size.X/2,  size.Y/2, -size.Z/2),
+            cf * CFrame.new(-size.X/2, -size.Y/2, -size.Z/2),
+            cf * CFrame.new( size.X/2, -size.Y/2, -size.Z/2),
+            cf * CFrame.new(-size.X/2,  size.Y/2,  size.Z/2),
+            cf * CFrame.new( size.X/2,  size.Y/2,  size.Z/2),
+            cf * CFrame.new(-size.X/2, -size.Y/2,  size.Z/2),
+            cf * CFrame.new( size.X/2, -size.Y/2,  size.Z/2)
+        }
+
+        local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+        local visible = false
+
+        for _, corner in ipairs(corners) do
+            local screenPos, onScreen = Camera:WorldToViewportPoint(corner.Position)
+            if onScreen then
+                visible = true
+                if screenPos.X < minX then minX = screenPos.X end
+                if screenPos.Y < minY then minY = screenPos.Y end
+                if screenPos.X > maxX then maxX = screenPos.X end
+                if screenPos.Y > maxY then maxY = screenPos.Y end
+            end
+        end
+
+        if not visible then return nil end
+        return minX, minY, maxX, maxY
+    end
+
+    RunService.RenderStepped:Connect(function()
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                local char = player.Character
+                local esp = ESP_Cache[player]
+
+                if char then
+                    local hum = char:FindFirstChild("Humanoid")
+                    local be = char:FindFirstChild("BodyEffects")
+                    local isKnocked = false
+
+                    if be then
+                        local ko = be:FindFirstChild("K.O") or be:FindFirstChild("KO")
+                        if ko and ko.Value then isKnocked = true end
+                    end
+
+                    if hum and hum.Health > 0 and not isKnocked then
+                        local minX, minY, maxX, maxY = GetBoxSize(char)
+
+                        if minX then
+                            if not esp then
+                                CreateESP(player)
+                                esp = ESP_Cache[player]
+                            end
+
+                            local sizeX = maxX - minX
+                            local sizeY = maxY - minY
+
+                            -- BOX FILL
+                            if ESP_State.Box then
+                                esp.BoxFill.Size = UDim2.new(0, sizeX, 0, sizeY)
+                                esp.BoxFill.Position = UDim2.new(0, minX, 0, minY)
+                                esp.BoxFill.Visible = true
+
+                                esp.BoxOutline.Size = UDim2.new(0, sizeX + 2, 0, sizeY + 2)
+                                esp.BoxOutline.Position = UDim2.new(0, minX - 1, 0, minY - 1)
+                                esp.BoxOutline.Visible = true
+                                esp.BoxInner.Size = UDim2.new(0, sizeX, 0, sizeY)
+                                esp.BoxInner.Position = UDim2.new(0, minX, 0, minY)
+                                esp.BoxInner.Visible = true
+                            else
+                                esp.BoxFill.Visible = false
+                                esp.BoxOutline.Visible = false
+                                esp.BoxInner.Visible = false
+                            end
+
+                            -- HEALTH BAR
+                            if ESP_State.Health then
+                                local barWidth = 3
+                                local barGap = 4
+                                local healthPct = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+                                local healthX = minX - barWidth - barGap
+                                esp.HealthBg.Size = UDim2.new(0, barWidth, 0, sizeY)
+                                esp.HealthBg.Position = UDim2.new(0, healthX, 0, minY)
+                                esp.HealthBg.Visible = true
+                                local fillHeight = sizeY * healthPct
+                                esp.HealthFill.Size = UDim2.new(0, barWidth, 0, fillHeight)
+                                esp.HealthFill.Position = UDim2.new(0, healthX, 0, minY + (sizeY - fillHeight))
+                                esp.HealthFill.Visible = true
+                            else
+                                esp.HealthBg.Visible = false
+                                esp.HealthFill.Visible = false
+                            end
+
+                            -- ARMOR BAR
+                            if ESP_State.Armor then
+                                local armorVal = 0
+                                local dataFolder = player:FindFirstChild("DataFolder")
+                                local info = dataFolder and dataFolder:FindFirstChild("Information")
+                                local armorSave = info and info:FindFirstChild("ArmorSave")
+                                if armorSave then armorVal = tonumber(armorSave.Value) or 0 end
+
+                                if armorVal > 0 then
+                                    local barWidth = 3
+                                    local barGap = 4
+                                    local armorPct = math.clamp(armorVal / 130, 0, 1)
+                                    local armorX = maxX + barGap
+                                    esp.ArmorBg.Size = UDim2.new(0, barWidth, 0, sizeY)
+                                    esp.ArmorBg.Position = UDim2.new(0, armorX, 0, minY)
+                                    esp.ArmorBg.Visible = true
+                                    local armorFillHeight = sizeY * armorPct
+                                    esp.ArmorFill.Size = UDim2.new(0, barWidth, 0, armorFillHeight)
+                                    esp.ArmorFill.Position = UDim2.new(0, armorX, 0, minY + (sizeY - armorFillHeight))
+                                    esp.ArmorFill.Visible = true
+                                else
+                                    esp.ArmorBg.Visible = false
+                                    esp.ArmorFill.Visible = false
+                                end
+                            else
+                                esp.ArmorBg.Visible = false
+                                esp.ArmorFill.Visible = false
+                            end
+
+                            -- TEXT
+                            local centerX = minX + sizeX / 2
+                            local hrp = char:FindFirstChild("HumanoidRootPart")
+                            local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                            local distance = 0
+                            if hrp and myHrp then
+                                distance = math.floor((myHrp.Position - hrp.Position).Magnitude)
+                            end
+
+                            if ESP_State.Name then
+                                esp.NameText.Text = player.DisplayName
+                                esp.NameText.Size = UDim2.new(0, 200, 0, 20)
+                                esp.NameText.Position = UDim2.new(0, centerX - 100, 0, minY - 20)
+                                esp.NameText.Visible = true
+                            else
+                                esp.NameText.Visible = false
+                            end
+
+                            if ESP_State.Distance then
+                                esp.DistanceText.Text = "[ " .. distance .. "m ]"
+                                esp.DistanceText.Size = UDim2.new(0, 200, 0, 20)
+                                esp.DistanceText.Position = UDim2.new(0, centerX - 100, 0, maxY + 2)
+                                esp.DistanceText.Visible = true
+                            else
+                                esp.DistanceText.Visible = false
+                            end
+
+                            if ESP_State.Weapon then
+                                local tool = char:FindFirstChildOfClass("Tool")
+                                esp.ToolText.Text = tool and tool.Name or "NONE"
+                                esp.ToolText.Size = UDim2.new(0, 200, 0, 20)
+                                esp.ToolText.Position = UDim2.new(0, centerX - 100, 0, maxY + 20)
+                                esp.ToolText.Visible = true
+                            else
+                                esp.ToolText.Visible = false
+                            end
+
+                            -- GRADIENT TRACER
+                            if esp.TracerSegments then
+                                if ESP_State.Tracer then
+                                    local head = char:FindFirstChild("Head") or hrp
+                                    local headSP, headOn
+                                    if head then
+                                        headSP, headOn = Camera:WorldToViewportPoint(head.Position)
+                                    end
+
+                                    if head and headOn and headSP.Z > 0 then
+                                        local vp = Camera.ViewportSize
+                                        local from = Vector2.new(vp.X / 2, vp.Y)
+                                        local to   = Vector2.new(headSP.X, headSP.Y)
+
+                                        for i = 1, TRACER_SEGMENTS do
+                                            local t0 = (i - 1) / TRACER_SEGMENTS
+                                            local t1 = i / TRACER_SEGMENTS
+                                            local seg = esp.TracerSegments[i]
+                                            seg.From         = from:Lerp(to, t0)
+                                            seg.To           = from:Lerp(to, t1)
+                                            seg.Color        = TRACER_COLOR_START:Lerp(TRACER_COLOR_END, (t0 + t1) * 0.5)
+                                            seg.Thickness    = TRACER_THICKNESS
+                                            seg.Transparency = TRACER_TRANSPARENCY
+                                            seg.Visible      = true
+                                        end
+                                    else
+                                        for _, seg in ipairs(esp.TracerSegments) do seg.Visible = false end
+                                    end
+                                else
+                                    for _, seg in ipairs(esp.TracerSegments) do seg.Visible = false end
+                                end
+                            end
+
+                        else
+                            HideESP(esp)
+                        end
+                    else
+                        HideESP(esp)
+                    end
+                else
+                    HideESP(esp)
+                end
+            end
+        end
+    end)
+
+    Players.PlayerRemoving:Connect(RemoveESP)
+end
+
+--====================================================================
 -- FUN STUFF TAB
 --====================================================================
 do
@@ -3665,7 +4086,7 @@ do
         }
 
         local ShopItems = {
-            "[Knife]", "[BrownBag]", "[Flamethrower]", "[LMG]", "[AK47]", "[Rifle]",
+            "[Flamethrower]", "[LMG]", "[AK47]", "[Rifle]",
             "[AUG]", "[AR]", "[Double-Barrel SG]", "[P90]", "[SMG]", "[Drum-Shotgun]",
             "[Glock]", "[Flintlock]",
         }
