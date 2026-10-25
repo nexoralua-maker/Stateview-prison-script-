@@ -6,6 +6,36 @@
 ]]
 
 --====================================================================
+-- WHITELIST
+--====================================================================
+local Whitelist = {
+    [8406388751] = true,
+}
+
+do
+    local Players     = game:GetService("Players")
+    local StarterGui  = game:GetService("StarterGui")
+    local LocalPlayer = Players.LocalPlayer
+
+    local function notify(title, text)
+        pcall(function()
+            StarterGui:SetCore("SendNotification", {
+                Title = title,
+                Text = text,
+                Duration = 5,
+            })
+        end)
+    end
+
+    if not Whitelist[LocalPlayer.UserId] then
+        notify("Loser", "not whitelisted :(")
+        return
+    end
+
+    notify("Whitelisted!", "u are whitelisted")
+end
+
+--====================================================================
 -- SAFE DRAWING LOADER
 --====================================================================
 local Drawing
@@ -78,7 +108,6 @@ do
     local UIS = game:GetService("UserInputService")
     local TweenService = game:GetService("TweenService")
 
-    -- Input helpers (mouse + touch)
     local function isPressInput(input)
         local t = input.UserInputType
         return t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch
@@ -91,7 +120,6 @@ do
     do
         function Library:Connection(signal, Callback) return signal:Connect(Callback) end
         function Library:Disconnect(Connection) Connection:Disconnect() end
-        -- FIXED NAN ERROR HERE (Division by zero when Decimals = 0)
         function Library:Round(Number, Float) 
             if not Float or Float <= 0 then return math.floor(Number + 0.5) end
             return Float * math.floor((Number / Float) + 0.5) 
@@ -167,7 +195,6 @@ do
         end
     end
 
-    -- Notifications
     function Library:updateNotifsPositions()
         for i, v in pairs(Library.Notifs) do
             TweenService:Create(v.Container, TweenInfo.new(1, Enum.EasingStyle.Exponential), {Position = UDim2.new(0, 20, 0, 20 + (i * 25))}):Play()
@@ -240,7 +267,6 @@ do
         return notification
     end
 
-    -- Main Window / Pages / Sections
     do
         local Pages = Library.Pages
         local Sections = Library.Sections
@@ -493,7 +519,6 @@ do
             return setmetatable(Section, Library.Sections)
         end
 
-        -- Toggle
         function Sections:Toggle(Properties)
             if not Properties then Properties = {} end
             local Toggle = {
@@ -554,7 +579,6 @@ do
             return Toggle
         end
 
-        -- Slider (with touch support)
         function Sections:Slider(Properties)
             if not Properties then Properties = {} end
             local Slider = {
@@ -635,7 +659,6 @@ do
             return Slider
         end
 
-        -- Textbox
         function Sections:Textbox(Properties)
             Properties = Properties or {}
             local Textbox = {
@@ -676,7 +699,6 @@ do
             return Textbox
         end
 
-        -- Button
         function Sections:Button(Properties)
             Properties = Properties or {}
             local Button = {Window = self.Window, Page = self.Page, Section = self, Name = Properties.Name or "button", Callback = (Properties.callback or Properties.Callback or function() end)}
@@ -706,7 +728,6 @@ do
             end)
         end
 
-        -- List (dropdown) - Made Scrollable!
         function Sections:List(Properties)
             Properties = Properties or {}
             local Dropdown = {
@@ -723,7 +744,7 @@ do
             NewDropdown.LayoutOrder = Properties.LayoutOrder or 0
             local DropdownTitle = Instance.new('TextLabel', NewDropdown)
             local ToggleFrame = Instance.new('TextButton', NewDropdown)
-            local ToggleContent = Instance.new('ScrollingFrame', ToggleFrame) -- Changed to ScrollingFrame
+            local ToggleContent = Instance.new('ScrollingFrame', ToggleFrame)
             local UIListLayout = Instance.new('UIListLayout', ToggleContent)
             local DropdownTitle_2 = Instance.new('TextLabel', ToggleFrame)
             local Icon = Instance.new('ImageLabel', ToggleFrame)
@@ -738,7 +759,6 @@ do
             ToggleFrame.ZIndex = 54; ToggleFrame.AutoButtonColor = false; ToggleFrame.Text = ""
             local UICorner_2 = Instance.new('UICorner', ToggleFrame); UICorner_2.CornerRadius = UDim.new(0, 4)
 
-            -- Scrollable Dropdown Config
             ToggleContent.Position = UDim2.new(0, 0, 1, 0); ToggleContent.Size = UDim2.new(1, 0, 0, 0)
             ToggleContent.BackgroundColor3 = Color3.new(0.0706, 0.0706, 0.0706); ToggleContent.BorderSizePixel = 0
             ToggleContent.ZIndex = 54; ToggleContent.ClipsDescendants = true
@@ -765,8 +785,7 @@ do
                     NewDropdown.ZIndex = 55
                     TweenService:Create(Icon, TweenInfo.new(0.25), {Rotation = 180}):Play()
                     TweenService:Create(Icon, TweenInfo.new(0.25), {ImageColor3 = Color3.fromRGB(200, 200, 200)}):Play()
-                    
-                    local maxH = math.min(Count * 22, 150) -- Scrollable cap at 150px
+                    local maxH = math.min(Count * 22, 150)
                     TweenService:Create(ToggleContent, TweenInfo.new(0.25), {Size = UDim2.new(1, 0, 0, maxH)}):Play()
                 else
                     TweenService:Create(Icon, TweenInfo.new(0.25), {Rotation = 0}):Play()
@@ -906,7 +925,6 @@ do
             Dropdown:Set(Dropdown.State); return Dropdown
         end
 
-        -- Watermark
         function Library:Watermark(Properties)
             local Watermark = {Name = (Properties.Name or Properties.name or "v1.0"); AnimateText = nil;}
             local Outline = Instance.new("Frame")
@@ -968,7 +986,7 @@ local ICONS = {
     FunStuff    = "rbxassetid://6031265952",
     Visual      = "rbxassetid://6022668955",
     Rage        = "rbxassetid://14760676189",
-    Setting     = "rbxassetid://6031280882",
+    Credits     = "rbxassetid://6035047409",
 }
 
 window:Seperator({Name = "Info"})
@@ -985,8 +1003,66 @@ local tab_fun    = window:Page({Name = "Fun stuff", Icon = ICONS.FunStuff})
 window:Seperator({Name = "Visuals"})
 local tab_visual = window:Page({Name = "Visual", Icon = ICONS.Visual})
 
-window:Seperator({Name = "System"})
-local tab_setting = window:Page({Name = "Setting", Icon = ICONS.Setting})
+window:Seperator({Name = "Credits"})
+local tab_credits = window:Page({Name = "Credits", Icon = ICONS.Credits})
+
+--====================================================================
+-- CREDITS TAB
+--====================================================================
+do
+    local credits_left = tab_credits:Section({Name = "Credits", Side = "Left", Size = "Fill"})
+
+    local spacerTop = Instance.new("Frame")
+    spacerTop.Size = UDim2.new(1, 0, 0, 12)
+    spacerTop.BackgroundTransparency = 1
+    spacerTop.LayoutOrder = 1
+    spacerTop.Parent = credits_left.Elements.SectionContent
+
+    local creditsHeader = Instance.new("TextLabel")
+    creditsHeader.Size = UDim2.new(1, 0, 0, 26)
+    creditsHeader.BackgroundTransparency = 1
+    creditsHeader.Text = "Big Big Credits For"
+    creditsHeader.TextColor3 = Color3.fromRGB(180, 180, 180)
+    creditsHeader.FontFace = Soda.FontFace
+    creditsHeader.TextSize = 16
+    creditsHeader.TextXAlignment = Enum.TextXAlignment.Center
+    creditsHeader.TextYAlignment = Enum.TextYAlignment.Center
+    creditsHeader.LayoutOrder = 2
+    creditsHeader.Parent = credits_left.Elements.SectionContent
+
+    local bigName = Instance.new("TextLabel")
+    bigName.Size = UDim2.new(1, 0, 0, 90)
+    bigName.BackgroundTransparency = 1
+    bigName.Text = "Daddy Puffin"
+    bigName.FontFace = Soda.FontFace
+    bigName.TextSize = 42
+    bigName.TextXAlignment = Enum.TextXAlignment.Center
+    bigName.TextYAlignment = Enum.TextYAlignment.Center
+    bigName.RichText = false
+    bigName.LayoutOrder = 3
+    bigName.Parent = credits_left.Elements.SectionContent
+    Soda:ApplyTextTheme(bigName, 45)
+
+    local bigBack = Instance.new("TextLabel")
+    bigBack.Size = UDim2.new(1, 0, 0, 40)
+    bigBack.BackgroundTransparency = 1
+    bigBack.Text = "Big Back :33"
+    bigBack.TextColor3 = Color3.fromRGB(230, 230, 230)
+    bigBack.FontFace = Soda.FontFace
+    bigBack.TextSize = 22
+    bigBack.TextXAlignment = Enum.TextXAlignment.Center
+    bigBack.TextYAlignment = Enum.TextYAlignment.Center
+    bigBack.LayoutOrder = 4
+    bigBack.Parent = credits_left.Elements.SectionContent
+
+    local divider = Instance.new("Frame")
+    divider.Size = UDim2.new(0.6, 0, 0, 1)
+    divider.Position = UDim2.new(0.2, 0, 0, 0)
+    divider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    divider.BorderSizePixel = 0
+    divider.LayoutOrder = 5
+    divider.Parent = credits_left.Elements.SectionContent
+end
 
 --====================================================================
 -- INFORMATION TAB
@@ -1100,13 +1176,12 @@ do
     local LocalPlayer = Players.LocalPlayer
 
     local kill = {
-        enabled = false, mode = "Auto Flame Kill", conn = nil,
+        enabled = false, mode = "Auto Flame Kill (broken)", conn = nil,
         flameBuying = false, originalCFrame = nil, spawnPos = nil,
         lastReload = 0, reloadCooldown = 0.5, lastGunNotif = 0,
         selectedMelee = "Combat", flameOffset = Vector3.new(-2, 8, 2), autoAmmo = true,
         bringEnabled = false, bringConn = nil, bringStartPos = nil, lastGrabAttempt = 0,
         _bringToggle = nil,
-        autoBagEnabled = false, autoBagConn = nil, bagAlertCd = 0,
     }
 
     do
@@ -1365,7 +1440,7 @@ do
             hrp.AssemblyLinearVelocity = Vector3.zero; return
         end
         if not isKO then
-            if kill.mode == "Auto Flame Kill" then flameKillTick() else meleeKillTick() end
+            if kill.mode == "Auto Flame Kill (broken)" then flameKillTick() else meleeKillTick() end
             return
         end
 
@@ -1381,44 +1456,6 @@ do
             kill.lastGrabAttempt = tick()
             RS.MainEvent:FireServer("Grabbing", false)
         end
-    end
-
-    local function autoBagTick()
-        local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        local backpack = LocalPlayer:FindFirstChild("Backpack")
-        if not hrp then return end
-
-        local found = findPlayerByQuery(flags["target_player_input"] or "")
-        if not found then return end
-
-        local tChar = found.Character
-        local tHrp = tChar and tChar:FindFirstChild("HumanoidRootPart")
-        if not tHrp then return end
-
-        local myBag = char:FindFirstChild("[BrownBag]") or (backpack and backpack:FindFirstChild("[BrownBag]"))
-        if not myBag then
-            clearPhysics(hrp)
-            if tick() - kill.lastGunNotif > 4 then killNotify("Need a [BrownBag]!"); kill.lastGunNotif = tick() end
-            return
-        end
-
-        if not tChar:FindFirstChild("Christmas_Sock") then
-            pcall(function() sethiddenproperty(hrp, "PhysicsRepRootPart", tHrp) end)
-            if backpack then
-                local bagInBackpack = backpack:FindFirstChild("[BrownBag]")
-                if bagInBackpack then bagInBackpack.Parent = char end
-            end
-            hrp.CFrame = tHrp.CFrame * CFrame.new(0, -3.5, 2.5)
-            local equippedBag = char:FindFirstChild("[BrownBag]")
-            if equippedBag then equippedBag:Activate() end
-            return
-        end
-
-        clearPhysics(hrp)
-        if hrp and kill.spawnPos then hrp.CFrame = kill.spawnPos end
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        if tick() - kill.bagAlertCd > 4 then kill.bagAlertCd = tick(); killNotify("Bagged: " .. found.Name) end
     end
 
     local function stopKill()
@@ -1449,7 +1486,7 @@ do
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if hrp then kill.originalCFrame = hrp.CFrame end
-        if kill.mode == "Auto Flame Kill" then
+        if kill.mode == "Auto Flame Kill (broken)" then
             kill.conn = RunService.Heartbeat:Connect(function()
                 if not kill.enabled then return end
                 if kill.flameBuying then return end
@@ -1664,7 +1701,7 @@ do
     })
 
     target_left:Toggle({
-        Name = "Auto kill", Flag = "target_auto_flame_kill", LayoutOrder = 100,
+        Name = "Auto kill (broken)", Flag = "target_auto_flame_kill", LayoutOrder = 100,
         Callback = function(state)
             kill.enabled = state
             if state then startKill(); killNotify("Auto Kill ON — " .. kill.mode)
@@ -1674,8 +1711,8 @@ do
 
     target_left:List({
         Name = "Kill Mode", Flag = "target_kill_mode", LayoutOrder = 101,
-        Options = {"Auto Flame Kill", "Melee Auto Kill"},
-        Default = "Auto Flame Kill",
+        Options = {"Auto Flame Kill (broken)", "Melee Auto Kill (broken)"},
+        Default = "Auto Flame Kill (broken)",
         Callback = function(value)
             kill.mode = value
             if kill.enabled then startKill(); killNotify("Switched to " .. value) end
@@ -1710,29 +1747,6 @@ do
     })
     kill._bringToggle = bringToggle
 
-    target_left:Toggle({
-        Name = "Auto Bag", Flag = "target_auto_bag", LayoutOrder = 103,
-        Callback = function(state)
-            kill.autoBagEnabled = state
-            if state then
-                if kill.autoBagConn then kill.autoBagConn:Disconnect() end
-                kill.autoBagConn = RunService.Heartbeat:Connect(function()
-                    if not kill.autoBagEnabled then return end
-                    autoBagTick()
-                end)
-                killNotify("Auto Bag ON")
-            else
-                if kill.autoBagConn then kill.autoBagConn:Disconnect(); kill.autoBagConn = nil end
-                pcall(function()
-                    local char = LocalPlayer.Character
-                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                    if hrp then sethiddenproperty(hrp, "PhysicsRepRootPart", nil) end
-                end)
-                killNotify("Auto Bag OFF")
-            end
-        end
-    })
-
     Players.PlayerRemoving:Connect(function(plr)
         local found = findPlayerByQuery(flags["target_player_input"] or "")
         if found == plr then
@@ -1757,7 +1771,7 @@ do
 end
 
 --====================================================================
--- RAGE TAB — Ragebot + Hitbox + Godmode
+-- RAGE TAB
 --====================================================================
 do
     local R_Players = game:GetService("Players")
@@ -1883,7 +1897,7 @@ do
     })
 
     ragebot_section:Toggle({
-        Name = "Kill aura (detected)", -- Renamed here
+        Name = "Kill aura (detected)",
         Flag = "ragebot_enabled",
         Callback = function(state)
             if state then aura:Start(); Soda:Notification("Ragebot ON — " .. aura.Config.TargetMode, 2)
@@ -1916,9 +1930,6 @@ do
         Callback = function(value) aura.Config.ShotsPerBurst = value end
     })
 
-     ---------------------------------------------------------------
-    -- HITBOX EXPANDER (Grey)
-    ---------------------------------------------------------------
     local Hitbox = {
         Enabled      = false,
         Size         = 20,
@@ -2012,9 +2023,6 @@ do
         end
     })
 
-    ---------------------------------------------------------------
-    -- GODMODE
-    ---------------------------------------------------------------
     local God = { enabled = false, respawnConn = nil, running = false }
     local GodWorkspace = game:GetService("Workspace")
     local GodVIM       = game:GetService("VirtualInputManager")
@@ -2274,7 +2282,7 @@ do
 end
 
 --====================================================================
--- VISUAL TAB — ESP
+-- VISUAL TAB
 --====================================================================
 do
     local ESP_State = {
@@ -2292,9 +2300,6 @@ do
     vis_section:Toggle({Name = "Health Bar ESP", Callback = function(v) ESP_State.Health = v end})
     vis_section:Toggle({Name = "Armor Bar ESP", Callback = function(v) ESP_State.Armor = v end})
 
-    -- ==========================================================
-    -- ESP LOGIC
-    -- ==========================================================
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
     local Workspace = game:GetService("Workspace")
@@ -2318,7 +2323,6 @@ do
     local function CreateESP(player)
         local esp = {}
 
-        -- BOX FILL
         esp.BoxFill = Instance.new("Frame")
         esp.BoxFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
         esp.BoxFill.BackgroundTransparency = 0.6
@@ -2333,7 +2337,6 @@ do
         })
         fillGradient.Parent = esp.BoxFill
 
-        -- BOX OUTLINES
         esp.BoxOutline = Instance.new("Frame")
         esp.BoxOutline.BackgroundTransparency = 1
         esp.BoxOutline.BorderSizePixel = 0
@@ -2354,7 +2357,6 @@ do
         innerStroke.Thickness = 1
         innerStroke.Parent = esp.BoxInner
 
-        -- HEALTH BAR
         esp.HealthBg = Instance.new("Frame")
         esp.HealthBg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
         esp.HealthBg.BorderSizePixel = 0
@@ -2375,7 +2377,6 @@ do
         })
         healthGradient.Parent = esp.HealthFill
 
-        -- ARMOR BAR
         esp.ArmorBg = Instance.new("Frame")
         esp.ArmorBg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
         esp.ArmorBg.BorderSizePixel = 0
@@ -2396,7 +2397,6 @@ do
         })
         armorGradient.Parent = esp.ArmorFill
 
-        -- TEXT
         esp.NameText = Instance.new("TextLabel")
         esp.NameText.BackgroundTransparency = 1
         esp.NameText.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -2424,7 +2424,6 @@ do
         esp.ToolText.Visible = false
         esp.ToolText.Parent = ScreenGui
 
-        -- TRACER
         if Drawing then
             esp.TracerSegments = {}
             for i = 1, TRACER_SEGMENTS do
@@ -2537,7 +2536,6 @@ do
                             local sizeX = maxX - minX
                             local sizeY = maxY - minY
 
-                            -- BOX FILL
                             if ESP_State.Box then
                                 esp.BoxFill.Size = UDim2.new(0, sizeX, 0, sizeY)
                                 esp.BoxFill.Position = UDim2.new(0, minX, 0, minY)
@@ -2555,7 +2553,6 @@ do
                                 esp.BoxInner.Visible = false
                             end
 
-                            -- HEALTH BAR
                             if ESP_State.Health then
                                 local barWidth = 3
                                 local barGap = 4
@@ -2573,7 +2570,6 @@ do
                                 esp.HealthFill.Visible = false
                             end
 
-                            -- ARMOR BAR
                             if ESP_State.Armor then
                                 local armorVal = 0
                                 local dataFolder = player:FindFirstChild("DataFolder")
@@ -2602,7 +2598,6 @@ do
                                 esp.ArmorFill.Visible = false
                             end
 
-                            -- TEXT
                             local centerX = minX + sizeX / 2
                             local hrp = char:FindFirstChild("HumanoidRootPart")
                             local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -2639,7 +2634,6 @@ do
                                 esp.ToolText.Visible = false
                             end
 
-                            -- GRADIENT TRACER
                             if esp.TracerSegments then
                                 if ESP_State.Tracer then
                                     local head = char:FindFirstChild("Head") or hrp
@@ -2698,9 +2692,6 @@ do
         Name = "Troll Sign",
         Callback = function()
             task.spawn(function()
-                -- ============================================================
-                -- Troll Nazi Sign — no GUI, runs once on execute
-                -- ============================================================
                 local Players    = game:GetService("Players")
                 local RunService = game:GetService("RunService")
 
@@ -2831,9 +2822,7 @@ do
 
                 for _, d in ipairs(n_cfg) do
                     if not running then return end
-
                     equip_from_backpack(d.name, d.count)
-
                     local missing = d.count - count_equipped(d.name)
                     for _ = 1, missing do
                         if not running then return end
@@ -2844,11 +2833,9 @@ do
 
                 task.wait(0.4)
                 if not running then return end
-
                 for _, d in ipairs(n_cfg) do
                     apply_grips(d.name, d.grips)
                 end
-
                 print("[Troll Sign] done.")
             end)
             Soda:Notification("Loaded Troll Sign", 2)
@@ -2862,9 +2849,7 @@ do
                 local Players    = game:GetService("Players")
                 local RunService = game:GetService("RunService")
                 local LP         = Players.LocalPlayer
-
                 local FeatureActive = true
-
                 local CONFIG = {
                     { name = "[Hamburger]", count = 2, grips = {
                         { Position = Vector3.new(2.5, 1, 0), Rotation = Vector3.new(0, 0, 0) },
@@ -2879,7 +2864,6 @@ do
                     local count = 0
                     local backpack = LP:FindFirstChild("Backpack")
                     local char     = LP.Character
-
                     if backpack then
                         for _, item in ipairs(backpack:GetChildren()) do
                             if item.Name == name then count = count + 1 end
@@ -2897,39 +2881,31 @@ do
                     local char = LP.Character or LP.CharacterAdded:Wait()
                     local root = char:WaitForChild("HumanoidRootPart", 5)
                     if not root then return false end
-
                     local target = nil
                     for _, v in ipairs(workspace:GetDescendants()) do
                         if string.find(v.Name, name, 1, true) then
                             if v:IsA("ClickDetector") or v:IsA("TouchTransmitter") then
-                                target = v.Parent
-                                break
+                                target = v.Parent; break
                             elseif v:IsA("Model") and v:FindFirstChild("ClickDetector") then
-                                target = v
-                                break
+                                target = v; break
                             end
                         end
                     end
-
                     if target then
                         local pos = target:IsA("Model") and target:GetModelCFrame() or target.CFrame
                         local old = root.CFrame
                         root.CFrame = pos + Vector3.new(0, 2, 0)
                         task.wait(0.2)
-
                         local cd = target:FindFirstChildWhichIsA("ClickDetector")
                             or (target:IsA("ClickDetector") and target)
-
                         if cd and fireclickdetector then
                             fireclickdetector(cd)
                         elseif firetouchinterest then
                             firetouchinterest(root, target, 0)
                             firetouchinterest(root, target, 1)
                         end
-
                         task.wait(0.2)
                         root.CFrame = old
-
                         local start = tick()
                         while tick() - start < 5 do
                             if not FeatureActive then return false end
@@ -2948,17 +2924,14 @@ do
                     local char = LP.Character
                     local backpack = LP:FindFirstChild("Backpack")
                     if not char or not backpack then return end
-
                     for _, data in ipairs(CONFIG) do
                         local needed = data.count
                         local equipped = 0
-                        
                         for _, item in ipairs(char:GetChildren()) do
                             if item.Name == data.name and item:IsA("Tool") then
                                 equipped = equipped + 1
                             end
                         end
-
                         if equipped < needed then
                             for _, item in ipairs(backpack:GetChildren()) do
                                 if item.Name == data.name and item:IsA("Tool") then
@@ -2975,7 +2948,6 @@ do
                 local function applyGrips()
                     local char = LP.Character
                     if not char then return end
-
                     for _, data in ipairs(CONFIG) do
                         local tools = {}
                         for _, item in ipairs(char:GetChildren()) do
@@ -2983,7 +2955,6 @@ do
                                 table.insert(tools, item)
                             end
                         end
-
                         for i = 1, #tools do
                             if data.grips[i] then
                                 local p, r = data.grips[i].Position, data.grips[i].Rotation
@@ -2992,7 +2963,7 @@ do
                                 )
                                 tools[i].Grip = targetGrip
                                 task.wait(0.05)
-                                tools[i].Grip = targetGrip 
+                                tools[i].Grip = targetGrip
                             end
                         end
                     end
@@ -3033,7 +3004,6 @@ do
 
                 task.wait(0.2)
                 forceEquip()
-
                 task.wait(0.2)
                 if FeatureActive then
                     applyGrips()
@@ -3052,9 +3022,7 @@ do
                 local Players    = game:GetService("Players")
                 local RunService = game:GetService("RunService")
                 local LP         = Players.LocalPlayer
-
                 local FeatureActive = true
-
                 local CONFIG = {
                     { name = "[Pizza]", count = 2, grips = {
                         { Position = Vector3.new(2, 1, -1.5), Rotation = Vector3.new(90, 0, -90) },
@@ -3074,7 +3042,6 @@ do
                     local count = 0
                     local backpack = LP:FindFirstChild("Backpack")
                     local char     = LP.Character
-
                     if backpack then
                         for _, item in ipairs(backpack:GetChildren()) do
                             if item.Name == name then count = count + 1 end
@@ -3092,39 +3059,31 @@ do
                     local char = LP.Character or LP.CharacterAdded:Wait()
                     local root = char:WaitForChild("HumanoidRootPart", 5)
                     if not root then return false end
-
                     local target = nil
                     for _, v in ipairs(workspace:GetDescendants()) do
                         if string.find(v.Name, name, 1, true) then
                             if v:IsA("ClickDetector") or v:IsA("TouchTransmitter") then
-                                target = v.Parent
-                                break
+                                target = v.Parent; break
                             elseif v:IsA("Model") and v:FindFirstChild("ClickDetector") then
-                                target = v
-                                break
+                                target = v; break
                             end
                         end
                     end
-
                     if target then
                         local pos = target:IsA("Model") and target:GetModelCFrame() or target.CFrame
                         local old = root.CFrame
                         root.CFrame = pos + Vector3.new(0, 2, 0)
                         task.wait(0.2)
-
                         local cd = target:FindFirstChildWhichIsA("ClickDetector")
                             or (target:IsA("ClickDetector") and target)
-
                         if cd and fireclickdetector then
                             fireclickdetector(cd)
                         elseif firetouchinterest then
                             firetouchinterest(root, target, 0)
                             firetouchinterest(root, target, 1)
                         end
-
                         task.wait(0.2)
                         root.CFrame = old
-
                         local start = tick()
                         while tick() - start < 5 do
                             if not FeatureActive then return false end
@@ -3143,17 +3102,14 @@ do
                     local char = LP.Character
                     local backpack = LP:FindFirstChild("Backpack")
                     if not char or not backpack then return end
-
                     for _, data in ipairs(CONFIG) do
                         local needed = data.count
                         local equipped = 0
-                        
                         for _, item in ipairs(char:GetChildren()) do
                             if item.Name == data.name and item:IsA("Tool") then
                                 equipped = equipped + 1
                             end
                         end
-
                         if equipped < needed then
                             for _, item in ipairs(backpack:GetChildren()) do
                                 if item.Name == data.name and item:IsA("Tool") then
@@ -3170,7 +3126,6 @@ do
                 local function applyGrips()
                     local char = LP.Character
                     if not char then return end
-
                     for _, data in ipairs(CONFIG) do
                         local tools = {}
                         for _, item in ipairs(char:GetChildren()) do
@@ -3178,7 +3133,6 @@ do
                                 table.insert(tools, item)
                             end
                         end
-
                         for i = 1, #tools do
                             if data.grips[i] then
                                 local p, r = data.grips[i].Position, data.grips[i].Rotation
@@ -3187,7 +3141,7 @@ do
                                 )
                                 tools[i].Grip = targetGrip
                                 task.wait(0.05)
-                                tools[i].Grip = targetGrip 
+                                tools[i].Grip = targetGrip
                             end
                         end
                     end
@@ -3228,7 +3182,6 @@ do
 
                 task.wait(0.2)
                 forceEquip()
-
                 task.wait(0.2)
                 if FeatureActive then
                     applyGrips()
@@ -3239,10 +3192,25 @@ do
             Soda:Notification("Loaded Female", 2)
         end
     })
+
+    fun_section:Button({
+        Name = "Neckgrabs",
+        Callback = function()
+            task.spawn(function()
+                local ok, err = pcall(function()
+                    loadstring(game:HttpGet("https://raw.githubusercontent.com/nexoralua-maker/Stateview-prison-script-/main/NeckRam"))()
+                end)
+                if not ok then
+                    Soda:Notification("Neckgrabs failed: " .. tostring(err), 3)
+                end
+            end)
+            Soda:Notification("Loaded Neckgrabs", 2)
+        end
+    })
 end
 
 --====================================================================
--- PLAYER TAB — Character + Movement
+-- PLAYER TAB
 --====================================================================
 do
     local PC_Players    = game:GetService("Players")
@@ -3255,7 +3223,7 @@ do
     local pc = {
         antiPepperConn=nil, antiStompConn=nil, wasKnocked=false,
         autoEatConn=nil, autoEatBusy=false,
-        noclipConn=nil, noJumpConn=nil,
+        noclipConn=nil,
         antiGrabConn=nil, antiGrabEnabled=false,
         cashAuraEnabled=false, cashAuraRadius=20, cashAuraDelay=0.5,
         godBlockEnabled=false, godBlockConn=nil,
@@ -3460,19 +3428,6 @@ do
     })
 
     pc_scroll:Toggle({
-        Name = "No jump cooldown", Flag = "pc_no_jump_cooldown",
-        Callback = function(state)
-            local function fixJump(char)
-                local hum = char:WaitForChild("Humanoid", 5)
-                if hum then hum.UseJumpPower = not state end
-            end
-            if PC_Local.Character then fixJump(PC_Local.Character) end
-            if pc.noJumpConn then pc.noJumpConn:Disconnect() end
-            pc.noJumpConn = PC_Local.CharacterAdded:Connect(fixJump)
-        end
-    })
-
-    pc_scroll:Toggle({
         Name = "Trash Talk", Flag = "pc_trash_talk",
         Callback = function(state) pc.chatSpamTrashTalk = state end
     })
@@ -3523,9 +3478,6 @@ do
         end
     })
 
-    -- REMOVED: Auto block
-    -- REMOVED: Auto reload
-
     pc_scroll:Toggle({
         Name = "Cash aura", Flag = "pc_cash_aura",
         Callback = function(state)
@@ -3557,9 +3509,6 @@ do
         end
     })
 
-    ---------------------------------------------------------------
-    -- AUTO ARMOR  ([High-Medium Armor] - $2589)
-    ---------------------------------------------------------------
     do
         local AA = {
             ShopItemName  = "[High-Medium Armor] - $2589",
@@ -3650,7 +3599,6 @@ do
             return true
         end
 
-        -- Heartbeat TP loop — moves HRP to shop for one frame, snaps back
         AA.HeartbeatConn = PC_RunService.Heartbeat:Connect(function()
             if not AA.c_enabled or not AA.c_pos or not AA.c_target then return end
             local hrp = getHRP()
@@ -3718,6 +3666,9 @@ do
         })
     end
 
+    ---------------------------------------------------------------
+    -- MOVEMENT SECTION (with Fly)
+    ---------------------------------------------------------------
     local CFrameSpeed = {Enabled = false, Speed = 20, _conn = nil}
     local move_section = tab_player:Section({Name = "Movement", Side = "Right", Size = "Fill"})
 
@@ -3749,13 +3700,242 @@ do
 
     move_section:Slider({
         Name = "Speed", Flag = "movement_cframe_speed",
-        Min = 1, Max = 500, Default = 20, Decimals = 1,
-        Callback = function(value) CFrameSpeed.Speed = math.clamp(value, 1, 500) end
+        Min = 1, Max = 100, Default = 20, Decimals = 1,
+        Callback = function(value) CFrameSpeed.Speed = math.clamp(value, 1, 100) end
     })
 
-    --====================================================================
-    -- AUTO SKINNY  ([Lettuce] - $6)
-    --====================================================================
+    ---------------------------------------------------------------
+    -- FLY (Normal + Superhero)
+    ---------------------------------------------------------------
+    local function CreateNormalFly(character, opts)
+        opts = opts or {}
+        local self = { Enabled = true, Speed = opts.speed or 300, Conn = nil }
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local root     = character:FindFirstChild("HumanoidRootPart")
+        if not humanoid or not root then return nil end
+
+        local animate = character:FindFirstChild("Animate")
+        if animate then animate.Disabled = true end
+
+        local FlyRS = game:GetService("RunService")
+        self.Conn = FlyRS.Heartbeat:Connect(function()
+            if not self.Enabled then return end
+            if not root.Parent or not humanoid.Parent then return self:Stop() end
+            local cam = workspace.CurrentCamera
+            if not cam then return end
+            local move = humanoid.MoveDirection
+            if move.Magnitude < 0.01 then
+                root.AssemblyLinearVelocity = Vector3.zero
+                return
+            end
+            local camCF = cam.CFrame
+            local look  = Vector3.new(camCF.LookVector.X,   0, camCF.LookVector.Z)
+            local right = Vector3.new(camCF.RightVector.X,  0, camCF.RightVector.Z)
+            look  = look.Magnitude  > 1e-3 and look.Unit  or Vector3.new(0, 0, -1)
+            right = right.Magnitude > 1e-3 and right.Unit or Vector3.new(1, 0, 0)
+            local dir = look * move:Dot(look) + right * move:Dot(right)
+            if dir.Magnitude > 0 then
+                root.AssemblyLinearVelocity = dir.Unit * self.Speed
+            else
+                root.AssemblyLinearVelocity = Vector3.zero
+            end
+        end)
+
+        function self:Stop()
+            if self.Conn then self.Conn:Disconnect(); self.Conn = nil end
+            self.Enabled = false
+            if animate then animate.Disabled = false end
+            if root.Parent then root.AssemblyLinearVelocity = Vector3.zero end
+            pcall(function()
+                if humanoid.Parent then humanoid:ChangeState(Enum.HumanoidStateType.Standing) end
+            end)
+        end
+        function self:SetSpeed(v)   self.Speed = tonumber(v) or self.Speed end
+        function self:SetEnabled(b) self.Enabled = b end
+        return self
+    end
+
+    local function CreateSuperheroFly()
+        local FlyPlayers = game:GetService("Players")
+        local FlyRSvc    = game:GetService("RunService")
+        local FlyLP      = FlyPlayers.LocalPlayer
+
+        local IdleAnim = Instance.new("Animation"); IdleAnim.AnimationId = "rbxassetid://3541114300"
+        local FlyAnim  = Instance.new("Animation"); FlyAnim.AnimationId  = "rbxassetid://3541044388"
+
+        local State = {
+            Enabled = false, Speed = 300, Heartbeat = nil, CharConn = nil,
+            Character = nil, IdleTrack = nil, FlyTrack = nil,
+        }
+
+        local function bind(character)
+            if not character then return end
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+                or character:WaitForChild("Humanoid", 5)
+            if not humanoid then return end
+            local animator = humanoid:FindFirstChildOfClass("Animator")
+                or Instance.new("Animator", humanoid)
+            for _, t in ipairs(humanoid:GetPlayingAnimationTracks()) do
+                pcall(function() t:Stop() end)
+            end
+            local animate = character:FindFirstChild("Animate")
+            if animate then animate.Disabled = true end
+            if State.IdleTrack then pcall(function() State.IdleTrack:Stop() end) end
+            if State.FlyTrack  then pcall(function() State.FlyTrack:Stop()  end) end
+            State.IdleTrack = animator:LoadAnimation(IdleAnim)
+            State.FlyTrack  = animator:LoadAnimation(FlyAnim)
+            State.IdleTrack.Looped, State.IdleTrack.Priority = true, Enum.AnimationPriority.Action
+            State.FlyTrack.Looped,  State.FlyTrack.Priority  = true, Enum.AnimationPriority.Action
+            State.Character = character
+        end
+
+        local function tick()
+            if FlyLP.Character ~= State.Character then bind(FlyLP.Character) end
+            if not State.Character then return end
+            local root     = State.Character:FindFirstChild("HumanoidRootPart")
+            local humanoid = State.Character:FindFirstChildOfClass("Humanoid")
+            if not root or not humanoid then return end
+            local moveDir = humanoid.MoveDirection
+            local moving  = moveDir.Magnitude > 0
+            if moving then
+                if State.IdleTrack and State.IdleTrack.IsPlaying then State.IdleTrack:Stop() end
+                if State.FlyTrack and not State.FlyTrack.IsPlaying then State.FlyTrack:Play(0.1) end
+            else
+                if State.FlyTrack and State.FlyTrack.IsPlaying then State.FlyTrack:Stop() end
+                if State.IdleTrack and not State.IdleTrack.IsPlaying then State.IdleTrack:Play(0.1) end
+            end
+            if moving then
+                local cam   = workspace.CurrentCamera
+                local camCF = cam.CFrame
+                local look  = Vector3.new(camCF.LookVector.X,  0, camCF.LookVector.Z)
+                local right = Vector3.new(camCF.RightVector.X, 0, camCF.RightVector.Z)
+                look  = look.Magnitude  > 0 and look.Unit  or Vector3.new(0, 0, -1)
+                right = right.Magnitude > 0 and right.Unit or Vector3.new(1, 0, 0)
+                local dir = camCF.LookVector  * moveDir:Dot(look)
+                          + camCF.RightVector * moveDir:Dot(right)
+                root.Velocity = dir.Magnitude > 0 and dir.Unit * State.Speed or Vector3.zero
+            else
+                root.Velocity = Vector3.zero
+            end
+        end
+
+        local function start()
+            if State.Heartbeat then return end
+            bind(FlyLP.Character)
+            State.Heartbeat = FlyRSvc.Heartbeat:Connect(tick)
+            State.CharConn = FlyLP.CharacterAdded:Connect(function(char)
+                task.wait(0.5)
+                if State.Enabled then bind(char) end
+            end)
+        end
+
+        local function stop()
+            if State.Heartbeat then State.Heartbeat:Disconnect(); State.Heartbeat = nil end
+            if State.CharConn then State.CharConn:Disconnect(); State.CharConn = nil end
+            if State.IdleTrack then pcall(function() State.IdleTrack:Stop() end); State.IdleTrack = nil end
+            if State.FlyTrack  then pcall(function() State.FlyTrack:Stop()  end); State.FlyTrack  = nil end
+            if State.Character then
+                local animate = State.Character:FindFirstChild("Animate")
+                if animate then animate.Disabled = false end
+                local humanoid = State.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Standing) end
+            end
+            State.Character = nil
+        end
+
+        local api = {}
+        function api:SetEnabled(on) State.Enabled = on; if on then start() else stop() end end
+        function api:SetSpeed(v)    State.Speed = tonumber(v) or State.Speed end
+        function api:GetSpeed()     return State.Speed end
+        function api:IsEnabled()    return State.Enabled end
+        return api
+    end
+
+    local FlyState = {
+        enabled = false,
+        mode = "Normal Fly",
+        speed = 30,
+        normal = nil,
+        superhero = nil,
+        charConn = nil,
+    }
+
+    local function StopAllFly()
+        if FlyState.normal then
+            pcall(function() FlyState.normal:Stop() end)
+            FlyState.normal = nil
+        end
+        if FlyState.superhero then
+            pcall(function() FlyState.superhero:SetEnabled(false) end)
+            FlyState.superhero = nil
+        end
+        if FlyState.charConn then FlyState.charConn:Disconnect(); FlyState.charConn = nil end
+    end
+
+    local function StartFly()
+        StopAllFly()
+        if FlyState.mode == "Normal Fly" then
+            local char = PC_Local.Character
+            if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChildOfClass("Humanoid") then
+                FlyState.normal = CreateNormalFly(char, {speed = FlyState.speed})
+            end
+            FlyState.charConn = PC_Local.CharacterAdded:Connect(function(newChar)
+                task.wait(0.5)
+                if not FlyState.enabled or FlyState.mode ~= "Normal Fly" then return end
+                if FlyState.normal then pcall(function() FlyState.normal:Stop() end) end
+                local hrp = newChar:FindFirstChild("HumanoidRootPart") or newChar:WaitForChild("HumanoidRootPart", 5)
+                if hrp then
+                    FlyState.normal = CreateNormalFly(newChar, {speed = FlyState.speed})
+                end
+            end)
+        else
+            FlyState.superhero = CreateSuperheroFly()
+            FlyState.superhero:SetSpeed(FlyState.speed)
+            FlyState.superhero:SetEnabled(true)
+        end
+    end
+
+    move_section:Toggle({
+        Name = "Fly", Flag = "movement_fly",
+        Callback = function(state)
+            FlyState.enabled = state
+            if state then
+                StartFly()
+                Soda:Notification("✈ Fly ON — " .. FlyState.mode, 2)
+            else
+                StopAllFly()
+                Soda:Notification("✈ Fly OFF", 2)
+            end
+        end
+    })
+
+    move_section:List({
+        Name = "Fly Mode", Flag = "movement_fly_mode",
+        Options = {"Normal Fly", "Superhero Fly"},
+        Default = "Normal Fly",
+        Callback = function(v)
+            if not v then return end
+            FlyState.mode = v
+            if FlyState.enabled then
+                StartFly()
+                Soda:Notification("Fly mode: " .. v, 2)
+            end
+        end
+    })
+
+    move_section:Slider({
+        Name = "Fly Speed", Flag = "movement_fly_speed",
+        Min = 1, Max = 100, Default = 30, Decimals = 0,
+        Callback = function(v)
+            FlyState.speed = v
+            if FlyState.normal then FlyState.normal:SetSpeed(v) end
+            if FlyState.superhero then FlyState.superhero:SetSpeed(v) end
+        end
+    })
+
+    ---------------------------------------------------------------
+    -- AUTO SKINNY
+    ---------------------------------------------------------------
     local SkinnyToggle
     do
         local S = {
@@ -3859,9 +4039,9 @@ do
         end)
     end
 
-    --====================================================================
-    -- AUTO WEIGH  ([HeavyWeights] - $281)
-    --====================================================================
+    ---------------------------------------------------------------
+    -- AUTO WEIGH
+    ---------------------------------------------------------------
     local WeighToggle
     do
         local W = {
@@ -3965,9 +4145,9 @@ do
         end)
     end
 
-    --====================================================================
-    -- BOXING FARM  (Combat spam @ ring)
-    --====================================================================
+    ---------------------------------------------------------------
+    -- BOXING FARM
+    ---------------------------------------------------------------
     local BoxingToggle
     do
         local B = {
@@ -4075,9 +4255,9 @@ do
         end)
     end
 
-    --====================================================================
-    -- AUTO BUY (Da Hood)
-    --====================================================================
+    ---------------------------------------------------------------
+    -- AUTO BUY
+    ---------------------------------------------------------------
     do
         local CONFIG = {
             Weapons      = { "[AK47]", "[Rifle]", "[LMG]" },
@@ -4121,13 +4301,10 @@ do
 
         local function buyItem(itemName)
             if not itemName then return false end
-
             local root = lastRoot or getRoot()
             if not root or not root.Parent then return false end
-
             local shop = getShop()
             if not shop then return false end
-
             local model
             for _, v in ipairs(shop:GetChildren()) do
                 if string.find(v.Name, itemName, 1, true) then
@@ -4136,18 +4313,15 @@ do
                 end
             end
             if not model then return false end
-
             local cd   = model:FindFirstChildOfClass("ClickDetector")
             local part = model:FindFirstChild("Head")
                       or model:FindFirstChild("Handle")
                       or model:FindFirstChildWhichIsA("BasePart")
             if not (cd and part) then return false end
-
             local moved = pcall(function()
                 root.CFrame = CFrame.new(part.Position + Vector3.new(0, 5, 0))
             end)
             if not moved then return false end
-
             task.wait(0.19)
             pcall(fireclickdetector, cd, 0)
             task.wait(0.15)
@@ -4159,18 +4333,14 @@ do
         local function purchase(weaponList, spareAmmo)
             if isBuying then return end
             if not weaponList or #weaponList == 0 then return end
-
             local root = getRoot()
             if not root then return end
-
             isBuying = true
             lastRoot = root
             local saved = root.CFrame
-
             for _, gunName in ipairs(weaponList) do
                 local clean = gunName:gsub(" %- %$%d+", "")
                 buyItem(clean)
-
                 local ammo = AmmoMap[clean]
                 if ammo then
                     for _ = 1, (spareAmmo or 0) do
@@ -4179,11 +4349,9 @@ do
                     end
                 end
             end
-
             if lastRoot and lastRoot.Parent then
                 pcall(function() lastRoot.CFrame = saved end)
             end
-
             lastRoot = nil
             isBuying = false
         end
@@ -4191,14 +4359,11 @@ do
         local function buyAmmoOnly(weaponList, spareAmmo)
             if isBuying then return end
             if not weaponList or #weaponList == 0 then return end
-
             local root = getRoot()
             if not root then return end
-
             isBuying = true
             lastRoot = root
             local saved = root.CFrame
-
             for _, gunName in ipairs(weaponList) do
                 local clean = gunName:gsub(" %- %$%d+", "")
                 local ammo = AmmoMap[clean]
@@ -4209,11 +4374,9 @@ do
                     end
                 end
             end
-
             if lastRoot and lastRoot.Parent then
                 pcall(function() lastRoot.CFrame = saved end)
             end
-
             lastRoot = nil
             isBuying = false
         end
@@ -4229,41 +4392,31 @@ do
             Flag = "ab_weapons",
             Options = ShopItems,
             Max = 3,
-            Callback = function(t)
-                CONFIG.Weapons = t or {}
-            end,
+            Callback = function(t) CONFIG.Weapons = t or {} end,
         })
 
         move_section:Slider({
             Name = "Auto Buy Spare Ammo",
             Flag = "ab_spare",
             Min = 1, Max = 15, Default = 5, Decimals = 0,
-            Callback = function(v)
-                CONFIG.SpareAmmo = v
-            end,
+            Callback = function(v) CONFIG.SpareAmmo = v end,
         })
 
         move_section:Toggle({
             Name = "Purchase On Respawn",
             Flag = "ab_respawn",
             Default = false,
-            Callback = function(v)
-                CONFIG.BuyOnRespawn = v
-            end,
+            Callback = function(v) CONFIG.BuyOnRespawn = v end,
         })
 
         move_section:Button({
             Name = "Purchase Weapons Now",
-            Callback = function()
-                purchase(CONFIG.Weapons, CONFIG.SpareAmmo)
-            end,
+            Callback = function() purchase(CONFIG.Weapons, CONFIG.SpareAmmo) end,
         })
 
         move_section:Button({
             Name = "Buy Ammo Only",
-            Callback = function()
-                buyAmmoOnly(CONFIG.Weapons, CONFIG.SpareAmmo)
-            end,
+            Callback = function() buyAmmoOnly(CONFIG.Weapons, CONFIG.SpareAmmo) end,
         })
     end
 end
