@@ -11,8 +11,6 @@
 local Whitelist = {
     [8406388751] = true,
     [7112029575] = true,
-    [1234567890] = true, -- new person
-    [9876543210] = true, -- another person
 }
 
 do
@@ -3230,13 +3228,6 @@ do
         antiGrabConn=nil, antiGrabEnabled=false,
         cashAuraEnabled=false, cashAuraRadius=20, cashAuraDelay=0.5,
         godBlockEnabled=false, godBlockConn=nil,
-        chatSpamTrashTalk=false, chatSpamLastTime=0, chatSpamIndex=1, chatSpamDelay=3,
-        trashTalkList = {
-            "imagine getting cracked by Soda.Fun 💀", "Soda.Fun", "get better buddy", "skill issue",
-            "get Soda.Fun today", "stop 😂", "free script btw", "mad?", "cry about it", "trash",
-            "noob lol", "owned by Soda.Fun", "get rekt", "you're bad", "stay mad with no Soda.Fun",
-            "no Soda.Fun = no skill", "washed", "dogwater", "200 pumped by Soda.Fun"
-        }
     }
 
     PC_Local.CharacterAdded:Connect(function() pc.wasKnocked = false end)
@@ -3429,33 +3420,6 @@ do
             end
         end
     })
-
-    pc_scroll:Toggle({
-        Name = "Trash Talk", Flag = "pc_trash_talk",
-        Callback = function(state) pc.chatSpamTrashTalk = state end
-    })
-
-    task.spawn(function()
-        while task.wait(0.1) do
-            if pc.chatSpamTrashTalk then
-                local now = tick()
-                if now - pc.chatSpamLastTime >= pc.chatSpamDelay then
-                    local msg = pc.trashTalkList[pc.chatSpamIndex]
-                    pc.chatSpamIndex = (pc.chatSpamIndex % #pc.trashTalkList) + 1
-                    pcall(function()
-                        if PC_TCS.ChatVersion == Enum.ChatVersion.TextChatService then
-                            local channel = PC_TCS.TextChannels:FindFirstChild("RBXGeneral") or PC_TCS.TextChannels:FindFirstChildOfClass("TextChannel")
-                            if channel then channel:SendAsync(msg) end
-                        else
-                            local chatEvents = PC_RS:FindFirstChild("DefaultChatSystemChatEvents")
-                            if chatEvents then chatEvents.SayMessageRequest:FireServer(msg, "All") end
-                        end
-                    end)
-                    pc.chatSpamLastTime = now
-                end
-            end
-        end
-    end)
 
     pc_scroll:Toggle({
         Name = "God Block", Flag = "pc_god_block",
@@ -3670,10 +3634,11 @@ do
     end
 
     ---------------------------------------------------------------
-    -- MOVEMENT SECTION (with Fly)
+    -- MOVEMENT SECTION (scrollable)
     ---------------------------------------------------------------
     local CFrameSpeed = {Enabled = false, Speed = 20, _conn = nil}
-    local move_section = tab_player:Section({Name = "Movement", Side = "Right", Size = "Fill"})
+    local move_section_base = tab_player:Section({Name = "Movement", Side = "Right", Size = "Fill"})
+    local move_section = move_section_base:Nest({Size = "Fill"})
 
     local function cfsStart()
         if CFrameSpeed._conn then return end
@@ -3708,54 +3673,82 @@ do
     })
 
     ---------------------------------------------------------------
-    -- FLY (Normal + Superhero)
+    -- FLY — Normal Fly now mirrors Superhero Fly (no animations)
     ---------------------------------------------------------------
-    local function CreateNormalFly(character, opts)
-        opts = opts or {}
-        local self = { Enabled = true, Speed = opts.speed or 300, Conn = nil }
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        local root     = character:FindFirstChild("HumanoidRootPart")
-        if not humanoid or not root then return nil end
+    local function CreateNormalFly()
+        local FlyPlayers = game:GetService("Players")
+        local FlyRSvc    = game:GetService("RunService")
+        local FlyLP      = FlyPlayers.LocalPlayer
 
-        local animate = character:FindFirstChild("Animate")
-        if animate then animate.Disabled = true end
+        local State = {
+            Enabled = false, Speed = 300, Heartbeat = nil, CharConn = nil,
+            Character = nil,
+        }
 
-        local FlyRS = game:GetService("RunService")
-        self.Conn = FlyRS.Heartbeat:Connect(function()
-            if not self.Enabled then return end
-            if not root.Parent or not humanoid.Parent then return self:Stop() end
-            local cam = workspace.CurrentCamera
-            if not cam then return end
-            local move = humanoid.MoveDirection
-            if move.Magnitude < 0.01 then
-                root.AssemblyLinearVelocity = Vector3.zero
-                return
+        local function bind(character)
+            if not character then return end
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+                or character:WaitForChild("Humanoid", 5)
+            if not humanoid then return end
+            for _, t in ipairs(humanoid:GetPlayingAnimationTracks()) do
+                pcall(function() t:Stop() end)
             end
-            local camCF = cam.CFrame
-            local look  = Vector3.new(camCF.LookVector.X,   0, camCF.LookVector.Z)
-            local right = Vector3.new(camCF.RightVector.X,  0, camCF.RightVector.Z)
-            look  = look.Magnitude  > 1e-3 and look.Unit  or Vector3.new(0, 0, -1)
-            right = right.Magnitude > 1e-3 and right.Unit or Vector3.new(1, 0, 0)
-            local dir = look * move:Dot(look) + right * move:Dot(right)
-            if dir.Magnitude > 0 then
-                root.AssemblyLinearVelocity = dir.Unit * self.Speed
+            local animate = character:FindFirstChild("Animate")
+            if animate then animate.Disabled = true end
+            State.Character = character
+        end
+
+        local function tick()
+            if FlyLP.Character ~= State.Character then bind(FlyLP.Character) end
+            if not State.Character then return end
+            local root     = State.Character:FindFirstChild("HumanoidRootPart")
+            local humanoid = State.Character:FindFirstChildOfClass("Humanoid")
+            if not root or not humanoid then return end
+            local moveDir = humanoid.MoveDirection
+            local moving  = moveDir.Magnitude > 0
+            if moving then
+                local cam   = workspace.CurrentCamera
+                local camCF = cam.CFrame
+                local look  = Vector3.new(camCF.LookVector.X,  0, camCF.LookVector.Z)
+                local right = Vector3.new(camCF.RightVector.X, 0, camCF.RightVector.Z)
+                look  = look.Magnitude  > 0 and look.Unit  or Vector3.new(0, 0, -1)
+                right = right.Magnitude > 0 and right.Unit or Vector3.new(1, 0, 0)
+                local dir = camCF.LookVector  * moveDir:Dot(look)
+                          + camCF.RightVector * moveDir:Dot(right)
+                root.Velocity = dir.Magnitude > 0 and dir.Unit * State.Speed or Vector3.zero
             else
-                root.AssemblyLinearVelocity = Vector3.zero
+                root.Velocity = Vector3.zero
             end
-        end)
+        end
 
-        function self:Stop()
-            if self.Conn then self.Conn:Disconnect(); self.Conn = nil end
-            self.Enabled = false
-            if animate then animate.Disabled = false end
-            if root.Parent then root.AssemblyLinearVelocity = Vector3.zero end
-            pcall(function()
-                if humanoid.Parent then humanoid:ChangeState(Enum.HumanoidStateType.Standing) end
+        local function start()
+            if State.Heartbeat then return end
+            bind(FlyLP.Character)
+            State.Heartbeat = FlyRSvc.Heartbeat:Connect(tick)
+            State.CharConn = FlyLP.CharacterAdded:Connect(function(char)
+                task.wait(0.5)
+                if State.Enabled then bind(char) end
             end)
         end
-        function self:SetSpeed(v)   self.Speed = tonumber(v) or self.Speed end
-        function self:SetEnabled(b) self.Enabled = b end
-        return self
+
+        local function stop()
+            if State.Heartbeat then State.Heartbeat:Disconnect(); State.Heartbeat = nil end
+            if State.CharConn then State.CharConn:Disconnect(); State.CharConn = nil end
+            if State.Character then
+                local animate = State.Character:FindFirstChild("Animate")
+                if animate then animate.Disabled = false end
+                local humanoid = State.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Standing) end
+            end
+            State.Character = nil
+        end
+
+        local api = {}
+        function api:SetEnabled(on) State.Enabled = on; if on then start() else stop() end end
+        function api:SetSpeed(v)    State.Speed = tonumber(v) or State.Speed end
+        function api:GetSpeed()     return State.Speed end
+        function api:IsEnabled()    return State.Enabled end
+        return api
     end
 
     local function CreateSuperheroFly()
@@ -3860,37 +3853,25 @@ do
         speed = 30,
         normal = nil,
         superhero = nil,
-        charConn = nil,
     }
 
     local function StopAllFly()
         if FlyState.normal then
-            pcall(function() FlyState.normal:Stop() end)
+            pcall(function() FlyState.normal:SetEnabled(false) end)
             FlyState.normal = nil
         end
         if FlyState.superhero then
             pcall(function() FlyState.superhero:SetEnabled(false) end)
             FlyState.superhero = nil
         end
-        if FlyState.charConn then FlyState.charConn:Disconnect(); FlyState.charConn = nil end
     end
 
     local function StartFly()
         StopAllFly()
         if FlyState.mode == "Normal Fly" then
-            local char = PC_Local.Character
-            if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChildOfClass("Humanoid") then
-                FlyState.normal = CreateNormalFly(char, {speed = FlyState.speed})
-            end
-            FlyState.charConn = PC_Local.CharacterAdded:Connect(function(newChar)
-                task.wait(0.5)
-                if not FlyState.enabled or FlyState.mode ~= "Normal Fly" then return end
-                if FlyState.normal then pcall(function() FlyState.normal:Stop() end) end
-                local hrp = newChar:FindFirstChild("HumanoidRootPart") or newChar:WaitForChild("HumanoidRootPart", 5)
-                if hrp then
-                    FlyState.normal = CreateNormalFly(newChar, {speed = FlyState.speed})
-                end
-            end)
+            FlyState.normal = CreateNormalFly()
+            FlyState.normal:SetSpeed(FlyState.speed)
+            FlyState.normal:SetEnabled(true)
         else
             FlyState.superhero = CreateSuperheroFly()
             FlyState.superhero:SetSpeed(FlyState.speed)
