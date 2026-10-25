@@ -11,6 +11,8 @@
 local Whitelist = {
     [8406388751] = true,
     [7112029575] = true,
+    [1234567890] = true, -- new person
+    [9876543210] = true, -- another person
 }
 
 do
