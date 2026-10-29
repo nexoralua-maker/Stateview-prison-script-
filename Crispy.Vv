@@ -1,0 +1,1721 @@
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/BugBuster3000/sametlibs/refs/heads/main/Reptillian/Source"))()
+
+-- Teal accent
+Library:ChangeTheme("Accent", Color3.fromRGB(0, 220, 200))
+
+local Window = Library:Window({
+    Name = "Crispy.gg",
+    SubName = "hi free script",
+    Logo = "rbxassetid://72426486330663"
+})
+
+local RagebotPage = Window:Page({
+    Name = "Ragebot",
+    Icon = "rbxassetid://72426486330663"
+})
+
+local MovementPage = Window:Page({
+    Name = "Movement",
+    Icon = "rbxassetid://72426486330663"
+})
+
+-- ============================================================
+-- Toggle UI Button (Menu)
+-- ============================================================
+do
+    local UserInputService = game:GetService("UserInputService")
+    local TweenService     = game:GetService("TweenService")
+    local parentGui        = (gethui and gethui()) or game:GetService("CoreGui")
+
+    local ToggleGui = Instance.new("ScreenGui")
+    ToggleGui.Name = "\0"
+    ToggleGui.IgnoreGuiInset = true
+    ToggleGui.ResetOnSpawn = false
+    ToggleGui.DisplayOrder = 999999999
+    ToggleGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+    ToggleGui.Parent = parentGui
+
+    local Outline = Instance.new("Frame")
+    Outline.Size = UDim2.fromOffset(44, 44)
+    Outline.Position = UDim2.fromOffset(20, 20)
+    Outline.BackgroundColor3 = Library.Theme["Accent"]
+    Outline.BorderSizePixel = 0
+    Outline.Parent = ToggleGui
+    Instance.new("UICorner", Outline).CornerRadius = UDim.new(0, 12)
+
+    local Button = Instance.new("ImageButton")
+    Button.Size = UDim2.new(1, -2, 1, -2)
+    Button.Position = UDim2.fromOffset(1, 1)
+    Button.BackgroundColor3 = Library.Theme["Inline"]
+    Button.Image = "rbxassetid://72426486330663"
+    Button.ImageColor3 = Library.Theme["Accent"]
+    Button.ScaleType = Enum.ScaleType.Fit
+    Button.AutoButtonColor = false
+    Button.BorderSizePixel = 0
+    Button.Parent = Outline
+    Instance.new("UICorner", Button).CornerRadius = UDim.new(0, 11)
+
+    local Glow = Instance.new("ImageLabel")
+    Glow.BackgroundTransparency = 1
+    Glow.Image = "rbxassetid://72426486330663"
+    Glow.ImageColor3 = Library.Theme["Accent"]
+    Glow.ImageTransparency = 1
+    Glow.ScaleType = Enum.ScaleType.Fit
+    Glow.Size = UDim2.new(1, -12, 1, -12)
+    Glow.Position = UDim2.fromOffset(6, 6)
+    Glow.ZIndex = 2
+    Glow.Parent = Button
+
+    local dragging, dragStart, startPos = false, nil, nil
+    Button.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = Outline.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            Outline.Position = UDim2.fromOffset(
+                startPos.X.Offset + delta.X,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    local function UpdateState()
+        if Window.IsOpen then
+            TweenService:Create(Glow, TweenInfo.new(0.25), { ImageTransparency = 0.35 }):Play()
+            TweenService:Create(Outline, TweenInfo.new(0.25), {
+                BackgroundColor3 = Library.Theme["Accent"]
+            }):Play()
+        else
+            TweenService:Create(Glow, TweenInfo.new(0.25), { ImageTransparency = 1 }):Play()
+            TweenService:Create(Outline, TweenInfo.new(0.25), {
+                BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            }):Play()
+        end
+    end
+
+    Button.MouseButton1Click:Connect(function()
+        Window:SetOpen(not Window.IsOpen)
+        UpdateState()
+    end)
+
+    UpdateState()
+end
+
+-- ============================================================
+-- Floating Aimlock Button Module
+-- ============================================================
+local AimlockButtonGui
+local AimlockFloatingBtn
+local CurrentBtnSize = 50
+
+local function UpdateButtonSize(size)
+    CurrentBtnSize = size
+    if not AimlockFloatingBtn then return end
+    
+    AimlockFloatingBtn.Size = UDim2.fromOffset(size, size)
+    local Btn = AimlockFloatingBtn:FindFirstChild("AimlockBtn")
+    if Btn then
+        local Icon = Btn:FindFirstChildOfClass("ImageLabel")
+        if Icon then
+            local iconSize = size * 0.64
+            Icon.Size = UDim2.fromOffset(iconSize, iconSize)
+            Icon.Position = UDim2.new(0.5, -iconSize/2, 0.5, -iconSize/2)
+        end
+        local btnCorner = Btn:FindFirstChildOfClass("UICorner")
+        if btnCorner then btnCorner.CornerRadius = UDim.new(0, math.max(4, size * 0.22)) end
+    end
+    local outCorner = AimlockFloatingBtn:FindFirstChildOfClass("UICorner")
+    if outCorner then outCorner.CornerRadius = UDim.new(0, math.max(4, size * 0.24)) end
+end
+
+local function BuildAimlockButton()
+    if AimlockButtonGui and AimlockButtonGui.Parent then return end
+    
+    local UserInputService = game:GetService("UserInputService")
+    local parentGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    
+    AimlockButtonGui = Instance.new("ScreenGui")
+    AimlockButtonGui.Name = "CrispyAimlockBtnGui"
+    AimlockButtonGui.IgnoreGuiInset = true
+    AimlockButtonGui.ResetOnSpawn = false
+    AimlockButtonGui.DisplayOrder = 999999998
+    AimlockButtonGui.Parent = parentGui
+
+    local Outline = Instance.new("Frame")
+    Outline.Size = UDim2.fromOffset(CurrentBtnSize, CurrentBtnSize)
+    Outline.Position = UDim2.fromOffset(20, 80)
+    Outline.BackgroundColor3 = Color3.fromRGB(0, 220, 200)
+    Outline.BorderSizePixel = 0
+    Outline.Parent = AimlockButtonGui
+    Instance.new("UICorner", Outline).CornerRadius = UDim.new(0, math.max(4, CurrentBtnSize * 0.24))
+
+    local Btn = Instance.new("TextButton")
+    Btn.Name = "AimlockBtn"
+    Btn.Size = UDim2.new(1, -2, 1, -2)
+    Btn.Position = UDim2.fromOffset(1, 1)
+    Btn.BackgroundColor3 = Color3.fromRGB(20, 22, 24)
+    Btn.Text = ""
+    Btn.AutoButtonColor = false
+    Btn.BorderSizePixel = 0
+    Btn.Parent = Outline
+    Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, math.max(4, CurrentBtnSize * 0.22))
+
+    local iconSize = CurrentBtnSize * 0.64
+    local Icon = Instance.new("ImageLabel")
+    Icon.Size = UDim2.fromOffset(iconSize, iconSize)
+    Icon.Position = UDim2.new(0.5, -iconSize/2, 0.5, -iconSize/2)
+    Icon.BackgroundTransparency = 1
+    Icon.Image = "rbxassetid://122060075814313"
+    Icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+    Icon.ScaleType = Enum.ScaleType.Fit
+    Icon.Parent = Btn
+
+    local Glow = Instance.new("Frame")
+    Glow.Size = UDim2.new(1, 0, 1, 0)
+    Glow.BackgroundColor3 = Color3.fromRGB(0, 220, 200)
+    Glow.BackgroundTransparency = 1
+    Glow.ZIndex = 2
+    Glow.Parent = Btn
+    Instance.new("UICorner", Glow).CornerRadius = UDim.new(0, math.max(4, CurrentBtnSize * 0.22))
+
+    local dragging, dragStart, startPos = false, nil, nil
+    local dragDistance = 0
+
+    Btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = Outline.Position
+            dragDistance = 0
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    if dragDistance < 10 then
+                        Aimlock.setEnabled(not Aimlock.enabled)
+                    end
+                end
+            end)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            dragDistance = math.abs(delta.X) + math.abs(delta.Y)
+            Outline.Position = UDim2.fromOffset(startPos.X.Offset + delta.X, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    AimlockFloatingBtn = Outline
+end
+
+game:GetService("RunService").RenderStepped:Connect(function()
+    if not AimlockFloatingBtn then return end
+    local Btn = AimlockFloatingBtn:FindFirstChild("AimlockBtn")
+    if not Btn then return end
+    local Glow = Btn:FindFirstChildOfClass("Frame")
+    
+    if Aimlock.enabled then
+        AimlockFloatingBtn.BackgroundColor3 = Color3.fromRGB(0, 220, 200)
+        if Glow then Glow.BackgroundTransparency = 0.8 end
+    else
+        AimlockFloatingBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        if Glow then Glow.BackgroundTransparency = 1 end
+    end
+end)
+
+-- ============================================================
+-- Target Tracer Module (Drawing API)
+-- ============================================================
+local TargetVisuals = { tracer = false, tracerColor = Color3.fromRGB(0, 220, 200), tracerDraw = nil, tracerDrawing = nil }
+
+local function ensureTracerDrawing()
+    if TargetVisuals.tracerDrawing then return TargetVisuals.tracerDrawing end
+    local ok, Drawing = pcall(function() return loadstring(game:HttpGet("https://raw.githubusercontent.com/linemaster2/storage/main/Drawing.lua"))() end)
+    if not ok or not Drawing then return nil end
+    TargetVisuals.tracerDrawing = Drawing
+    return Drawing
+end
+
+local function destroyTracer()
+    if TargetVisuals.tracerDraw then 
+        pcall(function() TargetVisuals.tracerDraw:Remove() end)
+        TargetVisuals.tracerDraw = nil 
+    end
+end
+
+game:GetService("RunService").RenderStepped:Connect(function()
+    local targetChar = Aimlock.state.locked_target and Aimlock.state.locked_target.Character
+    if not TargetVisuals.tracer or not targetChar then
+        if TargetVisuals.tracerDraw then TargetVisuals.tracerDraw.Visible = false end
+    else
+        if not TargetVisuals.tracerDraw then
+            local Drawing = ensureTracerDrawing()
+            if Drawing then
+                destroyTracer()
+                local line = Drawing.new("Line")
+                line.Thickness = 2
+                line.Transparency = 0.5
+                line.Visible = false
+                TargetVisuals.tracerDraw = line
+            end
+        end
+        if TargetVisuals.tracerDraw then
+            local head = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
+            if not head then
+                TargetVisuals.tracerDraw.Visible = false
+            else
+                local sp, on = game.Workspace.CurrentCamera:WorldToViewportPoint(head.Position)
+                if not on or sp.Z <= 0 then
+                    TargetVisuals.tracerDraw.Visible = false
+                else
+                    local vp = game.Workspace.CurrentCamera.ViewportSize
+                    TargetVisuals.tracerDraw.From = Vector2.new(vp.X / 2, vp.Y)
+                    TargetVisuals.tracerDraw.To = Vector2.new(sp.X, sp.Y)
+                    TargetVisuals.tracerDraw.Color = TargetVisuals.tracerColor
+                    TargetVisuals.tracerDraw.Visible = true
+                end
+            end
+        end
+    end
+end)
+
+-- ============================================================
+-- Aimlock Module
+-- ============================================================
+local Aimlock = (function()
+    local _hookmetamethod    = hookmetamethod    or function() return function() end end
+    local _newcclosure       = newcclosure       or function(f) return f end
+    local _checkcaller       = checkcaller       or function() return false end
+    local _getnamecallmethod = getnamecallmethod or function() return "" end
+
+    local Players           = game:GetService("Players")
+    local RunService        = game:GetService("RunService")
+    local Workspace         = game:GetService("Workspace")
+    local UIS               = game:GetService("UserInputService")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local LP                = Players.LocalPlayer
+    local Camera            = Workspace.CurrentCamera
+
+    local CLOSEST_PART_NAMES = {
+        "Head","Neck","UpperTorso","LowerTorso","HumanoidRootPart",
+        "LeftUpperArm","RightUpperArm","LeftLowerArm","RightLowerArm",
+        "LeftHand","RightHand","LeftUpperLeg","RightUpperLeg",
+        "LeftLowerLeg","RightLowerLeg","LeftFoot","RightFoot",
+    }
+
+    local M = {
+        enabled         = false,
+        initialized     = false,
+        lockKey         = Enum.KeyCode.Unknown,
+        method          = "Namecall",
+        camlock         = true,
+        camSmooth       = true,
+        camSmoothValue  = 1,
+        autoAir         = true,
+        autoAirDelay    = 0.2,
+        onStateChange   = nil,
+        onLockChange    = nil,
+        state = {
+            locked_target      = nil,
+            locked_userid      = nil,
+            isTargetting       = false,
+            predicted_position = Vector3.new(1, 1, 1),
+            forced_target      = nil,
+            auto_relock        = false,
+            missing_char_since = 0,
+            lost_since         = 0,
+        },
+    }
+
+    local Settings = {
+        HPrediction      = 0.134,
+        VPrediction      = 0.134,
+        AimParts         = { "Head" },
+        MaxDistance      = 500,
+        LookConeDot      = 0.90,
+        UseChecks        = true,
+        Checks = { Knocked = false, Wall = false, Forcefield = false, Knife = false },
+        AntiGroundShots  = true,
+        AntiGroundMult   = 0.2,
+        ShowTargetDot    = true,
+        TargetDotColor   = Color3.fromRGB(0, 220, 200),
+        TargetDotColor2  = Color3.fromRGB(0, 220, 200),
+        TargetDotSize    = 12,
+        TargetDotOffset  = 1.2,
+    }
+
+    local game_support = {
+        [2788229376]={Remote="MainEvent",Argument="UpdateMousePosI"},[12238627497]={Remote="MainEvent",Argument="UpdateMousePos"},
+        [5602055394]={Remote="MAINEVENT",Argument="MousePos"},[17403265390]={Remote="MAINEVENT",Argument="MOUSE"},
+        [17403166075]={Remote="MAINEVENT",Argument="MOUSE"},[18111448661]={Remote="MAINEVENT",Argument="MOUSE"},
+        [15186202290]={Remote="MAINEVENT",Argument="MOUSE"},[11143225577]={Remote="MAINEVENT",Argument="UpdateMousePos"},
+        [15763494605]={Remote="MAINEVENT",Argument="MOUSE"},[15166543806]={Remote="MAINEVENT",Argument="MoonUpdateMousePos"},
+        [17897702920]={Remote="MainEvent",Argument="UpdateMousePos"},[16033173781]={Remote="MainEvent",Argument="UpdateMousePos1"},
+        [7213786345]={Remote="MainEvent",Argument="UpdateMousePosI"},[9825515356]={Remote="MainEvent",Argument="MousePosUpdate"},
+        [16859411452]={Remote="MainEvent",Argument="UpdateMousePos"},[14277620939]={Remote="MainEvent",Argument="UpdateMousePos"},
+    }
+    local remote, mouse_argument
+    do
+        local cfg = game_support[game.PlaceId]
+        if cfg then
+            remote = ReplicatedStorage:FindFirstChild(cfg.Remote)
+            mouse_argument = cfg.Argument
+        else
+            for _, name in ipairs({"MainEvent","MAINEVENT","Main","Remote"}) do
+                local r = ReplicatedStorage:FindFirstChild(name)
+                if r and r:IsA("RemoteEvent") then
+                    remote = r; mouse_argument = "MOUSE"; break
+                end
+            end
+        end
+    end
+
+    local dot_frame
+    local dot_gradient_ref = nil
+    local lastAutoAir = 0
+
+    local function has_char(p)
+        return p and p.Character and p.Character:FindFirstChild("Humanoid") ~= nil
+    end
+
+    local function resolve_aim_part(character, parts)
+        if not character then return nil end
+        if type(parts) == "string" then parts = { parts } end
+        if not parts or #parts == 0 then return character:FindFirstChild("HumanoidRootPart") end
+        local use_closest = false
+        for _, p in ipairs(parts) do
+            if p == "Closest Part" then use_closest = true; break end
+        end
+        if use_closest then
+            local camPos = Camera.CFrame.Position
+            local best, bestDist = nil, math.huge
+            for _, name in ipairs(CLOSEST_PART_NAMES) do
+                local part = character:FindFirstChild(name)
+                if part then
+                    local d = (part.Position - camPos).Magnitude
+                    if d < bestDist then bestDist, best = d, part end
+                end
+            end
+            if best then return best end
+        end
+        for _, name in ipairs(parts) do
+            if name ~= "Closest Part" then
+                local part = character:FindFirstChild(name)
+                if part then return part end
+            end
+        end
+        return character:FindFirstChild("HumanoidRootPart")
+    end
+
+    local function is_knocked(plr)
+        if not (plr and plr.Character) then return false end
+        local char = plr.Character
+        if char:GetAttribute("Knocked") then return true end
+        local bodyFx = char:FindFirstChild("BodyEffects")
+        if bodyFx then
+            local ko = bodyFx:FindFirstChild("K.O")
+            if ko and ko.Value then return true end
+        end
+        return false
+    end
+
+    local function is_forcefield(plr)
+        if not has_char(plr) then return false end
+        return plr.Character:FindFirstChildOfClass("ForceField") ~= nil
+    end
+
+    local function is_visible(targetChar, targetPart)
+        if not targetChar or not targetPart then return false end
+        local origin = Camera.CFrame.Position
+        local dir    = targetPart.Position - origin
+        if dir.Magnitude < 0.1 then return true end
+        local params = RaycastParams.new()
+        local ok = pcall(function() params.FilterType = Enum.RaycastFilterType.Exclude end)
+        if not ok then pcall(function() params.FilterType = Enum.RaycastFilterType.Blacklist end) end
+        local exclude = { Camera, targetChar }
+        if LP.Character then
+            table.insert(exclude, LP.Character)
+            for _, d in ipairs(LP.Character:GetDescendants()) do table.insert(exclude, d) end
+        end
+        for _, d in ipairs(targetChar:GetDescendants()) do table.insert(exclude, d) end
+        params.FilterDescendantsInstances = exclude
+        params.IgnoreWater = true
+        local result = Workspace:Raycast(origin, dir, params)
+        if not result then return true end
+        return result.Instance and result.Instance:IsDescendantOf(targetChar) or false
+    end
+
+    local function is_in_air(p)
+        if not has_char(p) then return false end
+        local root = p.Character:FindFirstChild("HumanoidRootPart")
+        return root and math.abs(root.AssemblyLinearVelocity.Y) > 1 or false
+    end
+
+    local function get_target_in_look_direction()
+        if not has_char(LP) then return nil end
+        local myRoot = LP.Character:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return nil end
+        local camCF    = Camera.CFrame
+        local lookDir  = camCF.LookVector
+        local best, bestDot = nil, Settings.LookConeDot
+
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p == LP then continue end
+            if not has_char(p) then continue end
+            local head = resolve_aim_part(p.Character, Settings.AimParts)
+            if not head then continue end
+            if (head.Position - myRoot.Position).Magnitude > Settings.MaxDistance then continue end
+            if Settings.UseChecks then
+                if Settings.Checks.Knocked    and is_knocked(p)    then continue end
+                if Settings.Checks.Forcefield and is_forcefield(p) then continue end
+            end
+            if Settings.Checks.Wall and not is_visible(p.Character, head) then continue end
+            local dir = head.Position - camCF.Position
+            if dir.Magnitude < 0.01 then continue end
+            local dot = lookDir:Dot(dir.Unit)
+            if dot > bestDot then bestDot, best = dot, p end
+        end
+        return best
+    end
+
+    local function get_predicted_position()
+        local target = M.state.locked_target
+        if not has_char(target) then return Vector3.new(0, 0, 0) end
+        local aimPart = resolve_aim_part(target.Character, Settings.AimParts)
+        if not aimPart then return Vector3.new(0, 0, 0) end
+        local pos, vel = aimPart.Position, aimPart.AssemblyLinearVelocity
+        if Settings.AntiGroundShots and is_in_air(target) then
+            vel = Vector3.new(vel.X, math.abs(vel.Y * Settings.AntiGroundMult), vel.Z)
+        end
+        return Vector3.new(
+            pos.X + vel.X * Settings.HPrediction,
+            pos.Y + vel.Y * Settings.VPrediction,
+            pos.Z
+        )
+    end
+
+    local function ensure_dot()
+        if dot_frame and dot_frame.Parent then return end
+        local gui = LP:FindFirstChild("PlayerGui")
+        if not gui then return end
+        local sg = gui:FindFirstChild("CrispyTargetDotGui")
+        if not sg then
+            sg = Instance.new("ScreenGui")
+            sg.Name = "CrispyTargetDotGui"
+            sg.ResetOnSpawn = false
+            sg.IgnoreGuiInset = true
+            sg.DisplayOrder = 999
+            sg.Parent = gui
+        end
+        dot_frame = Instance.new("Frame")
+        dot_frame.AnchorPoint = Vector2.new(0.5, 0.5)
+        dot_frame.Size = UDim2.new(0, Settings.TargetDotSize, 0, Settings.TargetDotSize)
+        dot_frame.BackgroundColor3 = Settings.TargetDotColor
+        dot_frame.BorderSizePixel = 0
+        dot_frame.Visible = false
+        dot_frame.ZIndex = 50
+        dot_frame.Parent = sg
+        Instance.new("UICorner", dot_frame).CornerRadius = UDim.new(1, 0)
+        local gradient = Instance.new("UIGradient")
+        gradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, Settings.TargetDotColor2),
+            ColorSequenceKeypoint.new(0.50, Settings.TargetDotColor),
+            ColorSequenceKeypoint.new(1.00, Settings.TargetDotColor),
+        })
+        gradient.Rotation = 45
+        gradient.Parent = dot_frame
+        dot_gradient_ref = gradient
+    end
+
+    local function do_lock()
+        if not M.enabled then return end
+        local target = M.state.forced_target or get_target_in_look_direction()
+
+        if target then
+            M.state.locked_target      = target
+            M.state.locked_userid      = target.UserId
+            M.state.isTargetting       = true
+            M.state.missing_char_since = 0
+            M.state.lost_since         = 0
+            if M.onLockChange then pcall(M.onLockChange, true, target) end
+        else
+            M.state.locked_target  = nil
+            M.state.locked_userid  = nil
+            M.state.isTargetting   = false
+            if M.onLockChange then pcall(M.onLockChange, false, nil) end
+        end
+    end
+
+    local function do_unlock()
+        local had = M.state.locked_target ~= nil
+        M.state.locked_target      = nil
+        M.state.locked_userid      = nil
+        M.state.isTargetting       = false
+        M.state.missing_char_since = 0
+        M.state.lost_since         = 0
+        if dot_frame then dot_frame.Visible = false end
+        if had and M.onLockChange then pcall(M.onLockChange, false, nil) end
+    end
+
+    function M.toggleLock()
+        if not M.enabled then return end
+        if M.state.locked_target then do_unlock() else do_lock() end
+    end
+
+    local hook_installed = { namecall = false, index = false, raycast = false }
+
+    local function install_hook()
+        if not hook_installed.namecall then
+            hook_installed.namecall = true
+            local old
+            old = _hookmetamethod(game, "__namecall", _newcclosure(function(self, ...)
+                if M.method == "Namecall" and not _checkcaller() and _getnamecallmethod() == "FireServer" then
+                    local args = { ... }
+                    if typeof(args[1]) == "string" and typeof(args[2]) == "Vector3" then
+                        if M.enabled and M.state.isTargetting and M.state.locked_target then
+                            args[2] = M.state.predicted_position
+                        end
+                    end
+                    return old(self, table.unpack(args))
+                end
+                return old(self, ...)
+            end))
+        end
+        if not hook_installed.index then
+            hook_installed.index = true
+            local old
+            old = _hookmetamethod(game, "__index", _newcclosure(function(self, key)
+                if M.method == "Index" and not _checkcaller()
+                   and M.enabled and M.state.isTargetting and M.state.locked_target then
+                    local isMouse = false
+                    pcall(function()
+                        if typeof(self) == "Instance" and self:IsA("Mouse") then isMouse = true end
+                    end)
+                    if isMouse then
+                        if key == "Hit" then
+                            return CFrame.new(M.state.predicted_position)
+                        elseif key == "Target" then
+                            local char = M.state.locked_target.Character
+                            if char then
+                                local part = resolve_aim_part(char, Settings.AimParts)
+                                if part then return part end
+                            end
+                        elseif key == "UnitRay" then
+                            local origin = Camera.CFrame.Position
+                            local dir    = (M.state.predicted_position - origin).Unit
+                            return Ray.new(origin, dir)
+                        elseif key == "X" then
+                            return Camera:WorldToViewportPoint(M.state.predicted_position).X
+                        elseif key == "Y" then
+                            return Camera:WorldToViewportPoint(M.state.predicted_position).Y
+                        end
+                    end
+                end
+                return old(self, key)
+            end))
+        end
+        if not hook_installed.raycast then
+            hook_installed.raycast = true
+            local old
+            old = _hookmetamethod(game, "__namecall", _newcclosure(function(self, ...)
+                local nm = _getnamecallmethod()
+                if M.method == "Raycast" and not _checkcaller()
+                   and M.enabled and M.state.isTargetting and M.state.locked_target then
+                    if nm == "Raycast"
+                    or nm == "FindPartOnRay"
+                    or nm == "FindPartOnRayWithWhitelist"
+                    or nm == "FindPartOnRayWithIgnoreList"
+                    or nm == "FindPartOnRayWithIgnoreList2" then
+                        local args   = { ... }
+                        local origin = Camera.CFrame.Position
+                        local dir    = (M.state.predicted_position - origin).Unit * 2000
+                        if nm == "Raycast" then
+                            args[1] = origin
+                            args[2] = dir
+                        else
+                            args[1] = Ray.new(origin, dir)
+                        end
+                        return old(self, table.unpack(args))
+                    end
+                end
+                return old(self, ...)
+            end))
+        end
+    end
+
+    local function hook_gun(character)
+        if not character then return end
+        character.ChildAdded:Connect(function(tool)
+            if not tool:IsA("Tool") then return end
+            tool.Activated:Connect(function()
+                if M.enabled and M.state.isTargetting and M.state.locked_target
+                   and remote and mouse_argument then
+                    pcall(function()
+                        remote:FireServer(mouse_argument, M.state.predicted_position)
+                    end)
+                end
+            end)
+        end)
+    end
+
+    local function init()
+        if M.initialized then return end
+        M.initialized = true
+        ensure_dot()
+        install_hook()
+
+        if LP.Character then hook_gun(LP.Character) end
+        LP.CharacterAdded:Connect(hook_gun)
+
+        RunService.RenderStepped:Connect(function()
+            if not M.enabled then
+                if dot_frame then dot_frame.Visible = false end
+                return
+            end
+            if M.state.locked_target then
+                local target       = M.state.locked_target
+                local stillInGame  = target and target.Parent ~= nil
+                local hasCharacter = has_char(target)
+
+                if M.state.auto_relock then
+                    if not stillInGame then
+                        local reacquired = M.state.locked_userid
+                            and Players:GetPlayerByUserId(M.state.locked_userid)
+                        if reacquired then
+                            M.state.locked_target      = reacquired
+                            M.state.lost_since         = 0
+                            M.state.missing_char_since = 0
+                            target       = reacquired
+                            hasCharacter = has_char(reacquired)
+                        else
+                            if M.state.lost_since == 0 then M.state.lost_since = tick() end
+                            if tick() - M.state.lost_since > 120 then do_unlock() end
+                            M.state.isTargetting = false
+                            if dot_frame then dot_frame.Visible = false end
+                            return
+                        end
+                    else
+                        M.state.lost_since = 0
+                    end
+
+                    if not hasCharacter then
+                        if M.state.missing_char_since == 0 then
+                            M.state.missing_char_since = tick()
+                        end
+                        if tick() - M.state.missing_char_since > 5 then do_unlock() end
+                        M.state.isTargetting = false
+                        if dot_frame then dot_frame.Visible = false end
+                        return
+                    else
+                        M.state.missing_char_since = 0
+                    end
+                else
+                    if not stillInGame  then do_unlock(); return end
+                    if not hasCharacter then do_unlock(); return end
+                end
+            end
+
+            if not M.state.locked_target then
+                if dot_frame then dot_frame.Visible = false end
+                return
+            end
+
+            M.state.isTargetting       = true
+            M.state.predicted_position = get_predicted_position()
+
+            if M.camlock then
+                local goal = CFrame.new(Camera.CFrame.Position, M.state.predicted_position)
+                if M.camSmooth then
+                    Camera.CFrame = Camera.CFrame:Lerp(goal, M.camSmoothValue)
+                else
+                    Camera.CFrame = goal
+                end
+            end
+        end)
+
+        pcall(function()
+            RunService:BindToRenderStep("CrispyAimlockDot", Enum.RenderPriority.Camera.Value + 1, function()
+                if not M.enabled or not dot_frame then
+                    if dot_frame then dot_frame.Visible = false end
+                    return
+                end
+                if not M.state.locked_target or not has_char(M.state.locked_target) then
+                    dot_frame.Visible = false
+                    return
+                end
+                if Settings.ShowTargetDot then
+                    local head = resolve_aim_part(M.state.locked_target.Character, Settings.AimParts)
+                    if head then
+                        local above = head.Position + Vector3.new(0, Settings.TargetDotOffset, 0)
+                        local sp, on = Camera:WorldToViewportPoint(above)
+                        if on and sp.Z > 0 then
+                            dot_frame.Visible = true
+                            dot_frame.Position = UDim2.new(0, sp.X, 0, sp.Y)
+                        else
+                            dot_frame.Visible = false
+                        end
+                    else
+                        dot_frame.Visible = false
+                    end
+                else
+                    dot_frame.Visible = false
+                end
+            end)
+        end)
+
+        RunService.Heartbeat:Connect(function()
+            if not M.enabled or not M.autoAir then return end
+            local t = M.state.locked_target
+            if not has_char(t) then return end
+            local hum = t.Character:FindFirstChildOfClass("Humanoid")
+            if not hum then return end
+            local ok, st = pcall(function() return hum:GetState() end)
+            local airborne = ok and (
+                st == Enum.HumanoidStateType.Jumping
+                or st == Enum.HumanoidStateType.Freefall
+                or hum.FloorMaterial == Enum.Material.Air
+            )
+            if not airborne then return end
+            if tick() - lastAutoAir < M.autoAirDelay then return end
+            lastAutoAir = tick()
+            local char = LP.Character
+            if not char then return end
+            local tool = char:FindFirstChildOfClass("Tool")
+            if tool then pcall(function() tool:Activate() end) end
+        end)
+    end
+
+    function M.setEnabled(state)
+        M.enabled = state and true or false
+        if M.enabled then init(); do_lock() else do_unlock() end
+        if M.onStateChange then pcall(M.onStateChange, M.enabled) end
+    end
+
+    function M.setHPrediction(v) Settings.HPrediction = tonumber(v) or Settings.HPrediction end
+    function M.setVPrediction(v) Settings.VPrediction = tonumber(v) or Settings.VPrediction end
+
+    function M.setAimPart(part)
+        if type(part) == "table"      then Settings.AimParts = part
+        elseif type(part) == "string" then Settings.AimParts = { part }
+        else                               Settings.AimParts = { "Head" } end
+        if #Settings.AimParts == 0 then Settings.AimParts = { "Head" } end
+    end
+
+    function M.setWallCheck(v)       Settings.Checks.Wall       = v and true or false end
+    function M.setForcefieldCheck(v) Settings.Checks.Forcefield = v and true or false end
+    function M.setKnifeCheck(v)      Settings.Checks.Knife      = v and true or false end
+    function M.setKnockedCheck(v)    Settings.Checks.Knocked    = v and true or false end
+    function M.setCamlock(v)         M.camlock        = v and true or false end
+    function M.setCamSmooth(v)       M.camSmooth      = v and true or false end
+    function M.setCamSmoothValue(v)  M.camSmoothValue = math.clamp(tonumber(v) or M.camSmoothValue, 0.01, 1) end
+    function M.setAutoAir(v)         M.autoAir        = v and true or false end
+    function M.setAutoAirDelay(v)    M.autoAirDelay   = tonumber(v) or M.autoAirDelay end
+    function M.setAutoRelock(v)      M.state.auto_relock = v and true or false end
+
+    function M.setMethod(name)
+        if name == "Namecall" or name == "Index" or name == "Raycast" then
+            M.method = name
+            if M.initialized then install_hook() end
+        end
+    end
+
+    function M.setTargetDotColor(c)
+        Settings.TargetDotColor  = c
+        Settings.TargetDotColor2 = c
+        if dot_gradient_ref then
+            dot_gradient_ref.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, c),
+                ColorSequenceKeypoint.new(0.50, c),
+                ColorSequenceKeypoint.new(1.00, c),
+            })
+        end
+    end
+
+    function M.setForcedTarget(plr)
+        if not plr then M.state.forced_target = nil; return end
+        M.state.forced_target = plr
+        if not M.enabled then M.setEnabled(true) else do_lock() end
+    end
+
+    function M.clearForcedTarget()
+        M.state.forced_target = nil
+        if M.enabled then do_lock()
+        else M.state.locked_target = nil; M.state.isTargetting = false end
+    end
+
+    M.Settings = Settings
+    M._remote = remote
+    M._mouse_argument = mouse_argument
+    M.resolve_aim_part = resolve_aim_part
+    return M
+end)()
+
+-- ============================================================
+-- Auto Fire Module (Modified to shoot Aimlock Target)
+-- ============================================================
+local Player = game:GetService("Players").LocalPlayer
+local RunService = game:GetService("RunService")
+
+local AutoFire = (function()
+    local M = { enabled = false, initialized = false }
+
+    local SHOTS_PER_SECOND = 10
+    local IGNORE_MELEE    = true
+    local CheckKnock, CheckKnife, CheckForcefield, CheckWall = false, false, false, false
+
+    local activeTool, lastFireTime, loopConn = nil, 0, nil
+
+    local function has_char(p)
+        return p and p.Character and p.Character:FindFirstChild("Humanoid") ~= nil
+    end
+
+    local function is_melee_or_consumable(tool)
+        if not IGNORE_MELEE then return false end
+        local n = tool.Name:lower()
+        return n:find("katana") or n:find("knife") or n:find("sword")
+            or n:find("bat")   or n:find("fist")  or n:find("crowbar")
+            or n:find("pizza") or n:find("donut") or n:find("cola")
+    end
+
+    local function is_gun(tool)
+        if not tool or not tool:IsA("Tool") then return false end
+        if not tool:FindFirstChild("Handle") then return false end
+        if is_melee_or_consumable(tool) then return false end
+        return true
+    end
+
+    local function activateTool(tool)
+        if not tool or not tool.Parent then return end
+        if tool.Parent ~= Player.Character then return end
+        pcall(function() tool:Activate() end)
+    end
+
+    local function is_knocked(plr)
+        if not has_char(plr) then return false end
+        local char = plr.Character
+        if char:GetAttribute("Knocked") then return true end
+        local bodyFx = char:FindFirstChild("BodyEffects")
+        if bodyFx then
+            local ko = bodyFx:FindFirstChild("K.O")
+            if ko and ko.Value then return true end
+        end
+        return false
+    end
+
+    local function has_forcefield(plr)
+        if not has_char(plr) then return false end
+        return plr.Character:FindFirstChildOfClass("ForceField") ~= nil
+    end
+
+    local function local_has_knife()
+        if not Player.Character then return false end
+        local tool = Player.Character:FindFirstChildWhichIsA("Tool")
+        if not tool then return false end
+        local n = tool.Name:lower()
+        return n:find("katana") or n:find("knife") or n:find("sword")
+            or n:find("bat")    or n:find("fist")
+    end
+
+    local function get_aimed_player()
+        if Aimlock and Aimlock.enabled and Aimlock.state.locked_target then
+            return Aimlock.state.locked_target
+        end
+        return nil
+    end
+
+    local function is_visible(targetPlayer)
+        if not targetPlayer or not targetPlayer.Character then return false end
+        local targetChar = targetPlayer.Character
+        local head = targetChar:FindFirstChild("Head")
+                  or targetChar:FindFirstChild("HumanoidRootPart")
+        if not head then return false end
+
+        local origin = workspace.CurrentCamera.CFrame.Position
+        local dir    = head.Position - origin
+        if dir.Magnitude < 0.1 then return true end
+
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        local exclude = { workspace.CurrentCamera, targetChar }
+        if Player.Character then
+            table.insert(exclude, Player.Character)
+            for _, d in ipairs(Player.Character:GetDescendants()) do table.insert(exclude, d) end
+        end
+        for _, d in ipairs(targetChar:GetDescendants()) do table.insert(exclude, d) end
+        params.FilterDescendantsInstances = exclude
+        params.IgnoreWater = true
+
+        local result = workspace:Raycast(origin, dir, params)
+        if not result then return true end
+        return result.Instance and result.Instance:IsDescendantOf(targetChar) or false
+    end
+
+    local function should_fire()
+        if CheckKnife and local_has_knife() then return false end
+        if CheckKnock or CheckForcefield or CheckWall then
+            local target = get_aimed_player()
+            if not target then return false end
+            if CheckKnock      and is_knocked(target)          then return false end
+            if CheckForcefield and has_forcefield(target)      then return false end
+            if CheckWall       and not is_visible(target)      then return false end
+        end
+        return true
+    end
+
+    local function onEquip(tool)
+        if not M.enabled then return end
+        if not is_gun(tool) then return end
+        activeTool = tool
+        lastFireTime = tick() + 0.1
+        task.wait(0.05)
+        if M.enabled and activeTool == tool and tool.Parent == Player.Character then
+            lastFireTime = tick()
+            activateTool(tool)
+        end
+    end
+
+    local function hookCharacter(character)
+        if not character then return end
+        character.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then onEquip(child) end
+        end)
+        character.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") and child == activeTool then activeTool = nil end
+        end)
+    end
+
+    local function startLoop()
+        if loopConn then return end
+        loopConn = RunService.Heartbeat:Connect(function()
+            if not M.enabled then return end
+            if not activeTool or activeTool.Parent ~= Player.Character then return end
+
+            local interval = 1 / SHOTS_PER_SECOND
+            local now = tick()
+            if now - lastFireTime < interval then return end
+
+            local ok, shouldFire = pcall(should_fire)
+            if not ok then lastFireTime = now; return end
+            if not shouldFire then return end
+
+            lastFireTime = now
+            activateTool(activeTool)
+        end)
+    end
+
+    local function init()
+        if M.initialized then return end
+        M.initialized = true
+
+        if Player.Character then
+            hookCharacter(Player.Character)
+            local already = Player.Character:FindFirstChildWhichIsA("Tool")
+            if already then onEquip(already) end
+        end
+
+        Player.CharacterAdded:Connect(function(char)
+            activeTool = nil
+            task.wait(0.2)
+            hookCharacter(char)
+        end)
+
+        startLoop()
+    end
+
+    function M.setEnabled(state)
+        M.enabled = state and true or false
+        if M.enabled then
+            init()
+            if Player.Character then
+                local tool = Player.Character:FindFirstChildWhichIsA("Tool")
+                if tool and is_gun(tool) then onEquip(tool) end
+            end
+        else
+            activeTool = nil
+        end
+    end
+
+    function M.setSpeed(v) SHOTS_PER_SECOND = math.clamp(tonumber(v) or 10, 0.1, 100) end
+    function M.setKnockCheck(v)      CheckKnock      = v and true or false end
+    function M.setKnifeCheck(v)      CheckKnife      = v and true or false end
+    function M.setForcefieldCheck(v) CheckForcefield = v and true or false end
+    function M.setWallCheck(v)       CheckWall       = v and true or false end
+
+    return M
+end)()
+
+
+-- ============================================================
+-- CreateBulletLogic (Provided by User)
+-- ============================================================
+local function CreateBulletLogic(opts)
+    opts = opts or {}
+
+    local Players    = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    local UIS        = game:GetService("UserInputService")
+
+    local LocalPlayer   = Players.LocalPlayer
+    local Mouse         = LocalPlayer:GetMouse()
+    local keybind       = opts.Keybind    or Enum.KeyCode.C
+    local targetPartName= opts.TargetPart or "HumanoidRootPart"
+    local IsEnabled     = opts.IsEnabled  or function() return false end
+    local IsWallbang    = opts.IsWallbang or function() return false end
+    local OnNotify      = opts.OnNotify   or function() end
+
+    local bullet = {
+        Targeting   = { Target = nil, TargetPart = nil },
+        Functions   = {},
+        Connections = {},
+        Utility     = { Gun = {} },
+        Visualizer  = nil,
+    }
+
+    function bullet.Functions.UpdateTargetVisualizer()
+        if bullet.Visualizer then
+            bullet.Visualizer:Destroy()
+            bullet.Visualizer = nil
+        end
+
+        local tgt = bullet.Targeting.Target
+        if IsEnabled() and tgt and tgt.Parent and tgt.Character then
+            local hl = Instance.new("Highlight")
+            hl.Name                = "BulletTargetVisualizer"
+            hl.FillColor           = Color3.fromRGB(255, 50, 50)
+            hl.OutlineColor        = Color3.fromRGB(255, 255, 255)
+            hl.FillTransparency    = 0.5
+            hl.OutlineTransparency = 0
+            hl.Adornee             = tgt.Character
+            hl.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Parent              = tgt.Character
+            bullet.Visualizer = hl
+        end
+    end
+
+    function bullet.Functions.GetClosestTarget()
+        local closestPlayer, closestPart, minDist = nil, nil, math.huge
+        local cam = workspace.CurrentCamera
+        local mousePos = UIS:GetMouseLocation()
+
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character then
+                for _, part in ipairs(plr.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        local screenPos, onScreen = cam:WorldToViewportPoint(part.Position)
+                        if onScreen then
+                            local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                            if dist < minDist then
+                                minDist       = dist
+                                closestPlayer = plr
+                                closestPart   = part
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        bullet.Targeting.Target     = closestPlayer
+        bullet.Targeting.TargetPart = closestPart
+        bullet.Functions.UpdateTargetVisualizer()
+    end
+
+    function bullet.Functions.CFrameToOffset(origin, targetCF)
+        local actualOrigin = origin
+            * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)
+        return actualOrigin:ToObjectSpace(targetCF):inverse()
+    end
+
+    function bullet.Functions.TeleportBullet(tool)
+        local tgt = bullet.Targeting.Target
+        if not (tgt and tgt.Character
+            and tgt.Character:FindFirstChild(targetPartName)) then return end
+
+        local myChar     = LocalPlayer.Character
+        local originPart = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        local targetPart = tgt.Character:FindFirstChild(targetPartName)
+        local rightHand  = myChar and myChar:FindFirstChild("RightHand")
+        if not (originPart and targetPart and rightHand) then return end
+
+        local originalGrip = tool.Grip
+        tool.Parent = LocalPlayer.Backpack
+        tool.Grip   = bullet.Functions.CFrameToOffset(rightHand.CFrame, targetPart.CFrame)
+        tool.Parent = myChar
+        RunService.RenderStepped:Wait()
+        tool.Parent = LocalPlayer.Backpack
+        tool.Grip   = originalGrip
+        tool.Parent = myChar
+    end
+
+    function bullet.Functions.HandleCharacter(character)
+        if bullet.Connections.CharacterChildAdded then
+            bullet.Connections.CharacterChildAdded:Disconnect()
+        end
+
+        bullet.Connections.CharacterChildAdded = character.ChildAdded:Connect(function(tool)
+            if not tool:IsA("Tool") then return end
+
+            pcall(function()
+                for _, conn in ipairs(getconnections(
+                    tool:GetPropertyChangedSignal("Grip")
+                )) do
+                    conn:Disable()
+                end
+            end)
+
+            if bullet.Connections.ToolActivated then
+                bullet.Connections.ToolActivated:Disconnect()
+            end
+
+            bullet.Connections.ToolActivated = tool.Activated:Connect(function()
+                if IsEnabled() then
+                    bullet.Functions.TeleportBullet(tool)
+                end
+            end)
+        end)
+
+        if bullet.Connections.ChildRemovingCharacter then
+            bullet.Connections.ChildRemovingCharacter:Disconnect()
+        end
+
+        bullet.Connections.ChildRemovingCharacter = character.ChildRemoved:Connect(function()
+            bullet.Utility.Gun.Tool = nil
+            if bullet.Connections.ToolActivated then
+                bullet.Connections.ToolActivated:Disconnect()
+            end
+        end)
+    end
+
+    do
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+
+        local oldIndex = mt.__index
+        mt.__index = function(self, key)
+            if not checkcaller() and self == Mouse then
+                local wantHit = (key == "Hit")
+                local wantTarget = (key == "Target" and game.PlaceId == 2788229376)
+
+                if (wantHit or wantTarget) and IsEnabled() then
+                    local tgt = bullet.Targeting.Target
+                    if tgt and tgt.Parent and tgt.Character then
+                        local part = tgt.Character:FindFirstChild(targetPartName)
+                        if part then
+                            return CFrame.new(part.Position)
+                        end
+                    end
+                end
+            end
+            return oldIndex(self, key)
+        end
+
+        local oldNamecall = mt.__namecall
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+
+            if IsWallbang() and not checkcaller() then
+                local tgt = bullet.Targeting.Target
+                if tgt and tgt.Parent and tgt.Character
+                and (self == workspace or self == game) then
+
+                    local args     = {...}
+                    local modified = false
+
+                    if method == "Raycast" then
+                        local params = RaycastParams.new()
+                        params.FilterType = Enum.RaycastFilterType.Include
+                        params.FilterDescendantsInstances = { tgt.Character }
+                        params.IgnoreWater = true
+                        if #args >= 3 then args[3] = params
+                        else table.insert(args, params) end
+                        modified = true
+
+                    elseif method == "FindPartOnRay" then
+                        if #args >= 2 then args[2] = {} end
+                        modified = true
+
+                    elseif method == "FindPartOnRayWithIgnoreList" then
+                        if #args >= 2 then args[2] = {} end
+                        modified = true
+
+                    elseif method == "FindPartOnRayWithWhitelist" then
+                        if #args >= 2 then args[2] = { tgt.Character } end
+                        modified = true
+                    end
+
+                    if modified then
+                        return oldNamecall(self, table.unpack(args))
+                    end
+                end
+            end
+
+            return oldNamecall(self, ...)
+        end)
+    end
+
+    bullet.Connections.Keybind = UIS.InputBegan:Connect(function(input, processed)
+        if processed then return end
+        if input.KeyCode ~= keybind then return end
+        if not IsEnabled() then return end
+
+        if bullet.Targeting.Target then
+            bullet.Targeting.Target     = nil
+            bullet.Targeting.TargetPart = nil
+            if bullet.Visualizer then
+                bullet.Visualizer:Destroy()
+                bullet.Visualizer = nil
+            end
+            OnNotify("Bullet target cleared", Color3.fromRGB(170, 170, 190))
+        else
+            bullet.Functions.GetClosestTarget()
+            OnNotify("Bullet target locked (C to clear)", Color3.fromRGB(110, 220, 160))
+        end
+    end)
+
+    bullet.Connections.RenderStepped = RunService.RenderStepped:Connect(function()
+        if not IsEnabled() then return end
+
+        local tgt = bullet.Targeting.Target
+        if tgt and tgt.Parent and tgt.Character then
+            if not bullet.Visualizer
+            or bullet.Visualizer.Parent ~= tgt.Character then
+                bullet.Functions.UpdateTargetVisualizer()
+            end
+        elseif bullet.Visualizer then
+            bullet.Visualizer:Destroy()
+            bullet.Visualizer = nil
+        end
+    end)
+
+    function bullet.Functions.Destroy()
+        for _, conn in pairs(bullet.Connections) do
+            if typeof(conn) == "RBXScriptConnection" then
+                conn:Disconnect()
+            end
+        end
+        if bullet.Visualizer then
+            bullet.Visualizer:Destroy()
+            bullet.Visualizer = nil
+        end
+    end
+
+    return bullet
+end
+
+-- Initialize Bullet Logic
+local BulletTPEnabled = false
+local BulletLogic = CreateBulletLogic({
+    Keybind = Enum.KeyCode.C,
+    TargetPart = "HumanoidRootPart",
+    IsEnabled = function() return BulletTPEnabled end,
+    IsWallbang = function() return false end, 
+    OnNotify = function(text) print(text) end
+})
+
+BulletLogic.Functions.HandleCharacter(Player.Character or Player.CharacterAdded:Wait())
+Player.CharacterAdded:Connect(function(char) BulletLogic.Functions.HandleCharacter(char) end)
+
+-- ============================================================
+-- Target Aim — merged section
+-- ============================================================
+local TargetAimSection = RagebotPage:Section({
+    Name = "Target Aim",
+    Side = 1
+})
+
+local AimlockToggle = TargetAimSection:Toggle({
+    Name = "Enabled",
+    Flag = "ta_enabled",
+    Default = false,
+    Callback = function(Value)
+        Aimlock.setEnabled(Value)
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Aimlock Button",
+    Flag = "ta_aimlock_btn",
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            BuildAimlockButton()
+            if AimlockButtonGui then AimlockButtonGui.Enabled = true end
+        else
+            if AimlockButtonGui then AimlockButtonGui.Enabled = false end
+        end
+    end
+})
+
+TargetAimSection:Slider({
+    Name = "Aimlock Button Size",
+    Flag = "ta_aimlock_size",
+    Min = 1,
+    Max = 500,
+    Default = 50,
+    Decimals = 0,
+    Suffix = "px",
+    Callback = function(Value)
+        UpdateButtonSize(Value)
+    end
+})
+
+AimlockToggle:Keybind({
+    Name = "Aimlock Key",
+    Flag = "ta_key",
+    Default = Enum.KeyCode.Q,
+    Mode = "Hold",
+    Callback = function(Toggled)
+        if Toggled then
+            Aimlock.toggleLock()
+        end
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Camlock",
+    Flag = "ta_camlock",
+    Default = true,
+    Callback = function(Value)
+        Aimlock.setCamlock(Value)
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Cam Smooth",
+    Flag = "ta_camsmooth",
+    Default = true,
+    Callback = function(Value)
+        Aimlock.setCamSmooth(Value)
+    end
+})
+
+TargetAimSection:Slider({
+    Name = "Cam Smooth %",
+    Flag = "ta_camsmoothamt",
+    Min = 1,
+    Max = 100,
+    Default = 100,
+    Decimals = 1,
+    Suffix = "%",
+    Callback = function(Value)
+        Aimlock.setCamSmoothValue(Value / 100)
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Dot Circle",
+    Flag = "ta_dot",
+    Default = true,
+    Callback = function(Value)
+        Aimlock.Settings.ShowTargetDot = Value
+    end
+})
+
+local DotColorLabel = TargetAimSection:Label({ Name = "Dot Color" })
+DotColorLabel:Colorpicker({
+    Flag = "ta_dot_color",
+    Default = Color3.fromRGB(0, 220, 200),
+    Alpha = 1,
+    Callback = function(Color)
+        Aimlock.setTargetDotColor(Color)
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Tracer",
+    Flag = "ta_tracer",
+    Default = false,
+    Callback = function(Value)
+        TargetVisuals.tracer = Value
+    end
+})
+
+local TracerColorLabel = TargetAimSection:Label({ Name = "Tracer Color" })
+TracerColorLabel:Colorpicker({
+    Flag = "ta_tracer_color",
+    Default = Color3.fromRGB(0, 220, 200),
+    Alpha = 1,
+    Callback = function(Color)
+        TargetVisuals.tracerColor = Color
+    end
+})
+
+TargetAimSection:Dropdown({
+    Name = "Method",
+    Flag = "ta_method",
+    Items = {"Namecall", "Index", "Raycast"},
+    Default = "Namecall",
+    Multi = false,
+    Callback = function(Value)
+        Aimlock.setMethod(Value)
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Wallcheck",
+    Flag = "ta_wall",
+    Default = false,
+    Callback = function(Value)
+        Aimlock.setWallCheck(Value)
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Knocked Check",
+    Flag = "ta_knocked",
+    Default = false,
+    Callback = function(Value)
+        Aimlock.setKnockedCheck(Value)
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Forcefield Check",
+    Flag = "ta_forcefield",
+    Default = false,
+    Callback = function(Value)
+        Aimlock.setForcefieldCheck(Value)
+    end
+})
+
+TargetAimSection:Divider()
+
+TargetAimSection:Dropdown({
+    Name = "Aim Part",
+    Flag = "ta_part",
+    Items = {
+        "Head", "Neck", "UpperTorso", "LowerTorso", "HumanoidRootPart",
+        "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm",
+        "LeftHand", "RightHand",
+        "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg",
+        "LeftFoot", "RightFoot",
+        "Closest Part"
+    },
+    Default = {"Head"},
+    Multi = true,
+    Callback = function(Value)
+        Aimlock.setAimPart(Value)
+    end
+})
+
+TargetAimSection:Textbox({
+    Name = "X Prediction",
+    Flag = "ta_xpred",
+    Default = "0.134",
+    Placeholder = "0.134",
+    Numeric = true,
+    Finished = true,
+    Callback = function(Value)
+        local n = tonumber(Value)
+        if n then Aimlock.setHPrediction(n) end
+    end
+})
+
+TargetAimSection:Textbox({
+    Name = "Y Prediction",
+    Flag = "ta_ypred",
+    Default = "0.134",
+    Placeholder = "0.134",
+    Numeric = true,
+    Finished = true,
+    Callback = function(Value)
+        local n = tonumber(Value)
+        if n then Aimlock.setVPrediction(n) end
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Anti Ground Shots",
+    Flag = "ta_antiground",
+    Default = true,
+    Callback = function(Value)
+        Aimlock.Settings.AntiGroundShots = Value
+    end
+})
+
+TargetAimSection:Textbox({
+    Name = "Anti Ground Multiplier",
+    Flag = "ta_agm",
+    Default = "0.2",
+    Placeholder = "0.2",
+    Numeric = true,
+    Finished = true,
+    Callback = function(Value)
+        local n = tonumber(Value)
+        if n then Aimlock.Settings.AntiGroundMult = n end
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Auto Air",
+    Flag = "ta_autoair",
+    Default = true,
+    Callback = function(Value)
+        Aimlock.setAutoAir(Value)
+    end
+})
+
+TargetAimSection:Textbox({
+    Name = "Auto Air Delay",
+    Flag = "ta_autoairdelay",
+    Default = "0.2",
+    Placeholder = "0.2",
+    Numeric = true,
+    Finished = true,
+    Callback = function(Value)
+        local n = tonumber(Value)
+        if n then Aimlock.setAutoAirDelay(n) end
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Auto Lock if Player Rejoin",
+    Flag = "ta_autorelock",
+    Default = false,
+    Callback = function(Value)
+        Aimlock.setAutoRelock(Value)
+    end
+})
+
+-- ============================================================
+-- Auto Fire Section (Bottom of Target Aim)
+-- ============================================================
+TargetAimSection:Toggle({
+    Name = "Auto Fire",
+    Flag = "ta_autofire",
+    Default = false,
+    Callback = function(Value)
+        AutoFire.setEnabled(Value)
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Auto Fire Wallcheck",
+    Flag = "ta_af_wall",
+    Default = false,
+    Callback = function(Value)
+        AutoFire.setWallCheck(Value)
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Auto Fire Knife Check",
+    Flag = "ta_af_knife",
+    Default = false,
+    Callback = function(Value)
+        AutoFire.setKnifeCheck(Value)
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Auto Fire Forcefield Check",
+    Flag = "ta_af_forcefield",
+    Default = false,
+    Callback = function(Value)
+        AutoFire.setForcefieldCheck(Value)
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Auto Fire Knock Check",
+    Flag = "ta_af_knock",
+    Default = false,
+    Callback = function(Value)
+        AutoFire.setKnockCheck(Value)
+    end
+})
+
+-- ============================================================
+-- Target Utilities (Textbox, Spectate, Teleport, Bullet TP)
+-- ============================================================
+local CurrentTargetPlayer = nil
+local IsSpectating = false
+
+TargetAimSection:Textbox({
+    Name = "Target Player",
+    Flag = "ta_target_name",
+    Placeholder = "Username or Display Name...",
+    Finished = false,
+    Callback = function(Value)
+        local query = string.lower(Value)
+        CurrentTargetPlayer = nil
+        if query == "" then
+            BulletLogic.Targeting.Target = nil
+            if BulletLogic.Visualizer then BulletLogic.Visualizer:Destroy() BulletLogic.Visualizer = nil end
+            return
+        end
+
+        for _, p in ipairs(game.Players:GetPlayers()) do
+            if p ~= Player then
+                local name, display = string.lower(p.Name), string.lower(p.DisplayName)
+                if name == query or display == query or string.find(name, query, 1, true) or string.find(display, query, 1, true) then
+                    CurrentTargetPlayer = p
+                    break
+                end
+            end
+        end
+
+        if CurrentTargetPlayer then
+            BulletLogic.Targeting.Target = CurrentTargetPlayer
+            BulletLogic.Functions.UpdateTargetVisualizer()
+        end
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Spectate",
+    Flag = "ta_spectate",
+    Default = false,
+    Callback = function(Value)
+        IsSpectating = Value
+        if not Value then
+            local hum = Player.Character and Player.Character:FindFirstChildOfClass("Humanoid")
+            if hum then game.Workspace.CurrentCamera.CameraSubject = hum end
+        end
+    end
+})
+
+game:GetService("RunService").RenderStepped:Connect(function()
+    if IsSpectating and CurrentTargetPlayer and CurrentTargetPlayer.Character then
+        local hum = CurrentTargetPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then
+            game.Workspace.CurrentCamera.CameraSubject = hum
+        end
+    end
+end)
+
+TargetAimSection:Button({
+    Name = "Teleport to Target",
+    Callback = function()
+        if CurrentTargetPlayer and CurrentTargetPlayer.Character and Player.Character then
+            local myHRP = Player.Character:FindFirstChild("HumanoidRootPart")
+            local tgtHRP = CurrentTargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if myHRP and tgtHRP then
+                myHRP.CFrame = tgtHRP.CFrame + Vector3.new(0, 3, 3)
+            end
+        end
+    end
+})
+
+TargetAimSection:Toggle({
+    Name = "Bullet TP",
+    Flag = "ta_bullettp",
+    Default = false,
+    Callback = function(Value)
+        BulletTPEnabled = Value
+    end
+})
