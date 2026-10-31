@@ -19,19 +19,10 @@ local MovementPage = Window:Page({
     Icon = "rbxassetid://72426486330663"
 })
 
--- Notification Helper for the Misc buttons
+-- Notification Helper (Disabled)
 local function notify(title, text, kind)
-    local color = Color3.fromRGB(0, 220, 200) -- Teal default
-    if kind == "success" then color = Color3.fromRGB(0, 255, 100) 
-    elseif kind == "error" then color = Color3.fromRGB(255, 50, 50)
-    elseif kind == "warn" then color = Color3.fromRGB(255, 200, 0) end
-    
-    Library:Notification({
-        Name = title,
-        Description = text,
-        Duration = 3,
-        Color = color
-    })
+    -- Notifications removed by user request
+    return
 end
 
 -- ============================================================
@@ -257,16 +248,19 @@ game:GetService("RunService").RenderStepped:Connect(function()
 end)
 
 -- ============================================================
--- Target Tracer Module (Drawing API)
+-- Target Tracer Module (Fixed & Robust)
 -- ============================================================
-local TargetVisuals = { tracer = false, tracerColor = Color3.fromRGB(0, 220, 200), tracerDraw = nil, tracerDrawing = nil }
+local TargetVisuals = { tracer = false, tracerColor = Color3.fromRGB(0, 220, 200), tracerDraw = nil }
 
-local function ensureTracerDrawing()
-    if TargetVisuals.tracerDrawing then return TargetVisuals.tracerDrawing end
-    local ok, Drawing = pcall(function() return loadstring(game:HttpGet("https://raw.githubusercontent.com/linemaster2/storage/main/Drawing.lua"))() end)
-    if not ok or not Drawing then return nil end
-    TargetVisuals.tracerDrawing = Drawing
-    return Drawing
+local function getDrawingLib()
+    if Drawing then return Drawing end
+    local ok, res = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/linemaster2/storage/main/Drawing.lua"))()
+    end)
+    if ok and res then
+        return res
+    end
+    return nil
 end
 
 local function destroyTracer()
@@ -277,36 +271,43 @@ local function destroyTracer()
 end
 
 game:GetService("RunService").RenderStepped:Connect(function()
-    local targetChar = Aimlock.state.locked_target and Aimlock.state.locked_target.Character
-    if not TargetVisuals.tracer or not targetChar then
+    if not TargetVisuals.tracer then
         if TargetVisuals.tracerDraw then TargetVisuals.tracerDraw.Visible = false end
-    else
-        if not TargetVisuals.tracerDraw then
-            local Drawing = ensureTracerDrawing()
-            if Drawing then
-                destroyTracer()
-                local line = Drawing.new("Line")
-                line.Thickness = 2
-                line.Transparency = 0.5
-                line.Visible = false
-                TargetVisuals.tracerDraw = line
-            end
+        return
+    end
+
+    local targetChar = Aimlock.state.locked_target and Aimlock.state.locked_target.Character
+    if not targetChar then
+        if TargetVisuals.tracerDraw then TargetVisuals.tracerDraw.Visible = false end
+        return
+    end
+
+    if not TargetVisuals.tracerDraw then
+        local D = getDrawingLib()
+        if D then
+            local line = D.new("Line")
+            line.Thickness = 2
+            line.Transparency = 0.5
+            line.Color = TargetVisuals.tracerColor
+            line.Visible = false
+            TargetVisuals.tracerDraw = line
         end
-        if TargetVisuals.tracerDraw then
-            local head = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
-            if not head then
+    end
+
+    if TargetVisuals.tracerDraw then
+        local head = targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
+        if not head then
+            TargetVisuals.tracerDraw.Visible = false
+        else
+            local sp, on = game.Workspace.CurrentCamera:WorldToViewportPoint(head.Position)
+            if not on or sp.Z <= 0 then
                 TargetVisuals.tracerDraw.Visible = false
             else
-                local sp, on = game.Workspace.CurrentCamera:WorldToViewportPoint(head.Position)
-                if not on or sp.Z <= 0 then
-                    TargetVisuals.tracerDraw.Visible = false
-                else
-                    local vp = game.Workspace.CurrentCamera.ViewportSize
-                    TargetVisuals.tracerDraw.From = Vector2.new(vp.X / 2, vp.Y)
-                    TargetVisuals.tracerDraw.To = Vector2.new(sp.X, sp.Y)
-                    TargetVisuals.tracerDraw.Color = TargetVisuals.tracerColor
-                    TargetVisuals.tracerDraw.Visible = true
-                end
+                local vp = game.Workspace.CurrentCamera.ViewportSize
+                TargetVisuals.tracerDraw.From = Vector2.new(vp.X / 2, vp.Y)
+                TargetVisuals.tracerDraw.To = Vector2.new(sp.X, sp.Y)
+                TargetVisuals.tracerDraw.Color = TargetVisuals.tracerColor
+                TargetVisuals.tracerDraw.Visible = true
             end
         end
     end
@@ -891,7 +892,7 @@ local Aimlock = (function()
 end)()
 
 -- ============================================================
--- Auto Fire Module (Modified to shoot Aimlock Target)
+-- Auto Fire Module
 -- ============================================================
 local Player = game:GetService("Players").LocalPlayer
 local RunService = game:GetService("RunService")
@@ -1348,11 +1349,573 @@ local BulletLogic = CreateBulletLogic({
     TargetPart = "HumanoidRootPart",
     IsEnabled = function() return BulletTPEnabled end,
     IsWallbang = function() return false end, 
-    OnNotify = function(text) print(text) end
+    OnNotify = function(text) end -- Removed print notification
 })
 
 BulletLogic.Functions.HandleCharacter(Player.Character or Player.CharacterAdded:Wait())
 Player.CharacterAdded:Connect(function(char) BulletLogic.Functions.HandleCharacter(char) end)
+
+-- ============================================================
+-- Touch Fling Logic
+-- ============================================================
+local TouchFlingLogic = (function()
+    local Players    = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    local Workspace  = game:GetService("Workspace")
+
+    local LocalPlayer = Players.LocalPlayer
+
+    local Logic = {}
+
+    Logic.knockedOnly = false
+
+    local flingActive    = false
+    local tpActive       = false
+    local touchedCollide = {}
+    local tpPart         = nil
+    local currentTarget  = nil
+    local targetStartTime = 0
+
+    function Logic.isKnocked(plr)
+        if not plr then return false end
+        local char = plr.Character
+        if not char or not char:FindFirstChildOfClass("Humanoid") then return false end
+        if char:GetAttribute("Knocked") then return true end
+
+        local bodyFx = char:FindFirstChild("BodyEffects")
+        if bodyFx then
+            local ko = bodyFx:FindFirstChild("K.O")
+            if ko and ko:IsA("BoolValue") and ko.Value then
+                return true
+            end
+        end
+        return false
+    end
+
+    function Logic.isRagdolled(hum)
+        return hum ~= nil
+            and (hum.PlatformStand or hum:GetState() == Enum.HumanoidStateType.Physics)
+    end
+
+    local function disableCollision(char)
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                if touchedCollide[part] == nil then
+                    touchedCollide[part] = part.CanCollide
+                end
+                part.CanCollide = false
+            end
+        end
+    end
+
+    function Logic.restoreCollision()
+        for part, orig in pairs(touchedCollide) do
+            if part and part.Parent then
+                part.CanCollide = orig
+            end
+        end
+        table.clear(touchedCollide)
+    end
+
+    function Logic.flingStep()
+        local lpChar = LocalPlayer.Character
+        local hrp    = lpChar and lpChar:FindFirstChild("HumanoidRootPart")
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                if (not Logic.knockedOnly) or Logic.isKnocked(player) then
+                    disableCollision(player.Character)
+                end
+            end
+        end
+
+        if hrp then
+            local vel = hrp.AssemblyLinearVelocity
+            hrp.AssemblyLinearVelocity = vel * 10000 + Vector3.new(0, 10000, 0)
+            RunService.RenderStepped:Wait()
+            hrp.AssemblyLinearVelocity = vel
+            RunService.Stepped:Wait()
+            hrp.AssemblyLinearVelocity = vel + Vector3.new(0, 0.1, 0)
+        end
+    end
+
+    function Logic.startFling()
+        if flingActive then return end
+        flingActive = true
+
+        task.spawn(function()
+            while flingActive do
+                RunService.Heartbeat:Wait()
+                if not flingActive then break end
+                Logic.flingStep()
+            end
+            Logic.restoreCollision()
+        end)
+    end
+
+    function Logic.stopFling()
+        flingActive = false
+    end
+
+    function Logic.isFlinging() return flingActive end
+
+    function Logic.getClosestTarget(ignore)
+        local myHrp = LocalPlayer.Character
+            and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not myHrp then return nil end
+
+        local closest, dist = nil, math.huge
+
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p ~= ignore and p.Character then
+                local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                if hum and hrp and hum.Health > 0
+                   and ((not Logic.knockedOnly) or Logic.isKnocked(p)) then
+                    local d = (hrp.Position - myHrp.Position).Magnitude
+                    if d < dist then
+                        dist, closest = d, p
+                    end
+                end
+            end
+        end
+        return closest
+    end
+
+    local function ensureTpPart()
+        if not tpPart or not tpPart.Parent then
+            tpPart = Instance.new("Part")
+            tpPart.Size         = Vector3.new(1, 1, 1)
+            tpPart.Transparency = 1
+            tpPart.CanCollide   = false
+            tpPart.Anchored     = true
+            tpPart.Parent       = Workspace
+        end
+    end
+
+    local function destroyTpPart()
+        if tpPart then
+            tpPart:Destroy()
+            tpPart = nil
+        end
+    end
+
+    local function resetMyHumanoid()
+        local cam   = Workspace.CurrentCamera
+        local myChar = LocalPlayer.Character
+        local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
+        if myHum then
+            myHum.PlatformStand = false
+            if cam then cam.CameraSubject = myHum end
+        end
+    end
+
+    function Logic.tpStep()
+        ensureTpPart()
+
+        local cam = Workspace.CurrentCamera
+        local now = tick()
+        local shouldSwitch = false
+
+        if currentTarget then
+            local hum = currentTarget.Character
+                and currentTarget.Character:FindFirstChildOfClass("Humanoid")
+            local hrp = currentTarget.Character
+                and currentTarget.Character:FindFirstChild("HumanoidRootPart")
+
+            if not hum or not hrp or hum.Health <= 0 or Logic.isRagdolled(hum) then
+                shouldSwitch, currentTarget = true, nil
+            else
+                local speed = hrp.AssemblyLinearVelocity.Magnitude
+                if speed > 35 or (now - targetStartTime > 1.45) then
+                    shouldSwitch = true
+                end
+            end
+        else
+            shouldSwitch = true
+        end
+
+        if shouldSwitch then
+            local oldTarget = currentTarget
+            currentTarget = Logic.getClosestTarget(oldTarget)
+
+            if not currentTarget and oldTarget then
+                local hum = oldTarget.Character
+                    and oldTarget.Character:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 and not Logic.isRagdolled(hum)
+                   and ((not Logic.knockedOnly) or Logic.isKnocked(oldTarget)) then
+                    currentTarget = oldTarget
+                end
+            end
+            targetStartTime = tick()
+        end
+
+        if currentTarget and currentTarget.Character
+           and currentTarget.Character:FindFirstChild("HumanoidRootPart") then
+            local targetHrp = currentTarget.Character.HumanoidRootPart
+            local targetHum = currentTarget.Character:FindFirstChildOfClass("Humanoid")
+
+            local myChar = LocalPlayer.Character
+            local myHrp  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
+
+            if targetHum and cam then
+                cam.CameraSubject = targetHum
+            end
+
+            if myHrp and myHum then
+                myHum.PlatformStand = true
+                local angle = (tick() * 2880) % 360
+                tpPart.CFrame = targetHrp.CFrame
+                    * CFrame.Angles(math.rad(angle), 0, 0)
+                    * CFrame.new(0, 0, 0.5)
+                myHrp.CFrame = tpPart.CFrame * CFrame.Angles(math.rad(-90), 0, 0)
+            end
+        else
+            resetMyHumanoid()
+        end
+    end
+
+    function Logic.startTP()
+        if tpActive then return end
+        tpActive = true
+        currentTarget = nil
+
+        task.spawn(function()
+            while tpActive do
+                RunService.Heartbeat:Wait()
+                if not tpActive then break end
+                Logic.tpStep()
+            end
+            destroyTpPart()
+            resetMyHumanoid()
+        end)
+    end
+
+    function Logic.stopTP()
+        tpActive = false
+    end
+
+    function Logic.isTping() return tpActive end
+
+    function Logic.toggleMode()
+        Logic.knockedOnly = not Logic.knockedOnly
+        return Logic.knockedOnly
+    end
+
+    function Logic.setMode(knockedOnly)
+        Logic.knockedOnly = knockedOnly and true or false
+    end
+
+    return Logic
+end)()
+
+-- ============================================================
+-- Auto Katana Logic
+-- ============================================================
+local function createAutoKatana(userConfig)
+	local Players    = game:GetService("Players")
+	local RunService = game:GetService("RunService")
+	local Stats      = game:GetService("Stats")
+	local player     = Players.LocalPlayer
+
+	local cfg = {
+		toolName       = "katana",
+		clickDelay     = 0.1,
+		tpOutTime      = 0.6,
+		orbitDuration  = 0.11,
+		tpRange        = 100,
+		orbitRadius    = 2,
+		orbitSpeed     = 1000,
+		pingBasedTiming = true,
+		pingTimingMode  = "half",
+		pingTimingMult  = 1.0,
+		pingTimingClamp = 0.35,
+		gripOnTarget    = true,
+		gripDistance    = 1.0,
+		usePrediction   = true,
+		predictMode     = "ping",
+		pingMultiplier  = 2.0,
+		extraPingOffset = 0.05,
+		includeAccel    = false,
+		leadMultiplier  = 1.3,
+		speedLeadMax    = 1.2,
+	}
+	if userConfig then
+		for k, v in pairs(userConfig) do cfg[k] = v end
+	end
+
+	local running    = false
+	local clickThread
+	local mainConn
+	local orbiting    = false
+	local orbitTarget = nil
+	local orbitAngle  = 0
+	local orbitConn   = nil
+	local savedCFrame = nil
+	local startTime   = 0
+	local dashedOut   = false
+	local dashedBack  = false
+	local curOutTime  = cfg.tpOutTime
+	local curOrbitDur = cfg.orbitDuration
+	local curBackTime = cfg.tpOutTime + cfg.orbitDuration
+	local velHistory  = {}
+
+	local function getKatana()
+		local char = player.Character
+		if char then
+			for _, o in ipairs(char:GetChildren()) do
+				if o:IsA("Tool") and o.Name == cfg.toolName then return o end
+			end
+		end
+		local bp = player:FindFirstChildOfClass("Backpack")
+		if bp then
+			for _, o in ipairs(bp:GetChildren()) do
+				if o:IsA("Tool") and o.Name == cfg.toolName then return o end
+			end
+		end
+	end
+
+	local function getMyRoot()
+		local c = player.Character
+		return c and c:FindFirstChild("HumanoidRootPart") or nil
+	end
+
+	local function getMyHumanoid()
+		local c = player.Character
+		return c and c:FindFirstChildOfClass("Humanoid") or nil
+	end
+
+	local function getPingRTT()
+		local ok, ms = pcall(function()
+			return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+		end)
+		if ok and ms and ms > 0 then return ms / 1000 end
+		local ok2, p = pcall(function() return player:GetNetworkPing() end)
+		if ok2 and p then return p end
+		return 0.1
+	end
+
+	local function getPingTimingDelay()
+		if not cfg.pingBasedTiming then return 0 end
+		local rtt = getPingRTT()
+		local base
+		if cfg.pingTimingMode == "full" then
+			base = rtt
+		elseif cfg.pingTimingMode == "mult" then
+			base = rtt * cfg.pingTimingMult
+		else
+			base = rtt * 0.5
+		end
+		if base > cfg.pingTimingClamp then base = cfg.pingTimingClamp end
+		return base
+	end
+
+	local function predictPosition(targetRoot, targetPlayer)
+		if not cfg.usePrediction then return targetRoot.Position end
+
+		local pos = targetRoot.Position
+		local vel = targetRoot.AssemblyLinearVelocity
+		local ping = getPingRTT() * cfg.pingMultiplier + cfg.extraPingOffset
+
+		local horizVel = Vector3.new(vel.X, 0, vel.Z)
+		local speed    = horizVel.Magnitude
+		local speedBoost = 1 + math.min(speed / 25, cfg.speedLeadMax)
+
+		if cfg.predictMode == "ping"
+		or cfg.predictMode == "combined"
+		or cfg.predictMode == "velocity" then
+			pos = pos + horizVel * ping * cfg.leadMultiplier * speedBoost
+		end
+
+		if cfg.includeAccel and targetPlayer then
+			local now = os.clock()
+			local h = velHistory[targetPlayer]
+			if h then
+				local dt = now - h.time
+				if dt > 0 and dt < 0.5 then
+					local accel = (vel - h.vel) / dt
+					pos = pos + 0.5 * accel * (ping * ping)
+				end
+			end
+			velHistory[targetPlayer] = {vel = vel, time = now}
+		end
+
+		return pos
+	end
+
+	local function findNearestPlayer()
+		local myRoot = getMyRoot()
+		if not myRoot then return nil, nil end
+
+		local bestRoot, bestPlayer, bestDist = nil, nil, math.huge
+		for _, other in ipairs(Players:GetPlayers()) do
+			if other ~= player and other.Character then
+				local root = other.Character:FindFirstChild("HumanoidRootPart")
+				local hum  = other.Character:FindFirstChildOfClass("Humanoid")
+				if root and hum and hum.Health > 0 then
+					local d = (root.Position - myRoot.Position).Magnitude
+					if d <= cfg.tpRange and d < bestDist then
+						bestRoot, bestPlayer, bestDist = root, other, d
+					end
+				end
+			end
+		end
+		return bestRoot, bestPlayer
+	end
+
+	local function applyGrip(targetRoot, myRoot)
+		if not cfg.gripOnTarget or not targetRoot or not myRoot then return end
+		local tool = getKatana()
+		if not tool or tool.Parent ~= player.Character then return end
+		local handle = tool:FindFirstChild("Handle")
+		if not handle then return end
+
+		local targetPos = targetRoot.Position
+		local dir = targetPos - myRoot.Position
+		dir = dir.Magnitude > 0.001 and dir.Unit or Vector3.new(1, 0, 0)
+		handle.CFrame = CFrame.lookAt(targetPos - dir * cfg.gripDistance, targetPos)
+	end
+
+	local function startOrbit(targetRoot)
+		if orbiting then return end
+		orbiting    = true
+		orbitTarget = targetRoot
+		orbitAngle  = 0
+
+		orbitConn = RunService.RenderStepped:Connect(function(dt)
+			if not orbiting or not orbitTarget then return end
+			local myRoot = getMyRoot()
+			if not myRoot then return end
+
+			orbitAngle = orbitAngle + dt * cfg.orbitSpeed
+			local tp = orbitTarget.Position
+			local newPos = tp + Vector3.new(
+				math.cos(orbitAngle) * cfg.orbitRadius, 0,
+				math.sin(orbitAngle) * cfg.orbitRadius
+			)
+			myRoot.CFrame = CFrame.lookAt(newPos, Vector3.new(tp.X, newPos.Y, tp.Z))
+			applyGrip(orbitTarget, myRoot)
+		end)
+	end
+
+	local function stopOrbit()
+		orbiting    = false
+		orbitTarget = nil
+		if orbitConn then orbitConn:Disconnect(); orbitConn = nil end
+	end
+
+	local function dashOut()
+		local myRoot = getMyRoot()
+		if not myRoot then return end
+		local targetRoot, targetPlayer = findNearestPlayer()
+		if not targetRoot then return end
+
+		savedCFrame = myRoot.CFrame
+		local hum = getMyHumanoid()
+		if hum then hum.AutoRotate = false end
+
+		local predicted = predictPosition(targetRoot, targetPlayer)
+		local hv = Vector3.new(
+			targetRoot.AssemblyLinearVelocity.X, 0,
+			targetRoot.AssemblyLinearVelocity.Z
+		)
+		local leadDir = hv.Magnitude > 2 and hv.Unit or Vector3.new(1, 0, 0)
+		local startPos = predicted + leadDir * cfg.orbitRadius
+		myRoot.CFrame = CFrame.lookAt(startPos, Vector3.new(predicted.X, startPos.Y, predicted.Z))
+
+		startOrbit(targetRoot)
+	end
+
+	local function dashBack()
+		stopOrbit()
+		if savedCFrame then
+			local myRoot = getMyRoot()
+			if myRoot then myRoot.CFrame = savedCFrame end
+		end
+		local hum = getMyHumanoid()
+		if hum then hum.AutoRotate = true end
+		savedCFrame = nil
+	end
+
+	local function resetCycle()
+		local delay = getPingTimingDelay()
+		curOutTime  = cfg.tpOutTime     + delay
+		curOrbitDur = cfg.orbitDuration + delay
+		curBackTime = curOutTime + curOrbitDur
+		startTime   = os.clock()
+		dashedOut   = false
+		dashedBack  = false
+		savedCFrame = nil
+	end
+
+	local function clickLoop()
+		while running do
+			local char = player.Character
+			if char then
+				local tool = getKatana()
+				if tool then
+					if tool.Parent ~= char then
+						local hum = char:FindFirstChildOfClass("Humanoid")
+						if hum then hum:EquipTool(tool); task.wait(0.1) end
+					end
+					if tool.Parent == char then
+						pcall(function() tool:Activate() end)
+					end
+				end
+			end
+			task.wait(cfg.clickDelay)
+		end
+	end
+
+	local function mainLoop()
+		if not running then return end
+		local elapsed = os.clock() - startTime
+
+		if not dashedOut and elapsed >= curOutTime then
+			dashedOut = true
+			pcall(dashOut)
+		end
+
+		if not dashedBack and elapsed >= curBackTime then
+			dashedBack = true
+			pcall(dashBack)
+			resetCycle()
+		end
+	end
+
+	local controller = {}
+
+	function controller.start()
+		if running then return end
+		running = true
+		resetCycle()
+		mainConn   = RunService.RenderStepped:Connect(mainLoop)
+		clickThread = task.spawn(clickLoop)
+	end
+
+	function controller.stop()
+		if not running then return end
+		running = false
+		if mainConn then mainConn:Disconnect(); mainConn = nil end
+		if clickThread then task.cancel(clickThread); clickThread = nil end
+		pcall(dashBack)
+		dashedOut  = false
+		dashedBack = false
+	end
+
+	function controller.toggle()
+		if running then controller.stop() else controller.start() end
+	end
+
+	function controller.isRunning()
+		return running
+	end
+
+	return controller
+end
+
+local KatanaController = createAutoKatana()
 
 -- ============================================================
 -- Target Aim — merged section
@@ -1746,194 +2309,50 @@ TargetAimSection:Toggle({
 })
 
 -- ============================================================
--- Movement Modules
+-- Fling Group
 -- ============================================================
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local Camera = workspace.CurrentCamera
+local FlingSection = RagebotPage:Section({
+    Name = "Fling",
+    Side = 2
+})
 
---fly
-local Fly = (function()
-    local M = { enabled = false, initialized = false, speed = 50, onStateChange = nil }
-    local CONFIG = { Speed = 50, BoostMultiplier = 2.5, ToggleKey = Enum.KeyCode.F, JumpHoldTime = 0.15, MaxPitchFactor = 1.0 }
-    local IS_MOBILE = UserInputService.TouchEnabled
-    local flying, boost, upHeld, downHeld, jumpUpExpire = false, false, false, false, 0
-    local bodyVelocity, humanoid, rootPart
-    local savedWalkSpeed, savedJumpPower, savedJumpHeight
-    local function setJumpButtonVisible(visible)
-        if not IS_MOBILE then return end
-        local pg = Player:FindFirstChild("PlayerGui"); if not pg then return end
-        local touchGui = pg:FindFirstChild("TouchGui"); if not touchGui then return end
-        local cf = touchGui:FindFirstChild("TouchControlFrame"); if not cf then return end
-        local jb = cf:FindFirstChild("JumpButton"); if jb then jb.Visible = visible end
+FlingSection:Toggle({
+    Name = "Touch Fling",
+    Flag = "fling_touch",
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            TouchFlingLogic.startFling()
+        else
+            TouchFlingLogic.stopFling()
+        end
     end
-    local function fireStateChange() if M.onStateChange then pcall(M.onStateChange, flying) end end
-    local function startFly()
-        if flying then return end
-        local char = Player.Character; if not char then return end
-        rootPart = char:FindFirstChild("HumanoidRootPart")
-        humanoid = char:FindFirstChildOfClass("Humanoid")
-        if not rootPart or not humanoid then return end
-        savedWalkSpeed = humanoid.WalkSpeed; savedJumpPower = humanoid.JumpPower; savedJumpHeight = humanoid.JumpHeight
-        humanoid.WalkSpeed = 0; humanoid.JumpPower = 0; humanoid.JumpHeight = 0
-        bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5); bodyVelocity.Velocity = Vector3.zero; bodyVelocity.Parent = rootPart
-        flying = true; boost = false; upHeld = false; downHeld = false
-        setJumpButtonVisible(false); fireStateChange()
-    end
-    local function stopFly()
-        if not flying then return end
-        flying = false; boost = false; upHeld = false; downHeld = false
-        if bodyVelocity then bodyVelocity:Destroy(); bodyVelocity = nil end
-        if humanoid then humanoid.WalkSpeed = savedWalkSpeed or 16; humanoid.JumpPower = savedJumpPower or 50; humanoid.JumpHeight = savedJumpHeight or 7.2 end
-        setJumpButtonVisible(true); fireStateChange()
-    end
-    function M.toggle() if flying then stopFly() else startFly() end end
-    function M.isOn() return flying end
-    function M.setEnabled(state) if state then M.init(); startFly() else stopFly() end end
-    function M.setSpeed(v) M.speed = math.clamp(tonumber(v) or 50, 1, 500) end
-    function M.init()
-        if M.initialized then return end; M.initialized = true
-        RunService.RenderStepped:Connect(function()
-            if not flying then return end
-            if not rootPart or not rootPart.Parent or not bodyVelocity or not humanoid then stopFly(); return end
-            local move = Vector3.zero
-            local md = humanoid.MoveDirection
-            if md.Magnitude > 0.01 then
-                local localDir = Camera.CFrame:VectorToObjectSpace(md)
-                local forwardAmt = -localDir.Z
-                local rightAmt = localDir.X
-                local look = Camera.CFrame.LookVector
-                if CONFIG.MaxPitchFactor < 1 then
-                    local flat = Vector3.new(look.X, 0, look.Z)
-                    if flat.Magnitude > 0 then
-                        flat = flat.Unit
-                        local pitch = math.asin(math.clamp(look.Y, -1, 1))
-                        local maxP = math.asin(CONFIG.MaxPitchFactor)
-                        pitch = math.clamp(pitch, -maxP, maxP)
-                        local horiz = math.cos(pitch)
-                        look = Vector3.new(flat.X*horiz, math.sin(pitch), flat.Z*horiz).Unit
-                    end
-                end
-                move += look * forwardAmt
-                move += Camera.CFrame.RightVector * rightAmt
-            end
-            local now = tick()
-            if upHeld or (now < jumpUpExpire) then move += Vector3.yAxis end
-            if downHeld then move -= Vector3.yAxis end
-            local speed = M.speed * (boost and CONFIG.BoostMultiplier or 1)
-            if move.Magnitude > 0 then bodyVelocity.Velocity = move.Unit * speed else bodyVelocity.Velocity = Vector3.zero end
-        end)
-        UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            if gameProcessed then return end
-            if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-            local key = input.KeyCode
-            if key == CONFIG.ToggleKey then M.toggle(); if Toggles and Toggles.mv_fly then Toggles.mv_fly:SetValue(flying) end; return end
-            if not flying then return end
-            if key == Enum.KeyCode.Space or key == Enum.KeyCode.E then upHeld = true
-            elseif key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.Q then downHeld = true
-            elseif key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift then boost = true end
-        end)
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-            local key = input.KeyCode
-            if key == Enum.KeyCode.Space or key == Enum.KeyCode.E then upHeld = false
-            elseif key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.Q then downHeld = false
-            elseif key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift then boost = false end
-        end)
-        UserInputService.JumpRequest:Connect(function() if flying and IS_MOBILE then jumpUpExpire = tick() + CONFIG.JumpHoldTime end end)
-        Player.CharacterAdded:Connect(function() if flying then stopFly() end; rootPart = nil; humanoid = nil end)
-    end
-    return M
-end)()
+})
 
---walkspeed
-local WalkSpeed = (function()
-    local M = { enabled = false, initialized = false, speed = 16 }
-    local conn, bv, char, hum, root
-    local function cleanup()
-        if conn then conn:Disconnect(); conn = nil end
-        if bv and bv.Parent then bv:Destroy() end
-        bv = nil
-    end
-    local function setup()
-        cleanup()
-        char = Player.Character; if not char then return end
-        hum = char:FindFirstChildOfClass("Humanoid"); root = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not root then return end
-        if root:FindFirstChild("SpeedBypass") then root.SpeedBypass:Destroy() end
-        bv = Instance.new("BodyVelocity"); bv.Name = "SpeedBypass"; bv.MaxForce = Vector3.new(math.huge, 0, math.huge); bv.Velocity = Vector3.zero; bv.Parent = root
-        conn = RunService.RenderStepped:Connect(function()
-            if not M.enabled then return end
-            if not bv or not bv.Parent or not hum or not hum.Parent then return end
-            if hum.MoveDirection.Magnitude > 0 then bv.Velocity = Vector3.new(hum.MoveDirection.X * M.speed, 0, hum.MoveDirection.Z * M.speed)
-            else bv.Velocity = Vector3.zero end
-        end)
-    end
-    function M.setEnabled(v) M.enabled = v and true or false; if M.enabled then M.init(); setup() else cleanup() end end
-    function M.setSpeed(v) M.speed = math.clamp(tonumber(v) or 16, 1, 500) end
-    function M.init() if M.initialized then return end; M.initialized = true; Player.CharacterAdded:Connect(function() task.wait(0.5); if M.enabled then setup() end end) end
-    return M
-end)()
+-- ============================================================
+-- Auto Katana Kill Group
+-- ============================================================
+local AutoKatanaSection = RagebotPage:Section({
+    Name = "Auto Katana Kill",
+    Side = 2
+})
 
---cframe speed
-local CFrameSpeed = (function()
-    local M = { enabled = false, speed = 100 }
-    local connection, characterConn, deathConn
-    local function moveCharacter(dt)
-        if not M.enabled then return end
-        local char = Player.Character; if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if not hrp or not humanoid then return end
-        local dir = humanoid.MoveDirection
-        if dir.Magnitude < 0.01 then return end
-        hrp.CFrame = hrp.CFrame + dir.Unit * M.speed * dt
+AutoKatanaSection:Toggle({
+    Name = "Auto Katana Kill",
+    Flag = "auto_katana",
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            KatanaController.start()
+        else
+            KatanaController.stop()
+        end
     end
-    local function startCFrame() if connection then return end; connection = RunService.RenderStepped:Connect(moveCharacter) end
-    local function stopCFrame() if connection then connection:Disconnect(); connection = nil end end
-    local function onCharacterAdded(char)
-        stopCFrame()
-        if deathConn then deathConn:Disconnect(); deathConn = nil end
-        local hum = char:WaitForChild("Humanoid", 5)
-        if not hum then return end
-        if M.enabled then startCFrame() end
-        deathConn = hum.Died:Connect(function() stopCFrame() end)
-    end
-    if Player.Character then onCharacterAdded(Player.Character) end
-    characterConn = Player.CharacterAdded:Connect(onCharacterAdded)
-    function M.setEnabled(v) M.enabled = v and true or false; if M.enabled then startCFrame() else stopCFrame() end end
-    function M.setSpeed(v) M.speed = math.clamp(tonumber(v) or 100, 1, 500) end
-    return M
-end)()
+})
 
---jumppower
-local JumpPower = (function()
-    local M = { enabled = false, initialized = false, power = 50 }
-    local hookedHum = nil
-    local oldNewIndex = nil
-    local function applyToHumanoid(hum) if not hum then return end; pcall(function() hum.UseJumpPower = true; hum.JumpPower = M.power end); hookedHum = hum end
-    local function installHook()
-        if oldNewIndex then return end
-        oldNewIndex = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
-            if not checkcaller() and M.enabled and self == hookedHum and key == "JumpPower" then
-                if value ~= M.power then return end
-            end
-            return oldNewIndex(self, key, value)
-        end))
-    end
-    local function setup()
-        local char = Player.Character; if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid"); if not hum then return end
-        applyToHumanoid(hum); installHook()
-    end
-    function M.setEnabled(v) M.enabled = v and true or false; if M.enabled then M.init(); setup() else hookedHum = nil end end
-    function M.setPower(v) M.power = math.clamp(tonumber(v) or 50, 1, 500); if M.enabled and hookedHum then pcall(function() hookedHum.UseJumpPower = true; hookedHum.JumpPower = M.power end) end end
-    function M.init() if M.initialized then return end; M.initialized = true; Player.CharacterAdded:Connect(function() task.wait(0.5); if M.enabled then setup() end end) end
-    return M
-end)()
-
---c-sync / desync
+-- ============================================================
+-- Desync / C-Sync Module
+-- ============================================================
 local CSync = (function()
     local M = {
         config = {
@@ -2162,6 +2581,196 @@ local CSync = (function()
     return M
 end)()
 
+CSync.setColor(Color3.fromRGB(0, 220, 200))
+
+-- ============================================================
+-- Movement Modules
+-- ============================================================
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+
+--fly
+local Fly = (function()
+    local M = { enabled = false, initialized = false, speed = 50, onStateChange = nil }
+    local CONFIG = { Speed = 50, BoostMultiplier = 2.5, ToggleKey = Enum.KeyCode.F, JumpHoldTime = 0.15, MaxPitchFactor = 1.0 }
+    local IS_MOBILE = UserInputService.TouchEnabled
+    local flying, boost, upHeld, downHeld, jumpUpExpire = false, false, false, false, 0
+    local bodyVelocity, humanoid, rootPart
+    local savedWalkSpeed, savedJumpPower, savedJumpHeight
+    local function setJumpButtonVisible(visible)
+        if not IS_MOBILE then return end
+        local pg = Player:FindFirstChild("PlayerGui"); if not pg then return end
+        local touchGui = pg:FindFirstChild("TouchGui"); if not touchGui then return end
+        local cf = touchGui:FindFirstChild("TouchControlFrame"); if not cf then return end
+        local jb = cf:FindFirstChild("JumpButton"); if jb then jb.Visible = visible end
+    end
+    local function fireStateChange() if M.onStateChange then pcall(M.onStateChange, flying) end end
+    local function startFly()
+        if flying then return end
+        local char = Player.Character; if not char then return end
+        rootPart = char:FindFirstChild("HumanoidRootPart")
+        humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not rootPart or not humanoid then return end
+        savedWalkSpeed = humanoid.WalkSpeed; savedJumpPower = humanoid.JumpPower; savedJumpHeight = humanoid.JumpHeight
+        humanoid.WalkSpeed = 0; humanoid.JumpPower = 0; humanoid.JumpHeight = 0
+        bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5); bodyVelocity.Velocity = Vector3.zero; bodyVelocity.Parent = rootPart
+        flying = true; boost = false; upHeld = false; downHeld = false
+        setJumpButtonVisible(false); fireStateChange()
+    end
+    local function stopFly()
+        if not flying then return end
+        flying = false; boost = false; upHeld = false; downHeld = false
+        if bodyVelocity then bodyVelocity:Destroy(); bodyVelocity = nil end
+        if humanoid then humanoid.WalkSpeed = savedWalkSpeed or 16; humanoid.JumpPower = savedJumpPower or 50; humanoid.JumpHeight = savedJumpHeight or 7.2 end
+        setJumpButtonVisible(true); fireStateChange()
+    end
+    function M.toggle() if flying then stopFly() else startFly() end end
+    function M.isOn() return flying end
+    function M.setEnabled(state) if state then M.init(); startFly() else stopFly() end end
+    function M.setSpeed(v) M.speed = math.clamp(tonumber(v) or 50, 1, 500) end
+    function M.init()
+        if M.initialized then return end; M.initialized = true
+        RunService.RenderStepped:Connect(function()
+            if not flying then return end
+            if not rootPart or not rootPart.Parent or not bodyVelocity or not humanoid then stopFly(); return end
+            local move = Vector3.zero
+            local md = humanoid.MoveDirection
+            if md.Magnitude > 0.01 then
+                local localDir = Camera.CFrame:VectorToObjectSpace(md)
+                local forwardAmt = -localDir.Z
+                local rightAmt = localDir.X
+                local look = Camera.CFrame.LookVector
+                if CONFIG.MaxPitchFactor < 1 then
+                    local flat = Vector3.new(look.X, 0, look.Z)
+                    if flat.Magnitude > 0 then
+                        flat = flat.Unit
+                        local pitch = math.asin(math.clamp(look.Y, -1, 1))
+                        local maxP = math.asin(CONFIG.MaxPitchFactor)
+                        pitch = math.clamp(pitch, -maxP, maxP)
+                        local horiz = math.cos(pitch)
+                        look = Vector3.new(flat.X*horiz, math.sin(pitch), flat.Z*horiz).Unit
+                    end
+                end
+                move += look * forwardAmt
+                move += Camera.CFrame.RightVector * rightAmt
+            end
+            local now = tick()
+            if upHeld or (now < jumpUpExpire) then move += Vector3.yAxis end
+            if downHeld then move -= Vector3.yAxis end
+            local speed = M.speed * (boost and CONFIG.BoostMultiplier or 1)
+            if move.Magnitude > 0 then bodyVelocity.Velocity = move.Unit * speed else bodyVelocity.Velocity = Vector3.zero end
+        end)
+        UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+            local key = input.KeyCode
+            if key == CONFIG.ToggleKey then M.toggle(); if Toggles and Toggles.mv_fly then Toggles.mv_fly:SetValue(flying) end; return end
+            if not flying then return end
+            if key == Enum.KeyCode.Space or key == Enum.KeyCode.E then upHeld = true
+            elseif key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.Q then downHeld = true
+            elseif key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift then boost = true end
+        end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+            local key = input.KeyCode
+            if key == Enum.KeyCode.Space or key == Enum.KeyCode.E then upHeld = false
+            elseif key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.Q then downHeld = false
+            elseif key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift then boost = false end
+        end)
+        UserInputService.JumpRequest:Connect(function() if flying and IS_MOBILE then jumpUpExpire = tick() + CONFIG.JumpHoldTime end end)
+        Player.CharacterAdded:Connect(function() if flying then stopFly() end; rootPart = nil; humanoid = nil end)
+    end
+    return M
+end)()
+
+--walkspeed
+local WalkSpeed = (function()
+    local M = { enabled = false, initialized = false, speed = 16 }
+    local conn, bv, char, hum, root
+    local function cleanup()
+        if conn then conn:Disconnect(); conn = nil end
+        if bv and bv.Parent then bv:Destroy() end
+        bv = nil
+    end
+    local function setup()
+        cleanup()
+        char = Player.Character; if not char then return end
+        hum = char:FindFirstChildOfClass("Humanoid"); root = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not root then return end
+        if root:FindFirstChild("SpeedBypass") then root.SpeedBypass:Destroy() end
+        bv = Instance.new("BodyVelocity"); bv.Name = "SpeedBypass"; bv.MaxForce = Vector3.new(math.huge, 0, math.huge); bv.Velocity = Vector3.zero; bv.Parent = root
+        conn = RunService.RenderStepped:Connect(function()
+            if not M.enabled then return end
+            if not bv or not bv.Parent or not hum or not hum.Parent then return end
+            if hum.MoveDirection.Magnitude > 0 then bv.Velocity = Vector3.new(hum.MoveDirection.X * M.speed, 0, hum.MoveDirection.Z * M.speed)
+            else bv.Velocity = Vector3.zero end
+        end)
+    end
+    function M.setEnabled(v) M.enabled = v and true or false; if M.enabled then M.init(); setup() else cleanup() end end
+    function M.setSpeed(v) M.speed = math.clamp(tonumber(v) or 16, 1, 500) end
+    function M.init() if M.initialized then return end; M.initialized = true; Player.CharacterAdded:Connect(function() task.wait(0.5); if M.enabled then setup() end end) end
+    return M
+end)()
+
+--cframe speed
+local CFrameSpeed = (function()
+    local M = { enabled = false, speed = 100 }
+    local connection, characterConn, deathConn
+    local function moveCharacter(dt)
+        if not M.enabled then return end
+        local char = Player.Character; if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not hrp or not humanoid then return end
+        local dir = humanoid.MoveDirection
+        if dir.Magnitude < 0.01 then return end
+        hrp.CFrame = hrp.CFrame + dir.Unit * M.speed * dt
+    end
+    local function startCFrame() if connection then return end; connection = RunService.RenderStepped:Connect(moveCharacter) end
+    local function stopCFrame() if connection then connection:Disconnect(); connection = nil end end
+    local function onCharacterAdded(char)
+        stopCFrame()
+        if deathConn then deathConn:Disconnect(); deathConn = nil end
+        local hum = char:WaitForChild("Humanoid", 5)
+        if not hum then return end
+        if M.enabled then startCFrame() end
+        deathConn = hum.Died:Connect(function() stopCFrame() end)
+    end
+    if Player.Character then onCharacterAdded(Player.Character) end
+    characterConn = Player.CharacterAdded:Connect(onCharacterAdded)
+    function M.setEnabled(v) M.enabled = v and true or false; if M.enabled then startCFrame() else stopCFrame() end end
+    function M.setSpeed(v) M.speed = math.clamp(tonumber(v) or 100, 1, 500) end
+    return M
+end)()
+
+--jumppower
+local JumpPower = (function()
+    local M = { enabled = false, initialized = false, power = 50 }
+    local hookedHum = nil
+    local oldNewIndex = nil
+    local function applyToHumanoid(hum) if not hum then return end; pcall(function() hum.UseJumpPower = true; hum.JumpPower = M.power end); hookedHum = hum end
+    local function installHook()
+        if oldNewIndex then return end
+        oldNewIndex = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
+            if not checkcaller() and M.enabled and self == hookedHum and key == "JumpPower" then
+                if value ~= M.power then return end
+            end
+            return oldNewIndex(self, key, value)
+        end))
+    end
+    local function setup()
+        local char = Player.Character; if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid"); if not hum then return end
+        applyToHumanoid(hum); installHook()
+    end
+    function M.setEnabled(v) M.enabled = v and true or false; if M.enabled then M.init(); setup() else hookedHum = nil end end
+    function M.setPower(v) M.power = math.clamp(tonumber(v) or 50, 1, 500); if M.enabled and hookedHum then pcall(function() hookedHum.UseJumpPower = true; hookedHum.JumpPower = M.power end) end end
+    function M.init() if M.initialized then return end; M.initialized = true; Player.CharacterAdded:Connect(function() task.wait(0.5); if M.enabled then setup() end end) end
+    return M
+end)()
+
 -- ============================================================
 -- Movement Misc Background Loops
 -- ============================================================
@@ -2203,7 +2812,7 @@ end
 LP.CharacterAdded:Connect(antiStomp_OnCharacter)
 if LP.Character then antiStomp_OnCharacter(LP.Character) end
 
--- Updated Stomp logic for the slider
+-- Stomp logic for the slider
 local StompState = { Enabled = false, Speed = 10 } 
 local stompLastFire, stompFirstFired = 0, false
 RunService.RenderStepped:Connect(function()
@@ -2214,8 +2823,6 @@ RunService.RenderStepped:Connect(function()
     local remote = game:GetService("ReplicatedStorage"):FindFirstChild("MAINEVENT") or game:GetService("ReplicatedStorage"):FindFirstChild("MainEvent")
     if not remote then return end
 
-    -- Convert the slider value to a delay. 
-    -- 1 = 1 second delay, 10 = 0.1s, 500 = 0.002s (but clamped to 0.01 to prevent crashing)
     local delay = math.clamp(1 / StompState.Speed, 0.01, 1) 
 
     if tick() - stompLastFire >= delay then
@@ -2298,9 +2905,9 @@ MovementSection:Slider({
     Min = 1,
     Max = 500,
     Default = 50,
-    Decimals = 0,
+    Decimals = 1,
     Callback = function(Value)
-        Fly.setSpeed(Value)
+        Fly.setSpeed(math.round(Value))
     end
 })
 
@@ -2319,9 +2926,9 @@ MovementSection:Slider({
     Min = 1,
     Max = 500,
     Default = 100,
-    Decimals = 0,
+    Decimals = 1,
     Callback = function(Value)
-        CFrameSpeed.setSpeed(Value)
+        CFrameSpeed.setSpeed(math.round(Value))
     end
 })
 
@@ -2340,9 +2947,9 @@ MovementSection:Slider({
     Min = 1,
     Max = 500,
     Default = 16,
-    Decimals = 0,
+    Decimals = 1,
     Callback = function(Value)
-        WalkSpeed.setSpeed(Value)
+        WalkSpeed.setSpeed(math.round(Value))
     end
 })
 
@@ -2361,132 +2968,9 @@ MovementSection:Slider({
     Min = 1,
     Max = 500,
     Default = 50,
-    Decimals = 0,
-    Callback = function(Value)
-        JumpPower.setPower(Value)
-    end
-})
-
--- ============================================================
--- Desync Position Tab UI
--- ============================================================
-local DesyncSection = MovementPage:Section({
-    Name = "Desync Position",
-    Side = 2
-})
-
-DesyncSection:Toggle({
-    Name = "Enable Desync",
-    Flag = "dsync_enabled",
-    Default = false,
-    Callback = function(Value)
-        CSync.setEnabled(Value)
-    end
-})
-
-DesyncSection:Dropdown({
-    Name = "Mode",
-    Flag = "dsync_mode",
-    Items = {"Static Local", "Static Target", "Local Random", "Target Random"},
-    Default = "Static Local",
-    Multi = false,
-    Callback = function(Value)
-        CSync.setType(Value)
-    end
-})
-
-DesyncSection:Textbox({
-    Name = "Target Name",
-    Flag = "dsync_target",
-    Placeholder = "Player name...",
-    Finished = false,
-    Callback = function(Value)
-        CSync.setTarget(Value)
-    end
-})
-
-DesyncSection:Slider({
-    Name = "Static X",
-    Flag = "dsync_sx",
-    Min = -50,
-    Max = 50,
-    Default = 5,
     Decimals = 1,
     Callback = function(Value)
-        CSync.setStatic("X", Value)
-    end
-})
-
-DesyncSection:Slider({
-    Name = "Static Y",
-    Flag = "dsync_sy",
-    Min = -50,
-    Max = 50,
-    Default = 0,
-    Decimals = 1,
-    Callback = function(Value)
-        CSync.setStatic("Y", Value)
-    end
-})
-
-DesyncSection:Slider({
-    Name = "Static Z",
-    Flag = "dsync_sz",
-    Min = -50,
-    Max = 50,
-    Default = 5,
-    Decimals = 1,
-    Callback = function(Value)
-        CSync.setStatic("Z", Value)
-    end
-})
-
-DesyncSection:Slider({
-    Name = "Randomization",
-    Flag = "dsync_rand",
-    Min = 1,
-    Max = 100,
-    Default = 5,
-    Decimals = 1,
-    Callback = function(Value)
-        CSync.setRandom(Value)
-    end
-})
-
-DesyncSection:Toggle({
-    Name = "Visualize",
-    Flag = "dsync_vis",
-    Default = false,
-    Callback = function(Value)
-        CSync.setVisualize(Value)
-    end
-})
-
-DesyncSection:Toggle({
-    Name = "Show Tracer",
-    Flag = "dsync_vis_tr",
-    Default = true,
-    Callback = function(Value)
-        CSync.setTracer(Value)
-    end
-})
-
-DesyncSection:Toggle({
-    Name = "Show Character",
-    Flag = "dsync_vis_ch",
-    Default = false,
-    Callback = function(Value)
-        CSync.setChar(Value)
-    end
-})
-
-local DesyncColorLabel = DesyncSection:Label({ Name = "Visualize Color" })
-DesyncColorLabel:Colorpicker({
-    Flag = "dsync_color",
-    Default = Color3.fromRGB(0, 220, 200),
-    Alpha = 1,
-    Callback = function(Color)
-        CSync.setColor(Color)
+        JumpPower.setPower(math.round(Value))
     end
 })
 
@@ -2520,11 +3004,9 @@ MiscSection:Button({
     Name = "No Jump Cooldown",
     Callback = function()
         if _G.__NO_JUMP_CD_ACTIVE then
-            notify("no jump cooldown", "already active", "warn")
             return
         end
         if type(hookfunction) ~= "function" then
-            notify("no jump cooldown", "hookfunction not supported", "error")
             return
         end
         local ok, err = pcall(function()
@@ -2535,9 +3017,6 @@ MiscSection:Button({
         end)
         if ok then
             _G.__NO_JUMP_CD_ACTIVE = true
-            notify("no jump cooldown", "enabled", "success")
-        else
-            notify("no jump cooldown", "failed: " .. tostring(err), "error")
         end
     end
 })
@@ -2551,11 +3030,6 @@ MiscSection:Toggle({
             local TextChatService = game:GetService("TextChatService")
             TextChatService.ChatWindowConfiguration.Enabled = v
         end)
-        if ok then
-            notify("chatlogs", v and "enabled" or "disabled", v and "success" or "warn")
-        else
-            notify("chatlogs", "failed", "error")
-        end
     end
 })
 
@@ -2563,7 +3037,6 @@ MiscSection:Button({
     Name = "No Slow",
     Callback = function()
         if _G.__NO_SLOW_ACTIVE then
-            notify("no slow", "already active", "warn")
             return
         end
         local ok, err = pcall(function()
@@ -2579,9 +3052,6 @@ MiscSection:Button({
         end)
         if ok then
             _G.__NO_SLOW_ACTIVE = true
-            notify("no slow", "enabled", "success")
-        else
-            notify("no slow", "failed: " .. tostring(err), "error")
         end
     end
 })
@@ -2595,16 +3065,15 @@ MiscSection:Toggle({
     end
 })
 
--- NEW: Replaced Dropdown with Slider
 MiscSection:Slider({
     Name = "Stomp Speed",
     Flag = "misc_stomp_speed",
     Min = 1,
     Max = 500,
     Default = 10,
-    Decimals = 0,
-    Callback = function(v)
-        StompState.Speed = v
+    Decimals = 1,
+    Callback = function(Value)
+        StompState.Speed = math.round(Value)
     end
 })
 
@@ -2617,14 +3086,156 @@ MiscSection:Toggle({
     end
 })
 
-MiscSection:Slider({
+MiscSection:Textbox({
     Name = "Rapid Fire Rate",
     Flag = "misc_rapidfire_rate",
-    Min = 0.005,
-    Max = 1,
-    Default = 0.015,
-    Decimals = 3,
-    Callback = function(v)
-        RapidFire.setFireRate(v)
+    Default = "0.015",
+    Placeholder = "0.015",
+    Numeric = true,
+    Finished = true,
+    Callback = function(Value)
+        local n = tonumber(Value)
+        if n then RapidFire.setFireRate(n) end
+    end
+})
+
+-- ============================================================
+-- Desync Group (Moved to Movement Tab Right Side)
+-- ============================================================
+local DesyncSection = MovementPage:Section({
+    Name = "Desync",
+    Side = 2
+})
+
+DesyncSection:Toggle({
+    Name = "Velocity Desync",
+    Flag = "ds_veldesync",
+    Default = false,
+    Callback = function(v) 
+        velocityDesync(v) 
+    end
+})
+
+DesyncSection:Toggle({
+    Name = "Invisible Desync",
+    Flag = "ds_invdesync",
+    Default = false,
+    Callback = function(v) 
+        invisibleDesync(v) 
+    end
+})
+
+DesyncSection:Toggle({
+    Name = "C-Sync",
+    Flag = "ds_csync",
+    Default = false,
+    Callback = function(Value)
+        CSync.setEnabled(Value)
+    end
+})
+
+DesyncSection:Dropdown({
+    Name = "C-Sync Mode",
+    Flag = "ds_csync_mode",
+    Items = {"Static Local", "Static Target", "Local Random", "Target Random"},
+    Default = "Static Local",
+    Multi = false,
+    Callback = function(Value)
+        CSync.setType(Value)
+    end
+})
+
+DesyncSection:Textbox({
+    Name = "C-Sync Target Name",
+    Flag = "ds_csync_target",
+    Placeholder = "Player name...",
+    Finished = false,
+    Callback = function(Value)
+        CSync.setTarget(Value)
+    end
+})
+
+DesyncSection:Slider({
+    Name = "Static X",
+    Flag = "ds_csync_x",
+    Min = -50,
+    Max = 50,
+    Default = 5,
+    Decimals = 1,
+    Callback = function(Value)
+        CSync.setStatic("X", math.round(Value))
+    end
+})
+
+DesyncSection:Slider({
+    Name = "Static Y",
+    Flag = "ds_csync_y",
+    Min = -50,
+    Max = 50,
+    Default = 0,
+    Decimals = 1,
+    Callback = function(Value)
+        CSync.setStatic("Y", math.round(Value))
+    end
+})
+
+DesyncSection:Slider({
+    Name = "Static Z",
+    Flag = "ds_csync_z",
+    Min = -50,
+    Max = 50,
+    Default = 5,
+    Decimals = 1,
+    Callback = function(Value)
+        CSync.setStatic("Z", math.round(Value))
+    end
+})
+
+DesyncSection:Slider({
+    Name = "Randomization",
+    Flag = "ds_csync_rand",
+    Min = 1,
+    Max = 100,
+    Default = 5,
+    Decimals = 1,
+    Callback = function(Value)
+        CSync.setRandom(math.round(Value))
+    end
+})
+
+DesyncSection:Toggle({
+    Name = "Visualize",
+    Flag = "ds_csync_vis",
+    Default = false,
+    Callback = function(Value)
+        CSync.setVisualize(Value)
+    end
+})
+
+local CSyncColorLabel = DesyncSection:Label({ Name = "Visualize Color" })
+CSyncColorLabel:Colorpicker({
+    Flag = "ds_csync_color",
+    Default = Color3.fromRGB(0, 220, 200),
+    Alpha = 1,
+    Callback = function(Color)
+        CSync.setColor(Color)
+    end
+})
+
+DesyncSection:Toggle({
+    Name = "Show Tracer",
+    Flag = "ds_csync_tr",
+    Default = true,
+    Callback = function(Value)
+        CSync.setTracer(Value)
+    end
+})
+
+DesyncSection:Toggle({
+    Name = "Show Character",
+    Flag = "ds_csync_ch",
+    Default = false,
+    Callback = function(Value)
+        CSync.setChar(Value)
     end
 })
