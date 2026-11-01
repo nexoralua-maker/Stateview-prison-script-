@@ -10,12 +10,11 @@ local Window = Library:Window({
 
 local RagebotPage = Window:Page({ Name = "Ragebot",  Icon = "rbxassetid://72426486330663" })
 local MovementPage = Window:Page({ Name = "Movement", Icon = "rbxassetid://72426486330663" })
+local VisualPage = Window:Page({ Name = "Visual", Icon = "rbxassetid://72426486330663" })
 
 local function notify(title, text, kind) return end
 
--- ============================================================
--- Toggle UI Button (Menu)
--- ============================================================
+-- Toggle UI
 do
     local UserInputService = game:GetService("UserInputService")
     local TweenService     = game:GetService("TweenService")
@@ -97,9 +96,7 @@ do
     UpdateState()
 end
 
--- ============================================================
 -- Floating Aimlock Button
--- ============================================================
 local AimlockButtonGui
 local AimlockFloatingBtn
 local CurrentBtnSize = 50
@@ -219,9 +216,7 @@ game:GetService("RunService").RenderStepped:Connect(function()
     end
 end)
 
--- ============================================================
 -- Target Tracer
--- ============================================================
 local TargetVisuals = { tracer = false, tracerColor = Color3.fromRGB(0, 220, 200), tracerDraw = nil }
 
 local function getDrawingLib()
@@ -280,9 +275,7 @@ game:GetService("RunService").RenderStepped:Connect(function()
     end
 end)
 
--- ============================================================
 -- Aimlock Module
--- ============================================================
 local Aimlock = (function()
     local _hookmetamethod    = hookmetamethod    or function() return function() end end
     local _newcclosure       = newcclosure       or function(f) return f end
@@ -817,9 +810,7 @@ local Aimlock = (function()
     return M
 end)()
 
--- ============================================================
 -- Auto Fire Module
--- ============================================================
 local Player = game:GetService("Players").LocalPlayer
 local RunService = game:GetService("RunService")
 
@@ -977,9 +968,7 @@ local AutoFire = (function()
     return M
 end)()
 
--- ============================================================
 -- CreateBulletLogic
--- ============================================================
 local function CreateBulletLogic(opts)
     opts = opts or {}
     local Players    = game:GetService("Players")
@@ -1170,9 +1159,7 @@ local BulletLogic = CreateBulletLogic({
 BulletLogic.Functions.HandleCharacter(Player.Character or Player.CharacterAdded:Wait())
 Player.CharacterAdded:Connect(function(char) BulletLogic.Functions.HandleCharacter(char) end)
 
--- ============================================================
 -- Touch Fling Logic
--- ============================================================
 local TouchFlingLogic = (function()
     local Players    = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -1249,9 +1236,7 @@ local TouchFlingLogic = (function()
     return Logic
 end)()
 
--- ============================================================
 -- Auto Katana Logic
--- ============================================================
 local function createAutoKatana(userConfig)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -1643,9 +1628,7 @@ TargetAimSection:Toggle({
     Callback = function(Value) BulletTPEnabled = Value end
 })
 
--- ============================================================
 -- Fling Group
--- ============================================================
 local FlingSection = RagebotPage:Section({ Name = "Fling", Side = 2 })
 FlingSection:Toggle({
     Name = "Touch Fling", Flag = "fling_touch", Default = false,
@@ -1654,9 +1637,7 @@ FlingSection:Toggle({
     end
 })
 
--- ============================================================
 -- Auto Katana Kill Group
--- ============================================================
 local AutoKatanaSection = RagebotPage:Section({ Name = "Auto Katana Kill", Side = 2 })
 AutoKatanaSection:Toggle({
     Name = "Auto Katana Kill", Flag = "auto_katana", Default = false,
@@ -1671,50 +1652,34 @@ AutoKatanaSection:Toggle({
 local CSync = (function()
     local M = {
         config = {
-            enabled = false,
-            type = "Static Local",
-            staticX = 5, staticY = 0, staticZ = 5,
-            randomization = 5,
-            visualize = false,
-            visualizeTracer = true,
-            visualizeChar = false,
-            visualizeColor = Color3.fromRGB(0, 220, 200),
-            targetName = nil,
-            originalPosition = CFrame.new(1, 1, 1),
-            lastDesync = CFrame.new(1, 1, 1),
+            enabled = false, type = "Static Local",
+            staticX = 5, staticY = 0, staticZ = 5, randomization = 5,
+            visualize = false, visualizeTracer = true, visualizeChar = false,
+            visualizeColor = Color3.fromRGB(0, 220, 200), targetName = nil,
+            originalPosition = CFrame.new(1, 1, 1), lastDesync = CFrame.new(1, 1, 1),
         }
     }
-
     local Drawing
     pcall(function()
         Drawing = loadstring(game:HttpGet("https://raw.githubusercontent.com/linemaster2/storage/main/Drawing.lua"))()
     end)
-
     local tracer
     if Drawing then
         tracer = Drawing.new("Line")
-        tracer.Visible = false
-        tracer.Thickness = 2
-        tracer.Transparency = 0.5
+        tracer.Visible = false; tracer.Thickness = 2; tracer.Transparency = 0.5
     end
-
     local chams
-
     local function getHRP()
         local char = Player.Character
         return char and char:FindFirstChild("HumanoidRootPart")
     end
-
     local function getTargetHRP()
         local n = M.config.targetName
         if not n or n == "" then return nil end
         local p = game.Players:FindFirstChild(n)
-        if p and p ~= Player and p.Character then
-            return p.Character:FindFirstChild("HumanoidRootPart")
-        end
+        if p and p ~= Player and p.Character then return p.Character:FindFirstChild("HumanoidRootPart") end
         return nil
     end
-
     local function randomOffset(amount)
         return Vector3.new(
             math.random(-amount * 100, amount * 100) / 100,
@@ -1722,18 +1687,15 @@ local CSync = (function()
             math.random(-amount * 100, amount * 100) / 100
         )
     end
-
     local function computeDesync(hrp)
         local t = M.config.type
         local sX, sY, sZ = M.config.staticX, M.config.staticY, M.config.staticZ
-        if t == "Static Local" then
-            return hrp.CFrame * CFrame.new(sX, sY, sZ)
+        if t == "Static Local" then return hrp.CFrame * CFrame.new(sX, sY, sZ)
         elseif t == "Static Target" then
             local tgt = getTargetHRP()
             if tgt then return tgt.CFrame * CFrame.new(sX, sY, sZ) end
             return hrp.CFrame * CFrame.new(sX, sY, sZ)
-        elseif t == "Local Random" then
-            return hrp.CFrame * CFrame.new(randomOffset(M.config.randomization))
+        elseif t == "Local Random" then return hrp.CFrame * CFrame.new(randomOffset(M.config.randomization))
         elseif t == "Target Random" then
             local tgt = getTargetHRP()
             if tgt then return tgt.CFrame * CFrame.new(randomOffset(M.config.randomization)) end
@@ -1741,7 +1703,6 @@ local CSync = (function()
         end
         return hrp.CFrame
     end
-
     local function buildChams()
         if chams then chams:Destroy(); chams = nil end
         local char = Player.Character
@@ -1753,14 +1714,9 @@ local CSync = (function()
         for _, part in ipairs(clone:GetChildren()) do
             if part:IsA("Accessory") then part:Destroy()
             elseif part:IsA("BasePart") then
-                part.Anchored = true
-                part.CanCollide = false
-                part.CanQuery = false
-                part.CanTouch = false
+                part.Anchored = true; part.CanCollide = false; part.CanQuery = false; part.CanTouch = false
                 if part:IsA("MeshPart") then
-                    part.Color = M.config.visualizeColor
-                    part.Material = Enum.Material.Neon
-                    part.Transparency = 0.7
+                    part.Color = M.config.visualizeColor; part.Material = Enum.Material.Neon; part.Transparency = 0.7
                 end
                 if part.Name == "Head" then
                     local face = part:FindFirstChild("face")
@@ -1770,7 +1726,6 @@ local CSync = (function()
         end
         chams = clone
     end
-
     local function updateChams(desyncCFrame)
         if not chams or not Player.Character then return end
         for _, part in ipairs(chams:GetChildren()) do
@@ -1782,10 +1737,8 @@ local CSync = (function()
         end
         chams:PivotTo(desyncCFrame)
     end
-
     if Player.Character then buildChams() end
     Player.CharacterAdded:Connect(function() task.wait(1); buildChams() end)
-
     RunService.Heartbeat:Connect(function()
         local hrp = getHRP()
         if not hrp or not M.config.enabled then
@@ -1804,15 +1757,10 @@ local CSync = (function()
                 tracer.From = Vector2.new(from.X, from.Y)
                 tracer.To = Vector2.new(to.X, to.Y)
                 tracer.Color = M.config.visualizeColor
-            elseif tracer then
-                tracer.Visible = false
-            end
+            elseif tracer then tracer.Visible = false end
             if M.config.visualizeChar and chams then
-                chams.Parent = workspace
-                updateChams(desyncCFrame)
-            elseif chams and chams.Parent then
-                chams.Parent = nil
-            end
+                chams.Parent = workspace; updateChams(desyncCFrame)
+            elseif chams and chams.Parent then chams.Parent = nil end
         else
             if tracer then tracer.Visible = false end
             if chams and chams.Parent then chams.Parent = nil end
@@ -1821,7 +1769,6 @@ local CSync = (function()
         RunService.RenderStepped:Wait()
         hrp.CFrame = M.config.originalPosition
     end)
-
     pcall(function()
         if not (getrawmetatable and setreadonly and newcclosure and checkcaller) then return end
         local mt = getrawmetatable(game)
@@ -1837,7 +1784,6 @@ local CSync = (function()
         end)
         setreadonly(mt, true)
     end)
-
     function M.setEnabled(v)
         M.config.enabled = v and true or false
         if not M.config.enabled then
@@ -1865,8 +1811,7 @@ local CSync = (function()
         end
     end
     function M.resetAll()
-        M.config.enabled = false
-        M.config.visualize = false
+        M.config.enabled = false; M.config.visualize = false
         if tracer then tracer.Visible = false end
         if chams and chams.Parent then chams.Parent = nil end
     end
@@ -1875,9 +1820,7 @@ end)()
 
 CSync.setColor(Color3.fromRGB(0, 220, 200))
 
--- ============================================================
 -- Velocity Desync Module
--- ============================================================
 local velocityDesync = (function()
     local state = { _init = true, enabled = false, savedCFrame = nil, savedVel = nil, savedAng = nil, conns = {} }
     local function getHRP()
@@ -1897,17 +1840,13 @@ local velocityDesync = (function()
         state.enabled = true
         local HRP = getHRP()
         if HRP then
-            state.savedCFrame = HRP.CFrame
-            state.savedVel = HRP.AssemblyLinearVelocity
-            state.savedAng = HRP.AssemblyAngularVelocity
+            state.savedCFrame = HRP.CFrame; state.savedVel = HRP.AssemblyLinearVelocity; state.savedAng = HRP.AssemblyAngularVelocity
         end
         state.conns[#state.conns + 1] = RunService.Heartbeat:Connect(function()
             if not state.enabled then return end
             local HRP, Hum = getHRP()
             if not HRP or not Hum or Hum.Health <= 0 then return end
-            local realCFrame = HRP.CFrame
-            local realVel = HRP.AssemblyLinearVelocity
-            local realAng = HRP.AssemblyAngularVelocity
+            local realCFrame = HRP.CFrame; local realVel = HRP.AssemblyLinearVelocity; local realAng = HRP.AssemblyAngularVelocity
             state.savedCFrame = realCFrame
             HRP.CFrame = realCFrame * CFrame.new(9e9, 0, 9e9)
             RunService.RenderStepped:Wait()
@@ -1920,9 +1859,7 @@ local velocityDesync = (function()
             old = hookmetamethod(game, "__index", newcclosure(function(self, key)
                 if not checkcaller() and state.enabled and key == "CFrame" then
                     local HRP, Hum = getHRP()
-                    if HRP and Hum and Hum.Health > 0 and self == HRP and state.savedCFrame then
-                        return state.savedCFrame
-                    end
+                    if HRP and Hum and Hum.Health > 0 and self == HRP and state.savedCFrame then return state.savedCFrame end
                 end
                 return old(self, key)
             end))
@@ -1933,9 +1870,7 @@ local velocityDesync = (function()
             old = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
                 if not checkcaller() and state.enabled then
                     local HRP = getHRP()
-                    if HRP and self == HRP and (key == "AssemblyLinearVelocity" or key == "Velocity") then
-                        state.savedVel = value
-                    end
+                    if HRP and self == HRP and (key == "AssemblyLinearVelocity" or key == "Velocity") then state.savedVel = value end
                 end
                 return old(self, key, value)
             end))
@@ -1950,16 +1885,13 @@ local velocityDesync = (function()
         state.conns = {}
     end
     return function(enable)
-        if enable == nil then
-            if state.enabled then stop() else start() end
+        if enable == nil then if state.enabled then stop() else start() end
         elseif enable then start() else stop() end
         return state.enabled
     end
 end)()
 
--- ============================================================
 -- Invisible Desync Module
--- ============================================================
 local invisibleDesync = (function()
     local state = { enabled = false, lastCFrame = nil, conn = nil, hookInstalled = false }
     local function getHRP()
@@ -1987,9 +1919,7 @@ local invisibleDesync = (function()
             old = hookmetamethod(game, "__index", newcclosure(function(self, key)
                 if not checkcaller() and key == "CFrame" and state.enabled then
                     local HRP, Hum = getHRP()
-                    if HRP and Hum and Hum.Health > 0 and self == HRP and state.lastCFrame then
-                        return state.lastCFrame
-                    end
+                    if HRP and Hum and Hum.Health > 0 and self == HRP and state.lastCFrame then return state.lastCFrame end
                 end
                 return old(self, key)
             end))
@@ -2001,15 +1931,14 @@ local invisibleDesync = (function()
         if state.conn then state.conn:Disconnect(); state.conn = nil end
     end
     return function(enable)
-        if enable == nil then
-            if state.enabled then stop() else start() end
+        if enable == nil then if state.enabled then stop() else start() end
         elseif enable then start() else stop() end
         return state.enabled
     end
 end)()
 
 -- ============================================================
--- Macro Module (Crispy.lol draggable toggle)
+-- Macro Module (Crispy.lol draggable toggle) — with M keybind trigger
 -- ============================================================
 local Macro = (function()
     local player           = game.Players.LocalPlayer
@@ -2021,7 +1950,6 @@ local Macro = (function()
     local M = { enabled = false, gui = nil, mainBtn = nil, stroke = nil, conns = {} }
 
     local isFacingForward = false
-    local isControlHeld   = false
     local faceConn
 
     local function faceForward()
@@ -2036,7 +1964,6 @@ local Macro = (function()
 
     local function stopEverything()
         isFacingForward = false
-        isControlHeld   = false
         if faceConn then faceConn:Disconnect(); faceConn = nil end
         if M.mainBtn then
             M.mainBtn.Text = "Crispy.lol"
@@ -2071,11 +1998,8 @@ local Macro = (function()
         local toolInBackpack = bp and bp:FindFirstChild("katana")
 
         if toolInHand or toolInBackpack then
-            if toolInBackpack and hum then
-                hum:EquipTool(toolInBackpack)
-            end
+            if toolInBackpack and hum then hum:EquipTool(toolInBackpack) end
             isFacingForward = true
-            isControlHeld   = true
             if M.mainBtn then M.mainBtn.Text = "ON" end
             if M.stroke then M.stroke.Color = Color3.fromRGB(0, 255, 100) end
             pcall(function() VIM:SendKeyEvent(true, Enum.KeyCode.LeftControl, false, game) end)
@@ -2092,44 +2016,24 @@ local Macro = (function()
     end
 
     local function buildGui()
-        if M.gui then
-            M.gui.Enabled = true
-            return
-        end
+        if M.gui then M.gui.Enabled = true; return end
         local pg = player:FindFirstChild("PlayerGui") or player:WaitForChild("PlayerGui")
         local gui = Instance.new("ScreenGui")
-        gui.Name           = "CrispyToggle"
-        gui.ResetOnSpawn   = false
-        gui.IgnoreGuiInset = true
-        gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        gui.DisplayOrder   = 999
-        gui.Parent         = pg
+        gui.Name = "CrispyToggle"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true
+        gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; gui.DisplayOrder = 999
+        gui.Parent = pg
 
         local btn = Instance.new("TextButton")
-        btn.Name              = "MainBtn"
-        btn.Size              = UDim2.new(0, 150, 0, 45)
-        btn.Position          = UDim2.new(0.5, -75, 0.5, -22)
-        btn.BackgroundColor3  = Color3.fromRGB(25, 25, 30)
-        btn.BorderSizePixel   = 0
-        btn.Text              = "Crispy.lol"
-        btn.TextColor3        = Color3.fromRGB(255, 255, 255)
-        btn.TextScaled        = true
-        btn.Font              = Enum.Font.GothamBold
-        btn.AutoButtonColor   = false
-        btn.Active            = true
-        btn.Parent            = gui
+        btn.Name = "MainBtn"; btn.Size = UDim2.new(0, 150, 0, 45); btn.Position = UDim2.new(0.5, -75, 0.5, -22)
+        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 30); btn.BorderSizePixel = 0
+        btn.Text = "Crispy.lol"; btn.TextColor3 = Color3.fromRGB(255, 255, 255); btn.TextScaled = true
+        btn.Font = Enum.Font.GothamBold; btn.AutoButtonColor = false; btn.Active = true
+        btn.Parent = gui
 
-        local c = Instance.new("UICorner")
-        c.CornerRadius = UDim.new(0, 10)
-        c.Parent       = btn
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = btn
+        local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(0, 200, 255); s.Thickness = 2; s.Parent = btn
 
-        local s = Instance.new("UIStroke")
-        s.Color        = Color3.fromRGB(0, 200, 255)
-        s.Thickness    = 2
-        s.Parent       = btn
-
-        M.mainBtn = btn
-        M.stroke  = s
+        M.mainBtn = btn; M.stroke = s
 
         local dragging, wasDrag, dragInput, pressStart, startPos
         local DRAG_THRESHOLD = 5
@@ -2138,11 +2042,7 @@ local Macro = (function()
             if dragging then return end
             if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
-                dragging   = true
-                wasDrag    = false
-                dragInput  = input
-                pressStart = input.Position
-                startPos   = btn.Position
+                dragging = true; wasDrag = false; dragInput = input; pressStart = input.Position; startPos = btn.Position
             end
         end))
 
@@ -2153,10 +2053,7 @@ local Macro = (function()
             local delta = input.Position - pressStart
             if not wasDrag and delta.Magnitude > DRAG_THRESHOLD then wasDrag = true end
             if wasDrag then
-                btn.Position = UDim2.new(
-                    startPos.X.Scale, startPos.X.Offset + delta.X,
-                    startPos.Y.Scale, startPos.Y.Offset + delta.Y
-                )
+                btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
             end
         end))
 
@@ -2164,8 +2061,7 @@ local Macro = (function()
             if not dragging or input ~= dragInput then return end
             dragging = false
             if not wasDrag then toggle() end
-            dragInput  = nil
-            pressStart = nil
+            dragInput = nil; pressStart = nil
         end))
 
         M.gui = gui
@@ -2175,25 +2071,29 @@ local Macro = (function()
         v = v and true or false
         if M.enabled == v then return end
         M.enabled = v
-        if v then
-            buildGui()
-        else
-            stopEverything()
-            if M.gui then M.gui.Enabled = false end
-        end
+        if v then buildGui() else stopEverything(); if M.gui then M.gui.Enabled = false end end
     end
+
+    -- ⭐ Exposed for M keybind — directly activates the macro action
+    M.trigger = toggle
+
+    -- ⭐ M keybind → activates macro
+    UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.KeyCode == Enum.KeyCode.M then
+            toggle()
+        end
+    end)
 
     return M
 end)()
 
--- ============================================================
 -- Movement Modules
--- ============================================================
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 
--- fly
+-- Fly
 local Fly = (function()
     local M = { enabled = false, initialized = false, speed = 50, onStateChange = nil }
     local CONFIG = { Speed = 50, BoostMultiplier = 2.5, ToggleKey = Enum.KeyCode.F, JumpHoldTime = 0.15, MaxPitchFactor = 1.0 }
@@ -2246,17 +2146,6 @@ local Fly = (function()
                 local forwardAmt = -localDir.Z
                 local rightAmt = localDir.X
                 local look = Camera.CFrame.LookVector
-                if CONFIG.MaxPitchFactor < 1 then
-                    local flat = Vector3.new(look.X, 0, look.Z)
-                    if flat.Magnitude > 0 then
-                        flat = flat.Unit
-                        local pitch = math.asin(math.clamp(look.Y, -1, 1))
-                        local maxP = math.asin(CONFIG.MaxPitchFactor)
-                        pitch = math.clamp(pitch, -maxP, maxP)
-                        local horiz = math.cos(pitch)
-                        look = Vector3.new(flat.X*horiz, math.sin(pitch), flat.Z*horiz).Unit
-                    end
-                end
                 move += look * forwardAmt
                 move += Camera.CFrame.RightVector * rightAmt
             end
@@ -2283,13 +2172,12 @@ local Fly = (function()
             elseif key == Enum.KeyCode.LeftControl or key == Enum.KeyCode.Q then downHeld = false
             elseif key == Enum.KeyCode.LeftShift or key == Enum.KeyCode.RightShift then boost = false end
         end)
-        UserInputService.JumpRequest:Connect(function() if flying and IS_MOBILE then jumpUpExpire = tick() + CONFIG.JumpHoldTime end end)
         Player.CharacterAdded:Connect(function() if flying then stopFly() end; rootPart = nil; humanoid = nil end)
     end
     return M
 end)()
 
--- walkspeed
+-- Walkspeed
 local WalkSpeed = (function()
     local M = { enabled = false, initialized = false, speed = 16 }
     local conn, bv, char, hum, root
@@ -2308,11 +2196,8 @@ local WalkSpeed = (function()
         conn = RunService.RenderStepped:Connect(function()
             if not M.enabled then return end
             if not bv or not bv.Parent or not hum or not hum.Parent then return end
-            if hum.MoveDirection.Magnitude > 0 then
-                bv.Velocity = Vector3.new(hum.MoveDirection.X * M.speed, 0, hum.MoveDirection.Z * M.speed)
-            else
-                bv.Velocity = Vector3.zero
-            end
+            if hum.MoveDirection.Magnitude > 0 then bv.Velocity = Vector3.new(hum.MoveDirection.X * M.speed, 0, hum.MoveDirection.Z * M.speed)
+            else bv.Velocity = Vector3.zero end
         end)
     end
     function M.setEnabled(v) M.enabled = v and true or false; if M.enabled then M.init(); setup() else cleanup() end end
@@ -2321,7 +2206,7 @@ local WalkSpeed = (function()
     return M
 end)()
 
--- cframe speed
+-- CFrame Speed
 local CFrameSpeed = (function()
     local M = { enabled = false, speed = 100 }
     local connection, characterConn, deathConn
@@ -2352,7 +2237,7 @@ local CFrameSpeed = (function()
     return M
 end)()
 
--- jumppower
+-- JumpPower
 local JumpPower = (function()
     local M = { enabled = false, initialized = false, power = 50 }
     local hookedHum = nil
@@ -2378,9 +2263,7 @@ local JumpPower = (function()
     return M
 end)()
 
--- ============================================================
--- Movement Misc Background Loops
--- ============================================================
+-- Background Loops
 local LP = game.Players.LocalPlayer
 local UIS = game:GetService("UserInputService")
 
@@ -2468,9 +2351,7 @@ local RapidFire = (function()
     return M
 end)()
 
--- ============================================================
--- Movements Section (Side 1) — with Macro at bottom of JumpPower
--- ============================================================
+-- Movements Section (Side 1)
 local MovementSection = MovementPage:Section({
     Name = "Movements",
     Side = 1
@@ -2520,24 +2401,15 @@ MovementSection:Slider({
     Callback = function(Value) JumpPower.setPower(math.round(Value)) end
 })
 
--- ⭐ Macro toggle (bottom of JumpPower slider, inside Movements)
+-- Macro toggle (bottom of JumpPower slider) — shows/hides the GUI
 local MacroToggle = MovementSection:Toggle({
     Name = "Macro", Flag = "mv_macro", Default = false,
     Callback = function(Value) Macro.setEnabled(Value) end
 })
 
-MacroToggle:Keybind({
-    Name = "Macro Key", Flag = "mv_macro_key",
-    Default = Enum.KeyCode.M, Mode = "Toggle",
-    Callback = function(Toggled)
-        if MacroToggle.SetValue then MacroToggle:SetValue(Toggled) end
-        Macro.setEnabled(Toggled)
-    end
-})
+-- M keybind is handled inside the Macro module itself (see M.trigger + InputBegan)
 
--- ============================================================
--- Misc Section (Side 1) — no Macro (moved to Movements)
--- ============================================================
+-- Misc Section (Side 1)
 local MiscSection = MovementPage:Section({
     Name = "Misc",
     Side = 1
@@ -2623,9 +2495,7 @@ MiscSection:Textbox({
     end
 })
 
--- ============================================================
 -- Auto Buy Background Logic
--- ============================================================
 local AutoBuyState = {
     AutoFood  = false, SelectedFood  = "[Chicken]",
     AutoArmor = false, SelectedArmor = "[Medium Armor]",
@@ -2667,9 +2537,7 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
 -- Auto Buy Group (Side 2)
--- ============================================================
 local BuySection = MovementPage:Section({
     Name = "Auto Buy",
     Side = 2
@@ -2711,9 +2579,7 @@ BuySection:Dropdown({
     Callback = function(Value) AutoBuyState.SelectedGun = Value end
 })
 
--- ============================================================
--- Anti aim Group (Side 2) — with Teal Visualize Color default
--- ============================================================
+-- Anti aim Group (Side 2)
 local DesyncSection = MovementPage:Section({
     Name = "Anti aim",
     Side = 2
@@ -2770,7 +2636,6 @@ DesyncSection:Toggle({
     Callback = function(Value) CSync.setVisualize(Value) end
 })
 
--- ⭐ Visualize Color = TEAL
 local CSyncColorLabel = DesyncSection:Label({ Name = "Visualize Color" })
 CSyncColorLabel:Colorpicker({
     Flag = "aa_csync_color",
@@ -2787,4 +2652,393 @@ DesyncSection:Toggle({
 DesyncSection:Toggle({
     Name = "Show Character", Flag = "aa_csync_ch", Default = false,
     Callback = function(Value) CSync.setChar(Value) end
+})
+
+-- ============================================================
+-- ESP Frame Module
+-- ============================================================
+local TEAL_VIS  = Color3.fromRGB(0, 220, 200)
+local WHITE_VIS = Color3.fromRGB(255, 255, 255)
+
+local IB_NO_VIRTUALIZE = function(f) return f end
+
+local ESPFrame = (function()
+    local Players_     = game:GetService("Players")
+    local RunService_  = game:GetService("RunService")
+    local Workspace_   = game:GetService("Workspace")
+    local LocalPlayer_ = Players_.LocalPlayer
+
+    local function makeGui()
+        local sg = Instance.new("ScreenGui")
+        sg.Name = "CrispyESP"; sg.ResetOnSpawn = false; sg.IgnoreGuiInset = true
+        sg.ClipToDeviceSafeArea = false; sg.ZIndexBehavior = Enum.ZIndexBehavior.Global
+        local ok = pcall(function() sg.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
+        if not ok or not sg.Parent then pcall(function() sg.Parent = LocalPlayer_:WaitForChild("PlayerGui") end) end
+        return sg
+    end
+
+    local esp = {
+        Classes = {}, Objects = {}, Connections = {}, Gui = makeGui(),
+        FontSize = 12, Font = Font.fromEnum(Enum.Font.Gotham), UpdateRate = 1/30,
+        Configuration = {
+            Enabled = false,
+            TargetOnly = false,
+            TeamCheck = { Enabled = false, UseTeamColors = false },
+            Box = {
+                Style = "Dynamic", Type = "Full",
+                Fill = { Enabled = false, Color = TEAL_VIS, Transparency = {0.3, 0.8} },
+                Outline = { Enabled = false, Color = TEAL_VIS, Thickness = 1, CornerLength = 12 },
+                GetStyle = function(Type, cachedParts, cam)
+                    Type = Type or "Dynamic"
+                    if not cam or not cachedParts or #cachedParts == 0 then return nil, nil end
+                    local min_x, min_y, min_z = math.huge, math.huge, math.huge
+                    local max_x, max_y, max_z = -math.huge, -math.huge, -math.huge
+                    if Type == "Static" then
+                        for _, part in cachedParts do
+                            if part.Name == "HumanoidRootPart" and part.Parent then
+                                local p,s = part.Position, part.Size
+                                min_x = p.X - s.X*0.5; max_x = p.X + s.X*0.5
+                                min_y = p.Y - s.Y*0.5; max_y = p.Y + s.Y*0.5
+                                min_z = p.Z - s.Z*0.5; max_z = p.Z + s.Z*0.5
+                                break
+                            end
+                        end
+                    else
+                        for _, part in cachedParts do
+                            if part.Parent then
+                                local p,s = part.Position, part.Size
+                                local hx,hy,hz = s.X*0.5, s.Y*0.5, s.Z*0.5
+                                if p.X-hx < min_x then min_x = p.X-hx end
+                                if p.Y-hy < min_y then min_y = p.Y-hy end
+                                if p.Z-hz < min_z then min_z = p.Z-hz end
+                                if p.X+hx > max_x then max_x = p.X+hx end
+                                if p.Y+hy > max_y then max_y = p.Y+hy end
+                                if p.Z+hz > max_z then max_z = p.Z+hz end
+                            end
+                        end
+                    end
+                    if max_x == -math.huge then return nil,nil end
+                    local sc_min_x, sc_min_y = math.huge, math.huge
+                    local sc_max_x, sc_max_y = -math.huge, -math.huge
+                    local anyOn = false
+                    local function proj(x,y,z)
+                        local sp, on = cam:WorldToViewportPoint(Vector3.new(x,y,z))
+                        if on then
+                            anyOn = true
+                            if sp.X<sc_min_x then sc_min_x=sp.X end
+                            if sp.Y<sc_min_y then sc_min_y=sp.Y end
+                            if sp.X>sc_max_x then sc_max_x=sp.X end
+                            if sp.Y>sc_max_y then sc_max_y=sp.Y end
+                        end
+                    end
+                    proj(min_x,min_y,min_z); proj(min_x,min_y,max_z); proj(min_x,max_y,min_z); proj(min_x,max_y,max_z)
+                    proj(max_x,min_y,min_z); proj(max_x,min_y,max_z); proj(max_x,max_y,min_z); proj(max_x,max_y,max_z)
+                    if not anyOn then return nil,nil end
+                    return Vector2.new(sc_min_x,sc_min_y), Vector2.new(sc_max_x-sc_min_x, sc_max_y-sc_min_y)
+                end,
+            },
+            HealthBar = {
+                Enabled = false, Position = "Left",
+                Color = { High = Color3.fromRGB(131,245,78), Medium = Color3.fromRGB(255,255,0), Low = Color3.fromRGB(252,71,77) },
+                GetHealth = function(h)
+                    if not h or h.MaxHealth == 0 then return 1 end
+                    return math.clamp(h.Health/h.MaxHealth, 0, 1)
+                end,
+                Text = {
+                    Enabled = false, Color = WHITE_VIS, Transparency = 0,
+                    GetText = function(h)
+                        if not h then return "0", false end
+                        return tostring(math.floor(h.Health)), h.Health ~= h.MaxHealth
+                    end
+                }
+            },
+            Name = { Enabled = false, Color = TEAL_VIS, Transparency = 0 },
+            Distance = { Enabled = false, Color = WHITE_VIS, Transparency = 0, Format = function(d) return string.format("%dst", d) end },
+            Tool = { Enabled = false, Color = TEAL_VIS, Transparency = 0, NoToolText = "none" },
+        },
+    }
+
+    pcall(function()
+        if not isfile("main.ttf") then
+            writefile("main.ttf", game:HttpGet("https://github.com/i77lhm/storage/raw/refs/heads/main/fonts/fs-tahoma-8px.ttf"))
+        end
+        if not isfile("main_encoded.ttf") then
+            writefile("main_encoded.ttf", game:GetService("HttpService"):JSONEncode({
+                name = "SmallestPixel7",
+                faces = {{ name = "Regular", weight = 400, style = "normal", assetId = getcustomasset("main.ttf") }},
+            }))
+        end
+        esp.Font = Font.new(getcustomasset("main_encoded.ttf"), Enum.FontWeight.Regular)
+    end)
+
+    local function makeLabel(parent)
+        local lbl = Instance.new("TextLabel")
+        lbl.BackgroundTransparency = 1; lbl.TextColor3 = WHITE_VIS; lbl.TextStrokeTransparency = 0
+        lbl.TextStrokeColor3 = Color3.new(0,0,0); lbl.FontFace = esp.Font; lbl.TextSize = esp.FontSize
+        lbl.Size = UDim2.new(0,100,0,esp.FontSize+2); lbl.Parent = parent
+        return lbl
+    end
+
+    function esp:Register(name, c, u, d, s) self.Classes[name] = { name=name, create=c, update=u, destroy=d, set_visible=s } end
+
+    function esp:Create(className, instance)
+        if self.Objects[instance] then return end
+        local class = self.Classes[className]; if not class then error("no class "..className) end
+        local obj = class.create(instance); if not obj then return end
+        obj.__class = class; setmetatable(obj, { __index = class })
+        self.Objects[instance] = obj; return obj
+    end
+
+    function esp:ImplementCharacterClass()
+        esp:Register("character",
+            function(character)
+                local cfg = esp.Configuration; local hbCfg = cfg.HealthBar; local boxCfg = cfg.Box
+                local fillCfg = boxCfg.Fill; local outCfg = boxCfg.Outline
+                local cachedParts = {}
+                for _, v in character:GetDescendants() do if v:IsA("BasePart") then cachedParts[#cachedParts+1] = v end end
+                local partConns = {}
+                partConns[1] = character.DescendantAdded:Connect(function(d) if d:IsA("BasePart") then cachedParts[#cachedParts+1] = d end end)
+                partConns[2] = character.DescendantRemoving:Connect(function(d) if d:IsA("BasePart") then for i=#cachedParts,1,-1 do if cachedParts[i]==d then table.remove(cachedParts,i); break end end end end)
+                local cachedHumanoid = character:FindFirstChildWhichIsA("Humanoid")
+                local cachedHead = character:FindFirstChild("Head")
+                local holder = Instance.new("Frame", esp.Gui); holder.BackgroundTransparency = 1; holder.ZIndex = 1; holder.Visible = false
+                local box = Instance.new("Frame", holder); box.Size = UDim2.new(1,0,1,0); box.BorderSizePixel = 0; box.ZIndex = 2; box.BackgroundTransparency = 1
+                local boxGradient = Instance.new("UIGradient", box); boxGradient.Color = ColorSequence.new(fillCfg.Color)
+                local boxOutline = Instance.new("UIStroke", box); boxOutline.Thickness = outCfg.Thickness; boxOutline.Color = outCfg.Color; boxOutline.LineJoinMode = Enum.LineJoinMode.Miter; boxOutline.ZIndex = 2; boxOutline.Enabled = false
+                local boxBorder = Instance.new("UIStroke", box); boxBorder.Color = Color3.new(0,0,0); boxBorder.Thickness = 3; boxBorder.LineJoinMode = Enum.LineJoinMode.Miter; boxBorder.ZIndex = 1; boxBorder.BorderOffset = UDim.new(0,-1); boxBorder.Enabled = false
+                local hbHolder = Instance.new("Frame", holder); hbHolder.BackgroundColor3 = Color3.new(0,0,0); hbHolder.BorderSizePixel = 0; hbHolder.ZIndex = 5; hbHolder.Visible = false
+                Instance.new("UIStroke", hbHolder).Thickness = 1
+                local hbFill = Instance.new("Frame", hbHolder); hbFill.BackgroundColor3 = WHITE_VIS; hbFill.BorderSizePixel = 0; hbFill.AnchorPoint = Vector2.new(0,1); hbFill.ZIndex = 6
+                local hbGradient = Instance.new("UIGradient", hbFill); hbGradient.Rotation = 90
+                hbGradient.Color = ColorSequence.new({ColorSequenceKeypoint.new(0,hbCfg.Color.High),ColorSequenceKeypoint.new(0.5,hbCfg.Color.Medium),ColorSequenceKeypoint.new(1,hbCfg.Color.Low)})
+                local hbText = makeLabel(holder); hbText.TextColor3 = hbCfg.Text.Color; hbText.ZIndex = 8; hbText.Visible = false
+                local topContainer = Instance.new("Frame", holder); topContainer.BackgroundTransparency = 1; topContainer.Size = UDim2.new(1,0,0,0); topContainer.Position = UDim2.new(0,0,0,-3); topContainer.ZIndex = 4
+                local topLayout = Instance.new("UIListLayout", topContainer); topLayout.FillDirection = Enum.FillDirection.Vertical; topLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom; topLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+                local nameLabel = makeLabel(topContainer); nameLabel.TextXAlignment = Enum.TextXAlignment.Center; nameLabel.TextColor3 = cfg.Name.Color; nameLabel.ZIndex = 4; nameLabel.Visible = false
+                local bottomContainer = Instance.new("Frame", holder); bottomContainer.BackgroundTransparency = 1; bottomContainer.Size = UDim2.new(1,0,0,0); bottomContainer.Position = UDim2.new(0,0,1,3); bottomContainer.ZIndex = 4
+                local botLayout = Instance.new("UIListLayout", bottomContainer); botLayout.FillDirection = Enum.FillDirection.Vertical; botLayout.VerticalAlignment = Enum.VerticalAlignment.Top; botLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+                local distLabel = makeLabel(bottomContainer); distLabel.TextXAlignment = Enum.TextXAlignment.Center; distLabel.TextColor3 = cfg.Distance.Color; distLabel.ZIndex = 4; distLabel.Visible = false
+                local toolLabel = makeLabel(bottomContainer); toolLabel.TextXAlignment = Enum.TextXAlignment.Center; toolLabel.TextColor3 = cfg.Tool.Color; toolLabel.ZIndex = 4; toolLabel.Visible = false
+                return {
+                    model = character, holder = holder, box = box, boxGradient = boxGradient,
+                    boxOutline = boxOutline, boxBorder = boxBorder,
+                    hbHolder = hbHolder, hbFill = hbFill, hbGradient = hbGradient, hbText = hbText,
+                    nameLabel = nameLabel, distLabel = distLabel, toolLabel = toolLabel,
+                    cachedParts = cachedParts, partConns = partConns, cachedHumanoid = cachedHumanoid, cachedHead = cachedHead,
+                    lastUpdate = 0, lastHealth = 1, cachedVisible = false,
+                }
+            end,
+            IB_NO_VIRTUALIZE(function(character, obj)
+                local cfg = esp.Configuration; local boxCfg = cfg.Box; local outCfg = boxCfg.Outline; local fillCfg = boxCfg.Fill
+                local hbCfg = cfg.HealthBar; local teamCfg = cfg.TeamCheck
+                local now = tick(); local dt = now - obj.lastUpdate; local fullUpdate = dt >= esp.UpdateRate
+                if not cfg.Enabled then if obj.holder.Visible then obj.holder.Visible = false end return false end
+                local cam = Workspace_.CurrentCamera; if not cam then obj.holder.Visible = false return false end
+                local humanoid = obj.cachedHumanoid; local head = obj.cachedHead
+                if not head or not humanoid or humanoid.Health <= 0 then return true end
+                local plr = Players_:GetPlayerFromCharacter(obj.model)
+                if cfg.TargetOnly then
+                    local lt = Aimlock.state.locked_target
+                    if plr ~= lt then
+                        if obj.holder.Visible then obj.holder.Visible = false end
+                        return false
+                    end
+                end
+                if teamCfg.Enabled and plr and plr ~= LocalPlayer_ then
+                    if LocalPlayer_.Team ~= nil and plr.Team == LocalPlayer_.Team then obj.holder.Visible = false return false end
+                end
+                local _, onScreen = cam:WorldToViewportPoint(head.Position)
+                if not onScreen then obj.holder.Visible = false return false end
+                if fullUpdate then
+                    obj.lastUpdate = now
+                    local position, size = boxCfg.GetStyle(boxCfg.Style, obj.cachedParts, cam)
+                    if position and size then
+                        obj.cachedVisible = true
+                        obj.holder.Position = UDim2.new(0, position.X, 0, position.Y)
+                        obj.holder.Size = UDim2.new(0, math.max(size.X, 1), 0, math.max(size.Y, 1))
+                    else obj.cachedVisible = false end
+                    obj.holder.Visible = obj.cachedVisible
+                    if obj.cachedVisible then
+                        local tc = nil
+                        if teamCfg.UseTeamColors and plr and plr.Team then tc = plr.TeamColor.Color end
+                        if fillCfg.Enabled then
+                            obj.box.BackgroundColor3 = tc or fillCfg.Color
+                            local tr = fillCfg.Transparency
+                            if type(tr) == "table" then
+                                obj.boxGradient.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, tr[1] or 0), NumberSequenceKeypoint.new(1, tr[2] or 1)})
+                                obj.box.BackgroundTransparency = 0
+                            else
+                                obj.boxGradient.Transparency = NumberSequence.new(0)
+                                obj.box.BackgroundTransparency = tr
+                            end
+                            obj.boxGradient.Color = ColorSequence.new(tc or fillCfg.Color)
+                        else obj.box.BackgroundTransparency = 1 end
+                        obj.boxOutline.Color = tc or outCfg.Color; obj.boxOutline.Thickness = outCfg.Thickness
+                        local isFull = outCfg.Enabled and boxCfg.Type == "Full"
+                        obj.boxOutline.Enabled = isFull; obj.boxBorder.Enabled = isFull
+                        if hbCfg.Enabled then
+                            obj.hbHolder.Visible = true
+                            local pct = hbCfg.GetHealth(humanoid)
+                            if math.abs(pct - obj.lastHealth) > 0.01 or fullUpdate then
+                                obj.lastHealth = pct
+                                obj.hbHolder.AnchorPoint = Vector2.new(1,0); obj.hbHolder.Position = UDim2.new(0,-4,0,-1); obj.hbHolder.Size = UDim2.new(0,1,1,2)
+                                obj.hbFill.AnchorPoint = Vector2.new(0,1); obj.hbFill.Position = UDim2.new(0,0,1,0); obj.hbFill.Size = UDim2.new(1,0,pct,0); obj.hbGradient.Rotation = 90
+                                if hbCfg.Text.Enabled then obj.hbText.Text = hbCfg.Text.GetText(humanoid); obj.hbText.Visible = true else obj.hbText.Visible = false end
+                            end
+                        else obj.hbHolder.Visible = false; obj.hbText.Visible = false end
+                        if cfg.Name.Enabled then obj.nameLabel.Visible = true; obj.nameLabel.Text = obj.model.Name else obj.nameLabel.Visible = false end
+                        if cfg.Distance.Enabled then
+                            local d = math.round((cam.CFrame.Position - head.Position).Magnitude)
+                            obj.distLabel.Visible = true; obj.distLabel.Text = cfg.Distance.Format(d)
+                        else obj.distLabel.Visible = false end
+                        if cfg.Tool.Enabled then
+                            local tl = obj.model:FindFirstChildWhichIsA("Tool")
+                            obj.toolLabel.Text = tl and tl.Name or cfg.Tool.NoToolText
+                            obj.toolLabel.Visible = true
+                        else obj.toolLabel.Visible = false end
+                    else
+                        obj.boxOutline.Enabled = false; obj.boxBorder.Enabled = false
+                        obj.hbHolder.Visible = false; obj.hbText.Visible = false
+                        obj.nameLabel.Visible = false; obj.distLabel.Visible = false; obj.toolLabel.Visible = false
+                    end
+                end
+                return false
+            end),
+            function(obj) for _, c in obj.partConns do pcall(function() c:Disconnect() end) end obj.holder:Destroy() end,
+            function(obj, v) obj.holder.Visible = v end
+        )
+    end
+
+    function esp:ImplementPlayerESP(showLocal)
+        if not esp.Classes.character then esp:ImplementCharacterClass() end
+        local function onPlayerAdded(plr)
+            local obj
+            local function onCharAdded(char)
+                if obj and esp.Objects[obj.model] then esp.Objects[obj.model] = nil; pcall(obj.destroy, obj); obj = nil end
+                char:WaitForChild("Humanoid",10); char:WaitForChild("Head",10)
+                obj = esp:Create("character", char)
+            end
+            if plr.Character then task.spawn(onCharAdded, plr.Character) end
+            table.insert(esp.Connections, plr.CharacterAdded:Connect(onCharAdded))
+            table.insert(esp.Connections, plr.CharacterRemoving:Connect(function()
+                if obj then esp.Objects[obj.model] = nil; pcall(obj.destroy, obj); obj = nil end
+            end))
+        end
+        for _, p in Players_:GetPlayers() do
+            if not showLocal and p == LocalPlayer_ then continue end
+            task.spawn(onPlayerAdded, p)
+        end
+        table.insert(esp.Connections, Players_.PlayerAdded:Connect(onPlayerAdded))
+    end
+
+    table.insert(esp.Connections, RunService_.Heartbeat:Connect(IB_NO_VIRTUALIZE(function()
+        if not esp.Configuration.Enabled then
+            for _, object in esp.Objects do if object.holder.Visible then object.holder.Visible = false end end
+            return
+        end
+        for instance, object in esp.Objects do
+            local ok, result = pcall(object.update, instance, object)
+            if not ok then esp.Objects[instance] = nil; pcall(object.destroy, object)
+            elseif result then esp.Objects[instance] = nil; object:destroy() end
+        end
+    end)))
+
+    esp:ImplementPlayerESP(false)
+    return esp
+end)()
+
+-- ============================================================
+-- Visual Page — ESP + Labels
+-- ============================================================
+local function refreshESPEnabled()
+    local C = ESPFrame.Configuration
+    C.Enabled = C.Box.Fill.Enabled or C.Box.Outline.Enabled or C.HealthBar.Enabled
+        or C.Name.Enabled or C.Distance.Enabled or C.Tool.Enabled or C.TargetOnly
+end
+
+local VLeft = VisualPage:Section({ Name = "ESP", Side = 1 })
+
+VLeft:Toggle({
+    Name = "Box ESP", Flag = "esp_box", Default = false,
+    Callback = function(v)
+        ESPFrame.Configuration.Box.Fill.Enabled = v
+        ESPFrame.Configuration.Box.Outline.Enabled = v
+        refreshESPEnabled()
+    end
+})
+
+local BC = VLeft:Toggle({ Name = "Box Color", Flag = "esp_boxcolor_on", Default = true, Callback = function() end })
+BC:Colorpicker({
+    Flag = "esp_boxcolor", Default = Color3.fromRGB(0, 220, 200), Alpha = 1,
+    Callback = function(c)
+        ESPFrame.Configuration.Box.Fill.Color = c
+        ESPFrame.Configuration.Box.Outline.Color = c
+    end
+})
+
+VLeft:Slider({
+    Name = "Box Thickness", Flag = "esp_thick",
+    Min = 0.5, Max = 5, Default = 1, Decimals = 0.1,
+    Callback = function(v) ESPFrame.Configuration.Box.Outline.Thickness = v end
+})
+
+VLeft:Slider({
+    Name = "Box Transparency", Flag = "esp_trans",
+    Min = 0, Max = 1, Default = 0.6, Decimals = 0.01,
+    Callback = function(v) ESPFrame.Configuration.Box.Fill.Transparency = {v, math.min(v + 0.2, 1)} end
+})
+
+VLeft:Toggle({
+    Name = "Health Bar", Flag = "esp_hp", Default = false,
+    Callback = function(v) ESPFrame.Configuration.HealthBar.Enabled = v; refreshESPEnabled() end
+})
+
+local HC = VLeft:Toggle({ Name = "Health Bar Text", Flag = "esp_hpt", Default = false, Callback = function() end })
+HC:Colorpicker({
+    Flag = "esp_hpt_color", Default = Color3.fromRGB(0, 220, 200), Alpha = 1,
+    Callback = function(c) ESPFrame.Configuration.HealthBar.Text.Color = c end
+})
+
+VLeft:Toggle({
+    Name = "Target Only (Locked)", Flag = "esp_targetonly", Default = false,
+    Callback = function(v) ESPFrame.Configuration.TargetOnly = v; refreshESPEnabled() end
+})
+
+local VRight = VisualPage:Section({ Name = "Labels", Side = 2 })
+
+VRight:Toggle({
+    Name = "Name", Flag = "esp_name", Default = false,
+    Callback = function(v) ESPFrame.Configuration.Name.Enabled = v; refreshESPEnabled() end
+})
+
+local NC = VRight:Toggle({ Name = "Name Color", Flag = "esp_namecolor_on", Default = true, Callback = function() end })
+NC:Colorpicker({
+    Flag = "esp_namecolor", Default = Color3.fromRGB(0, 220, 200), Alpha = 1,
+    Callback = function(c) ESPFrame.Configuration.Name.Color = c end
+})
+
+VRight:Toggle({
+    Name = "Distance", Flag = "esp_dist", Default = false,
+    Callback = function(v) ESPFrame.Configuration.Distance.Enabled = v; refreshESPEnabled() end
+})
+
+VRight:Toggle({
+    Name = "Tool", Flag = "esp_tool", Default = false,
+    Callback = function(v) ESPFrame.Configuration.Tool.Enabled = v; refreshESPEnabled() end
+})
+
+local TC = VRight:Toggle({ Name = "Tool Color", Flag = "esp_toolcolor_on", Default = true, Callback = function() end })
+TC:Colorpicker({
+    Flag = "esp_toolcolor", Default = Color3.fromRGB(0, 220, 200), Alpha = 1,
+    Callback = function(c) ESPFrame.Configuration.Tool.Color = c end
+})
+
+VRight:Toggle({
+    Name = "Team Check", Flag = "esp_team", Default = false,
+    Callback = function(v) ESPFrame.Configuration.TeamCheck.Enabled = v end
+})
+
+VRight:Toggle({
+    Name = "Use Team Colors", Flag = "esp_teamcolor", Default = false,
+    Callback = function(v) ESPFrame.Configuration.TeamCheck.UseTeamColors = v end
 })
