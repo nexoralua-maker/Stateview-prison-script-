@@ -1,0 +1,215 @@
+-- ============================================================
+--  Universal DaHood Script (Sex + Activate only, no GUI)
+-- ============================================================
+
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer       = Players.LocalPlayer
+
+-- ==== Global state ====
+local GrabbedValue     = nil
+local RopeConstraint   = nil
+local u19              = false
+local timeStopActive   = false
+
+getgenv().SexSpeed = getgenv().SexSpeed or 2
+
+-- ============================================================
+--  CORE HELPERS
+-- ============================================================
+
+function ZeroVelocity___(part)
+    part.Velocity = Vector3.zero
+    part.AssemblyAngularVelocity = Vector3.zero
+    part.AssemblyLinearVelocity = Vector3.zero
+end
+
+function AnimPlayvv2(id, speed, timePos, weight)
+    for _, v in pairs(LocalPlayer.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
+        if v.Animation.AnimationId:match("rbxassetid://" .. id) then v:Stop() end
+    end
+    local Animation = Instance.new("Animation", workspace)
+    Animation.AnimationId = "rbxassetid://" .. id
+    local playing = LocalPlayer.Character:WaitForChild("Humanoid"):LoadAnimation(Animation)
+    if not tonumber(weight) then playing:Play() else playing:Play(weight) end
+    if not tonumber(speed)  then playing:AdjustSpeed(1) else playing:AdjustSpeed(speed) end
+    if tonumber(timePos)    then playing.TimePosition = timePos end
+    Animation:Destroy()
+end
+
+function AnimStopv2(id, fadeTime)
+    for _, v in pairs(LocalPlayer.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
+        if v.Animation.AnimationId:match("rbxassetid://" .. id) then
+            if not tonumber(fadeTime) then v:Stop() else v:Stop(fadeTime) end
+        end
+    end
+end
+
+function Align(P, D, bodyPart, refPart, offsetPos, offsetRot)
+    if LocalPlayer.Character.BodyEffects.Grabbed.Value ~= nil then
+        if not GrabbedValue[bodyPart]:FindFirstChildWhichIsA("BodyPosition")
+            and not GrabbedValue[bodyPart]:FindFirstChildWhichIsA("BodyGyro") then
+            Instance.new("BodyPosition", GrabbedValue[bodyPart]).MaxForce =
+                Vector3.new(math.huge, math.huge, math.huge)
+            local BodyGyro = Instance.new("BodyGyro", GrabbedValue[bodyPart])
+            BodyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+            BodyGyro.P = 10000
+        end
+        GrabbedValue[bodyPart].BodyGyro.CFrame =
+            LocalPlayer.Character[refPart].CFrame * offsetRot
+        GrabbedValue[bodyPart].BodyPosition.Position =
+            LocalPlayer.Character[refPart].CFrame * offsetPos.Position
+        GrabbedValue[bodyPart].BodyPosition.P = P
+        GrabbedValue[bodyPart].BodyPosition.D = D
+    end
+end
+
+function Destroy(bodyPart)
+    pcall(function()
+        if GrabbedValue and GrabbedValue[bodyPart]
+            and (GrabbedValue[bodyPart]:FindFirstChildOfClass("BodyGyro")
+                 or GrabbedValue[bodyPart]:FindFirstChildOfClass("BodyPosition")) then
+            local bg = GrabbedValue[bodyPart]:FindFirstChildOfClass("BodyGyro")
+            local bp = GrabbedValue[bodyPart]:FindFirstChildOfClass("BodyPosition")
+            if bg then bg:Destroy() end
+            if bp then bp:Destroy() end
+        end
+    end)
+end
+
+function Holding()
+    repeat
+        task.wait()
+        if not timeStopActive then
+            Align(10000, 175, "UpperTorso", "RightUpperArm",
+                CFrame.new(-0.2, -1.7, 0.5),
+                CFrame.Angles(math.pi * -0.5, math.pi * 1, math.pi * 0.07))
+        end
+    until LocalPlayer.Character.BodyEffects.Grabbed.Value == nil or u19 == true
+end
+
+function Grab()
+    if LocalPlayer.Character.BodyEffects.Grabbed.Value then
+        GrabbedValue = LocalPlayer.Character.BodyEffects.Grabbed.Value
+        local GRABBING_CONSTRAINT = GrabbedValue:WaitForChild("GRABBING_CONSTRAINT")
+        if not GRABBING_CONSTRAINT then return end
+        RopeConstraint = GRABBING_CONSTRAINT:FindFirstChildOfClass("RopeConstraint")
+        if RopeConstraint then RopeConstraint.Length = 1 / 0 end
+        u19 = false
+        for _, child in pairs(GrabbedValue:GetChildren()) do
+            if child:IsA("BasePart") then child.CanCollide = false end
+        end
+        repeat
+            task.wait()
+            for _, v in pairs(LocalPlayer.Character.Humanoid:GetPlayingAnimationTracks()) do
+                if v.Animation.AnimationId:match("rbxassetid://11075367458") then
+                    u19 = true
+                    v:Stop()
+                end
+            end
+        until u19 == true
+        for _, descendant in pairs(GrabbedValue:GetDescendants()) do
+            if descendant:IsA("BasePart") then
+                descendant.Velocity = Vector3.zero
+                descendant.AssemblyAngularVelocity = Vector3.zero
+                descendant.AssemblyLinearVelocity = Vector3.zero
+            end
+        end
+        u19 = false
+        AnimPlayvv2(3135389157, 0, 0.1, 0.3)
+        Holding()
+        AnimStopv2(3135389157)
+        Destroy("UpperTorso")
+    end
+end
+
+-- ============================================================
+--  TOOL BUILDERS
+-- ============================================================
+
+local toolBuilders = {}
+
+toolBuilders["Activate"] = function()
+    if LocalPlayer.Backpack:FindFirstChild("Activate") then
+        LocalPlayer.Backpack:FindFirstChild("Activate"):Destroy()
+    end
+    task.wait(0.1)
+    local Tool = Instance.new("Tool")
+    Tool.RequiresHandle = false
+    Tool.Name = "Activate"
+    Tool.Parent = LocalPlayer.Backpack
+    Tool.Activated:Connect(function()
+        ReplicatedStorage.MainEvent:FireServer("Grabbing", true)
+        wait(0.3)
+        Grab()
+    end)
+    return Tool
+end
+
+toolBuilders["Sex"] = function()
+    if LocalPlayer.Backpack:FindFirstChild("Sex") then
+        LocalPlayer.Backpack:FindFirstChild("Sex"):Destroy()
+    end
+    task.wait(0.1)
+    local Tool = Instance.new("Tool")
+    Tool.RequiresHandle = false
+    Tool.Name = "Sex"
+    Tool.Parent = LocalPlayer.Backpack
+
+    Tool.Activated:Connect(function()
+        local grabbed = LocalPlayer.Character.BodyEffects.Grabbed.Value
+        if not grabbed then return end
+
+        getgenv().Furry_ = true
+        task.wait()
+        getgenv().Furry_ = false
+
+        AnimPlayvv2(4784557631)
+
+        for _, v in pairs(LocalPlayer.Character:WaitForChild("Humanoid"):GetPlayingAnimationTracks()) do
+            if v.Animation.AnimationId:match("rbxassetid://3119980985") then v:Stop() end
+        end
+        local sexAnim = Instance.new("Animation", workspace)
+        sexAnim.AnimationId = "rbxassetid://3119980985"
+        local sexTrack = LocalPlayer.Character:WaitForChild("Humanoid"):LoadAnimation(sexAnim)
+        sexTrack.Priority = Enum.AnimationPriority.Action4
+        sexTrack:Play()
+        sexTrack:AdjustSpeed(getgenv().SexSpeed or 2)
+        sexAnim:Destroy()
+
+        repeat
+            task.wait()
+
+            if sexTrack and sexTrack.IsPlaying then
+                sexTrack:AdjustSpeed(getgenv().SexSpeed or 2)
+            end
+
+            for _, descendant in pairs(grabbed:GetDescendants()) do
+                if descendant:IsA("BasePart") or descendant:IsA("MeshPart") or descendant:IsA("Part") then
+                    descendant.Velocity = Vector3.zero
+                    descendant.AssemblyAngularVelocity = Vector3.zero
+                    descendant.AssemblyLinearVelocity = Vector3.zero
+                    descendant.CanCollide = false
+                end
+            end
+
+            local v226 = tick() * 133.33
+
+            Align(10000, 175, "UpperTorso", "HumanoidRootPart",
+                CFrame.new(0, -0.3, -2 + 0.5 * math.sin(v226 / 8)),
+                CFrame.Angles(math.pi * -0.3, 0, 0))
+        until LocalPlayer.Character.BodyEffects.Grabbed.Value == nil or getgenv().Furry_ == true
+
+        Destroy("UpperTorso")
+        AnimStopv2(4784557631)
+        AnimStopv2(3119980985, 0.5)
+    end)
+    return Tool
+end
+
+-- ============================================================
+--  BUILD TOOLS DIRECTLY
+-- ============================================================
+
+toolBuilders["Activate"]()
+toolBuilders["Sex"]()
